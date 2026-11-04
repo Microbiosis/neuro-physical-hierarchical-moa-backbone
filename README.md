@@ -102,11 +102,24 @@ Verified on `numpy 2.2.6` + torch (CPU), 9/9 checks:
 
 ## Notes
 
-- This repository holds the **original upstream version** of the operator library.
-  The adapted copies used inside the
+- This repository holds the **original version** of the operator library. The
+  adapted copies used inside the
   [hetero-moe](https://github.com/Microbiosis/hetero-moe) research line
   (`research/aligner/v62_dimension_projection_space/moa_operators.py` and friends)
   are modified for that project and are maintained there.
-- **License / attribution: not specified upstream.** No license or copyright header
-  is present in any of the 12 modules. Confirm the upstream terms before
-  redistributing or building on this code commercially.
+
+## License
+
+[Apache License 2.0](LICENSE) — Copyright 2026 Microbiosis.
+
+- **Provenance.** The 12 operator modules were written to specifications provided
+  by the copyright holder, with implementation assistance from Google Gemini.
+- **No per-file headers.** License headers were deliberately not inserted into the
+  operator modules so they stay byte-identical to the original versions; the
+  repository-level `LICENSE` applies to every file here.
+- **Patents.** Apache-2.0 includes an express patent grant (§3) and a defensive
+  termination clause, which is why it was chosen over MIT.
+- **Contributions.** Per §5, anything intentionally submitted for inclusion is
+  under this same license unless stated otherwise.
+- **Trademarks.** §6 grants no right to use the Microbiosis name or marks.
+
