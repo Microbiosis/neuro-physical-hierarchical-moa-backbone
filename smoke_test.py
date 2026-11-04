@@ -373,6 +373,57 @@ def test_upstream_dissociative_suite():
     return f"上游套件 {n_pass} 项 PASS，冲击输出有界"
 
 
+def test_mechanism_tulpa_trauma_decoupling():
+    """机制审计：Tulpa 专家与创伤通路严格因果解耦 + 稳态/应激互补门控（v5 新机制）。"""
+    U = importlib.import_module(f"{PKG}.unified_hybrid_moa_architecture")
+    rng = np.random.default_rng(11)
+    cfg = U.UnifiedHybridArchitectureConfig(d_model=64, n_heads=4, num_proposers=8,
+                                            top_k_proposers=3, num_cross_modal_anchors=8,
+                                            num_local_groups=4, local_rank=2,
+                                            num_extra_dims=3, num_tulpas=2)
+    B, L, D = 2, 16, cfg.d_model
+    x = rng.standard_normal((B, L, D)) * 0.5
+    params = U.UnifiedArchitectureExecutionEngine.init_layer_parameters(D, cfg, seed=2026)
+    fwd = U.UnifiedArchitectureExecutionEngine.forward_unified_layer_exact
+
+    _, ctx = fwd(x, params, cfg, use_smooth_router=True)
+
+    # 1) 因果解耦 d(Tulpa)/d(Trauma) == 0：大幅扰动创伤参数，
+    #    Expert 5（Tulpa）及其余认知专家的输出必须逐位不变
+    pert = {k: v.copy() for k, v in params.items()}
+    pert["alpha_hyper"] = pert["alpha_hyper"] + 10.0
+    pert["gamma_dpdr"] = pert["gamma_dpdr"] + 10.0
+    pert["theta_dissoc"] = pert["theta_dissoc"] + 5.0
+    _, ctx_p = fwd(x, pert, cfg, use_smooth_router=True)
+    d_tulpa = float(np.max(np.abs(ctx["proposals_raw"][:, 5] - ctx_p["proposals_raw"][:, 5])))
+    assert d_tulpa == 0.0, f"Tulpa(Expert 5) 对创伤参数有灵敏度 {d_tulpa}"
+    d_others = max(
+        float(np.max(np.abs(ctx["proposals_raw"][:, i] - ctx_p["proposals_raw"][:, i])))
+        for i in (0, 1, 2, 3, 4, 6, 7)
+    )
+    assert d_others == 0.0, f"其他认知专家也受创伤参数污染 {d_others}"
+
+    # 2) 互补门控：常态输入 -> 意志/Tulpa 门占优；+50 冲击 -> 创伤防御门占优
+    g_norm = float(np.mean(ctx["g_shut_gate"]))
+    x_shock = x.copy()
+    x_shock[:, 0, :] += 50.0
+    _, ctx_s = fwd(x_shock, params, cfg, use_smooth_router=True)
+    g_shock = float(np.mean(ctx_s["g_shut_gate"][:, 0, :]))
+    assert g_norm > 0.70, f"常态门控 {g_norm:.4f} 未占优"
+    assert g_shock < 1e-10, f"冲击下意志/Tulpa 门未关闭 {g_shock:.3e}"
+
+    # 3) 冲击下创伤防御通路被真正激活，且 DPDR 感觉压缩生效（输出被压小）
+    tr_norm = float(np.linalg.norm(ctx["trauma_out"][:, 0, :]))
+    tr_shock = float(np.linalg.norm(ctx_s["trauma_out"][:, 0, :]))
+    w_shock = float(np.linalg.norm((1.0 - ctx_s["g_shut_gate"][:, 0, :])
+                                   * 0.5 * ctx_s["trauma_out"][:, 0, :]))
+    assert w_shock > 0.0, "冲击下创伤防御项为 0"
+    assert tr_shock < tr_norm, f"冲击未触发 DPDR 压缩 {tr_shock:.3f} vs {tr_norm:.3f}"
+    return (f"d(Tulpa)/d(Trauma)={d_tulpa:.1e}, 其余认知专家={d_others:.1e}, "
+            f"G_shut 常态 {g_norm:.4f} → 冲击 {g_shock:.2e}, "
+            f"创伤输出 {tr_norm:.3f}→{tr_shock:.3f}（DPDR 压缩 {tr_norm / max(tr_shock, 1e-12):.1f}×）")
+
+
 def test_domain_ops():
     import torch
 
@@ -464,6 +515,7 @@ def main() -> int:
         check("torch UnifiedHybridMoABackbone (3 layers)", test_torch_unified_backbone)
         check("torch domain operators (quantum tidal, neuro)", test_domain_ops)
         check("upstream dissociative verification suite", test_upstream_dissociative_suite)
+        check("mechanism: Tulpa/Trauma causal decoupling + regime gates", test_mechanism_tulpa_trauma_decoupling)
         check("triton tile simulators vs references", test_triton_simulators)
     elif not quick:
         print("  SKIP  torch / simulator sections (torch not installed)")

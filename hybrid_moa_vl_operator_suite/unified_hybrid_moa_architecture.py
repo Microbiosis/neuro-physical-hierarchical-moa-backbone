@@ -1,17 +1,28 @@
 """
 Unified 9-Domain Interdisciplinary Hybrid MoA Architecture (`unified_hybrid_moa_architecture.py`)
-— Pure Vision-Language (Image-Text) Cross-Modal Spatial-Semantic Fusion Edition.
+— Vision-Language Cross-Modal Fusion & Complementary Homeostatic-Allostatic Regime Edition.
 
-Core Architecture of `Expert 0` (`0:CrossModal_VL_BilinearFusion` / `CrossModalVisionLanguageFusionSubOp`):
-1. Zero Distance Decay Across Vision-Language Sequences:
-   Image patches and text tokens interact directly through `R_anchor` shared
-   cross-modal latent bottlenecks (`O(L * R_anchor * D)`) with zero exponential decay.
-2. 2D Spatial Neighborhood + Bidirectional Context:
-   Uses symmetric bidirectional 2D-aware local spatial filtering and omnidirectional
-   visual-textual co-attention.
-3. Multiplicative Hadamard-Bilinear Cross-Modal Feature Alignment:
-   Directly computes bounded `V_vis * T_txt` feature interactions required by
-   vision-language contrastive and generative fusion tasks.
+Neuroscientific & Architectural Resolution of the Tulpa vs. Dissociative Trauma Tension:
+1. Why Both Operators Coexist in a General-Purpose Backbone (Two Distinct Dynamical Regimes):
+   - `TulpaNeuroCognitiveOp` (`tulpa_neuro_operators.py`, Expert 5) models **non-traumatogenic,
+     volitional, high-agency plural cognition** (deliberate sub-persona attractors & cooperative
+     Host-Tulpa dialogue under homeostatic eustress).
+   - `DissociativeTraumaNeuroOp` (`dissociative_trauma_neuro_operators.py`, Corticolimbic
+     Emergency Regulator) models **involuntary, threat-induced allostatic defense** (PAG
+     shutdown & DPDR sensory compression under extreme out-of-distribution shock).
+2. Strict Causal Decoupling (`d(Tulpa) / d(Trauma) == 0`):
+   - `trauma_out` is NEVER fed into `reflex_bypass` (`h_clean`), `chaotic_bridge`, or any of
+     the 8 Stage-II cognitive proposers. `TulpaNeuroCognitiveOp` operates exclusively on the
+     clean, non-traumatogenic sensorimotor state `h_clean`, guaranteeing that Tulpa attractors
+     never originate from or depend on trauma representations.
+3. Complementary Homeostatic-Allostatic Partitioning (`G_shut` vs. `1 - G_shut`):
+   - Rather than unconditional parallel summation on the residual stream, the two pathways are
+     partitioned by the complementary corticolimbic boundary gate `G_shut = sigmoid(-kappa * E_excess)`:
+         Y_layer = H_clean + G_shut * MegaSyn(H_clean) + (1 - G_shut) * (0.50 * TraumaDefense(X_in))
+   - Under normal homeostatic input (`E_excess < 0`, `G_shut -> 1`), the Volitional / Tulpa
+     synthesis regime dominates while the trauma pathway is quiescent (`1 - G_shut -> 0`).
+   - Under extreme shock (`E_excess >> 0`, `G_shut -> 0`), volitional & Tulpa attractors are
+     shielded (`G_shut -> 0`) while the emergency DPDR defense absorbs the shock (`1 - G_shut -> 1`).
 """
 
 from __future__ import annotations
@@ -284,18 +295,23 @@ if HAS_TORCH:
 
             s1_in = self.stage1_norm(x)
             spinal_out, spinal_diag = self.spinal_pathway(s1_in)
-            trauma_out, trauma_diag = self.corticolimbic_regulator(s1_in)
             chaotic_bridge_out, chaos_bridge_diag = self.corticospinal_chaotic_bridge(
                 s1_in + spinal_out
             )
-            reflex_state = (
+            # Clean non-traumatogenic sensorimotor state (zero trauma_out contamination!)
+            h_clean = (
                 x
                 + torch.sigmoid(self.reflex_bypass_gate) * spinal_out
-                + 0.5 * trauma_out
                 + torch.sigmoid(self.chaotic_bridge_gate) * chaotic_bridge_out
             )
 
-            s2_in = self.stage2_norm(reflex_state)
+            # Orthogonal allostatic trauma-defense regulator evaluated on s1_in
+            trauma_out, trauma_diag = self.corticolimbic_regulator(s1_in)
+            g_shut = float(trauma_diag["mean_corticolimbic_shutdown_gate"])
+
+            # Stage II: All 8 cognitive/volitional experts (including Expert 5 Tulpa)
+            # receive ONLY the clean non-traumatogenic state `h_clean`!
+            s2_in = self.stage2_norm(h_clean)
             p0 = self.expert_0_vl_fusion(s2_in)
             p1, qtf_diag = self.expert_1_quantum_tidal(s2_in)
             p2, neuro_diag = self.expert_2_cortical_neuro(s2_in)
@@ -309,7 +325,10 @@ if HAS_TORCH:
             proposals = self.branch_norm_4d(proposals_raw) * self.branch_scale_4d
 
             synthesized, aux_loss, agg_metrics = self.aggregator(s2_in, proposals)
-            out = reflex_state + synthesized
+            # Complementary Homeostatic-Allostatic Regime Synthesis:
+            # G_shut -> 1: Volitional/Tulpa synthesis active, Trauma defense quiescent
+            # G_shut -> 0: Volitional/Tulpa shielded, Emergency Trauma defense active
+            out = h_clean + g_shut * synthesized + (1.0 - g_shut) * (0.50 * trauma_out)
 
             telemetry: Dict[str, object] = {
                 "attn_density": attn_density,
@@ -383,7 +402,7 @@ class UnifiedArchitectureExecutionEngine:
             "lambda_rc": np.full((D,), 0.35, dtype=np.float64),
             "alpha_cpg": np.full((D,), 0.20, dtype=np.float64),
             "omega_cpg": np.exp(-math.log(1000.0) * np.arange(Dh, dtype=np.float64) / Dh),
-            "theta_dissoc": np.full((D,), 0.65, dtype=np.float64),
+            "theta_dissoc": np.full((D,), 1.15, dtype=np.float64),
             "kappa_dissoc": np.full((D,), 1.80, dtype=np.float64),
             "alpha_hyper": np.full((D,), 0.55, dtype=np.float64),
             "gamma_dpdr": np.full((D,), 0.75, dtype=np.float64),
@@ -456,7 +475,27 @@ class UnifiedArchitectureExecutionEngine:
             params["alpha_cpg"], params["omega_cpg"],
         )
 
-        # 2. Stage I: Corticolimbic Dissociative & DPDR Regulator
+        # 2. Stage I.5: Bidirectional Brain-Spinal Chaotic Bridge (Pure Sensorimotor, Zero Trauma Input)
+        u_cb = x_in * 0.75
+        v_cb = x_in * 0.60
+        w_cb = spinal_out * 0.75
+        chaotic_bridge_out, chaos_bridge_cache = (
+            CorticospinalChaoticAnalyticalKernels.fused_corticospinal_chaotic_manifold_forward(
+                u_cb, v_cb, w_cb,
+                params["sigma_cbs"], params["rho_gain"],
+                params["gamma_nl"], params["kappa_ctrl"],
+            )
+        )
+
+        # Clean Non-Traumatogenic Sensorimotor Baseline State (`reflex_bypass` / `h_clean`)
+        # Strictly free of `trauma_out` so Expert 5 (Tulpa) has ZERO traumatogenic dependency!
+        reflex_bypass = (
+            x_in
+            + 0.30 * spinal_out
+            + 0.35 * chaotic_bridge_out
+        )
+
+        # 3. Orthogonal Allostatic Corticolimbic Trauma-Defense Regulator
         xs = x_in * 0.70
         sa = x_in * 0.80
         cv = x_in * 0.50
@@ -467,32 +506,13 @@ class UnifiedArchitectureExecutionEngine:
                 params["alpha_hyper"], params["gamma_dpdr"],
             )
         )
-
-        # 3. Stage I.5: Bidirectional Brain-Spinal Chaotic Bridge
-        u_cb = x_in * 0.75
-        v_cb = trauma_out * 0.60
-        w_cb = spinal_out * 0.75
-        chaotic_bridge_out, chaos_bridge_cache = (
-            CorticospinalChaoticAnalyticalKernels.fused_corticospinal_chaotic_manifold_forward(
-                u_cb, v_cb, w_cb,
-                params["sigma_cbs"], params["rho_gain"],
-                params["gamma_nl"], params["kappa_ctrl"],
-            )
-        )
-
-        reflex_bypass = (
-            x_in
-            + 0.30 * spinal_out
-            + 0.25 * trauma_out
-            + 0.35 * chaotic_bridge_out
-        )
         g_shut_gate = trauma_cache["g_shut"]
 
-        # 4. Stage II: 8 Interdisciplinary Proposer Experts
+        # 4. Stage II: 8 Interdisciplinary Proposer Experts (All driven by clean non-traumatogenic state!)
         # Expert 0: Cross-Modal Vision-Language Hadamard-Bilinear Gated Fusion
         v_vis = reflex_bypass * 0.75
         t_txt = spinal_out * 0.65
-        c_align = trauma_out * 0.55
+        c_align = chaotic_bridge_out * 0.55
         p0_vl_fusion, vl_cache = (
             NumpyMoAOperatorKernels.cross_modal_vl_bilinear_fusion_forward(
                 v_vis, t_txt, c_align,
@@ -624,7 +644,14 @@ class UnifiedArchitectureExecutionEngine:
             np.put_along_axis(active_weights, topk_idx, topk_w, axis=-1)
 
         mega_syn = np.einsum("bln,bnld->bld", active_weights, proposals_scaled)
-        y_layer = reflex_bypass + g_shut_gate * mega_syn
+        # Complementary Homeostatic-Allostatic Regime Synthesis:
+        # - Homeostatic Volitional Regime (G_shut -> 1): `g_shut_gate * mega_syn` (includes Tulpa)
+        # - Allostatic Emergency Regime   (G_shut -> 0): `(1 - g_shut_gate) * (0.50 * trauma_out)`
+        y_layer = (
+            reflex_bypass
+            + g_shut_gate * mega_syn
+            + (1.0 - g_shut_gate) * (0.50 * trauma_out)
+        )
 
         ctx = {
             "x_in": x_in,
@@ -689,9 +716,11 @@ class UnifiedArchitectureExecutionEngine:
         active_weights: np.ndarray = ctx["active_weights"]  # type: ignore
         mega_syn: np.ndarray = ctx["mega_syn"]  # type: ignore
 
+        trauma_out: np.ndarray = ctx["trauma_out"]  # type: ignore
         d_reflex = grad_y.copy()
-        d_gshut_ext = grad_y * mega_syn
         d_mega = grad_y * g_shut_gate
+        d_trauma_total = grad_y * (1.0 - g_shut_gate) * 0.50
+        d_gshut_ext = grad_y * (mega_syn - 0.50 * trauma_out)
 
         d_weights = np.einsum("bld,bnld->bln", d_mega, proposals_scaled)
         d_props_scaled = np.einsum("bld,bln->bnld", d_mega, active_weights)
@@ -717,7 +746,7 @@ class UnifiedArchitectureExecutionEngine:
         )
         d_reflex += 0.75 * g_vl["d_vvis"]
         d_spinal_from_exp0 = 0.65 * g_vl["d_ttxt"]
-        d_trauma_from_exp0 = 0.55 * g_vl["d_calign"]
+        d_cbridge_from_exp0 = 0.55 * g_vl["d_calign"]
 
         # Expert 1: Quantum Tidal Fluctuation
         g_qtf = QuantumTidalAnalyticalKernels.fused_quantum_tidal_wave_backward(
@@ -786,9 +815,9 @@ class UnifiedArchitectureExecutionEngine:
         )
         d_reflex += 0.80 * g_baryon["d_x"] + 0.60 * g_baryon["d_deltaweak"]
 
-        # Differentiate through Stage I.5 Chaotic Bridge & Stage I Spinal + Trauma
+        # Differentiate through Stage I.5 Chaotic Bridge & Stage I Spinal + Orthogonal Trauma Regulator
         g_chaos_bridge = CorticospinalChaoticAnalyticalKernels.fused_corticospinal_chaotic_manifold_backward(
-            0.35 * d_reflex, ctx["chaos_bridge_cache"]  # type: ignore
+            0.35 * d_reflex + d_cbridge_from_exp0, ctx["chaos_bridge_cache"]  # type: ignore
         )
         d_spinal_total = (
             0.30 * d_reflex
@@ -796,15 +825,12 @@ class UnifiedArchitectureExecutionEngine:
             + d_spinal_from_exp6
             + d_spinal_from_exp0
         )
-        d_trauma_total = (
-            0.25 * d_reflex
-            + 0.60 * g_chaos_bridge["d_vbulb"]
-            + d_trauma_from_exp0
-        )
 
         g_spinal = SpinalCordAnalyticalKernels.fused_spinal_dorsal_reflex_renshaw_backward(
             d_spinal_total, ctx["spinal_cache"]  # type: ignore
         )
+        # Trauma pathway receives ONLY gradients from the complementary allostatic gate (1 - G_shut)
+        # and the boundary gate derivative d_gshut_ext — ZERO gradient from Tulpa or cognitive experts!
         g_trauma = DissociativeTraumaAnalyticalKernels.fused_corticolimbic_dissociative_dpdr_backward(
             d_trauma_total, ctx["trauma_cache"]  # type: ignore
         )
@@ -822,6 +848,7 @@ class UnifiedArchitectureExecutionEngine:
         d_x_in = (
             d_reflex
             + 0.75 * g_chaos_bridge["d_ucort"]
+            + 0.60 * g_chaos_bridge["d_vbulb"]
             + 0.60 * g_spinal["d_xabeta"]
             + 0.50 * g_spinal["d_xcfiber"]
             + 0.40 * g_spinal["d_xdesc"]
@@ -947,7 +974,11 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
         ctx_m["proposals_raw"], params_m["gamma_norm"], params_m["scale_norm"],
         ctx_m["router_logits"], top_k=cfg_main.top_k_proposers, eps=0.0
     )
-    y_triton_path = ctx_m["reflex_bypass"] + ctx_m["g_shut_gate"] * mega_tri
+    y_triton_path = (
+        ctx_m["reflex_bypass"]
+        + ctx_m["g_shut_gate"] * mega_tri
+        + (1.0 - ctx_m["g_shut_gate"]) * (0.50 * ctx_m["trauma_out"])
+    )
     diff_triton_paths = float(np.max(np.abs(y_dense - y_triton_path)))
 
     print(f"   |Eager CrossModal VL - Fused Triton VL Kernel|   : {diff_vl_kernel:.2e}  [PASS < 1e-14]")
@@ -1069,6 +1100,52 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
         print(f"   LODO Ablate [{exp_name:32s}] | Relative Output Impact: {rel_impact:6.2%} | Active")
         assert rel_impact > 0.005
     print(f"   Unified Representation Effective Rank (exp(H(sigma))) : {eff_rank:.2f} / {D_m} dims")
+
+    # --------------------------------------------------------------------------
+    # VERIFICATION V: Non-Traumatogenic Tulpa Decoupling & Complementary Regime Audit
+    # --------------------------------------------------------------------------
+    print("\n[Verification V] Non-Traumatogenic Tulpa Decoupling & Homeostatic-Allostatic Regime Audit")
+    print("-" * 98)
+    # 1. Perturb trauma parameters (theta_dissoc, alpha_hyper, gamma_dpdr) and verify that
+    #    Expert 5 (TulpaNeuroCognitiveOp) proposal output `p5_tulpa` has EXACTLY ZERO sensitivity!
+    params_perturbed = {k: v.copy() for k, v in params_m.items()}
+    params_perturbed["alpha_hyper"] += 10.0
+    params_perturbed["gamma_dpdr"] += 10.0
+    _, ctx_pert = UnifiedArchitectureExecutionEngine.forward_unified_layer_exact(
+        x_m, params_perturbed, cfg_main, use_smooth_router=True
+    )
+    tulpa_diff_under_trauma_param_shift = float(
+        np.max(np.abs(ctx_m["proposals_raw"][:, 5] - ctx_pert["proposals_raw"][:, 5]))
+    )
+    print(
+        f"   Causal Sensitivity ||d(Tulpa_Expert5) / d(Trauma_Params)||_inf : "
+        f"{tulpa_diff_under_trauma_param_shift:.2e}  [PASS == 0.00e+00: Strictly Non-Traumatogenic!]"
+    )
+    assert tulpa_diff_under_trauma_param_shift == 0.0
+
+    # 2. Verify Complementary Regime Switching between Normal Homeostatic Input vs. +50.0 Shock
+    g_eustress = float(np.mean(ctx_m["g_shut_gate"]))
+    w_volitional_eustress = g_eustress
+    w_trauma_eustress = 1.0 - g_eustress
+
+    x_shock = x_m.copy()
+    x_shock[:, 0, :] += 50.0
+    _, ctx_shock = UnifiedArchitectureExecutionEngine.forward_unified_layer_exact(
+        x_shock, params_m, cfg_main, use_smooth_router=True
+    )
+    g_shock = float(np.mean(ctx_shock["g_shut_gate"][:, 0, :]))
+    w_volitional_shock = g_shock
+    w_trauma_shock = 1.0 - g_shock
+
+    print(
+        f"   Regime A (Homeostatic / Normal Input) -> Volitional/Tulpa Gate G_shut = {w_volitional_eustress:.4f} "
+        f"| Trauma-Defense Gate (1 - G_shut) = {w_trauma_eustress:.4f}"
+    )
+    print(
+        f"   Regime B (Allostatic +50.0 Shock)     -> Volitional/Tulpa Gate G_shut = {w_volitional_shock:.4e} "
+        f"| Trauma-Defense Gate (1 - G_shut) = {w_trauma_shock:.4f}  [PASS: Mutual Regime Exclusion!]"
+    )
+    assert w_volitional_eustress > 0.70 and w_trauma_shock > 0.9999
     print("=" * 98)
 
 if not HAS_TORCH:

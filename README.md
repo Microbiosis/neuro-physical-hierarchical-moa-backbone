@@ -1,16 +1,17 @@
 # Neuro-Physical Hierarchical MoA Backbone
 
 **Hybrid MoA Vision-Language Operator Suite** — 12-module neural operator library for
-Mixture-of-Architectures (MoA) backbones, in the **pure Vision-Language cross-modal
-fusion edition** (the legacy 1-D causal SSM branch has been removed).
+Mixture-of-Architectures (MoA) backbones, in the **Vision-Language cross-modal fusion &
+complementary homeostatic-allostatic regime edition** (the legacy 1-D causal SSM branch
+has been removed).
 
 Every module ships four layers: a dataclass config, deterministic NumPy analytical
 kernels, `torch.nn.Module` operators, and fused `autograd.Function` / `@triton.jit`
 implementations — and every layer is importable even without torch installed
 (fallback stubs raise a clear `ImportError` only when instantiated).
 
-Total: **9,772 lines** of operator code across 12 modules
-(+ 248 lines of package `__init__.py` = 10,020 lines of Python), plus a 482-line
+Total: **9,849 lines** of operator code across 12 modules
+(+ 248 lines of package `__init__.py` = 10,097 lines of Python), plus a 482-line
 clean-room smoke test.
 
 ---
@@ -27,7 +28,7 @@ clean-room smoke test.
     ├── README.md                     包内说明（原始版本文档）
     ├── moa_operators.py              系统级 MoA + 跨模态图文融合（978 行）
     ├── moa_triton_kernels.py         Triton 内核 + tile 模拟器（390 行）
-    ├── unified_hybrid_moa_architecture.py   九域总装 + 验证引擎（1,086 行）
+    ├── unified_hybrid_moa_architecture.py   九域总装 + 验证引擎（1,163 行）
     └── … 9 个领域算子模块
 ```
 
@@ -51,7 +52,7 @@ being masked by the fallback branch.
 
 | Module | Domain | Lines |
 |---|---|---|
-| `unified_hybrid_moa_architecture.py` | 九域总装层 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 执行引擎 + LODO 消融 | 1,086 |
+| `unified_hybrid_moa_architecture.py` | 九域总装层 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 执行引擎 + LODO 消融 + 稳态/应激互补门控 | 1,163 |
 | `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + **跨模态图文融合** | 978 |
 | `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 938 |
 | `spinal_cord_pathway_operators.py` | 脊髓节段通路、Melzack-Wall 门控、Renshaw 递归 | 936 |
@@ -78,6 +79,27 @@ being masked by the fallback branch.
 - **Triton 内核双名并存**：`persistent_moa_norm_sparse_topk_megakernel`（有 triton 时的真内核）
   与 `persistent_norm_sparse_topk_agg_kernel`（稳定公开名）在任何环境下都是同一个对象，
   `__init__` 两个名字都导出。
+
+### 机制层更新：Tulpa 与创伤通路的因果解耦 + 互补门控
+
+`unified_hybrid_moa_architecture.py` 里 Tulpa（自主子人格，Expert 5）与解离创伤防御
+（Stage-I corticolimbic regulator）原本共享同一条残差流，存在两个问题：创伤表征会污染
+认知专家，且两条通路无条件并行相加。本版改为：
+
+```
+# 1) 严格因果解耦  d(Tulpa) / d(Trauma) == 0
+h_clean   = x + σ(gate)·spinal_out + σ(gate)·chaotic_bridge(x)      # 不含任何 trauma_out
+trauma_out = CorticolimbicRegulator(s1_in)                          # 正交评估，只从边界门进输出
+
+# 2) 互补的同稳态-稳态负荷分区（G_shut = σ(-κ·E_excess)）
+Y_layer = h_clean + G_shut · MegaSyn(h_clean) + (1 - G_shut) · 0.50 · trauma_out
+```
+
+- 常态输入（`E_excess < 0`，`G_shut → 1`）：意志/Tulpa 合成域主导，创伤通路静默
+- 极端冲击（`E_excess ≫ 0`，`G_shut → 0`）：意志/Tulpa 被屏蔽，紧急 DPDR 防御接管
+- 反向传播同步改写：创伤通路只收到来自 `(1 - G_shut)` 与边界门导数 `dG_shut` 的梯度，
+  Tulpa 与 8 个认知专家**零梯度**来自创伤通路
+- `theta_dissoc` 默认值 0.65 → 1.15
 
 ### 融合算子的数学形式
 
@@ -141,7 +163,7 @@ python smoke_test.py            # everything available
 python smoke_test.py --quick    # imports + numpy kernels only
 ```
 
-Result: **13/13 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
+Result: **14/14 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 
 | Check | Result |
 |---|---|
@@ -157,6 +179,7 @@ Result: **13/13 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 | torch `UnifiedHybridMoABackbone` (3 layers) | 1,118.0K params, grad reaches input |
 | torch domain operators (quantum tidal, neuro) | both return (out, diagnostics) |
 | upstream dissociative verification suite | 7 gradchecks PASS, shock output bounded |
+| mechanism: Tulpa/Trauma causal decoupling + complementary regime gates | d(Tulpa)/d(Trauma) = 0.0e+00 (exact),其余认知专家 0.0e+00；G_shut 0.841 → 7.12e-218；DPDR 压缩 15.2× |
 | Triton tile simulators vs analytical references | 2.2e-16 / 8.9e-16 |
 
 Upstream benchmarks shipped with the package (`python3 <module>.py` inside the package):
