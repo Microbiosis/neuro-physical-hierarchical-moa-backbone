@@ -5,8 +5,8 @@ Each module translates one domain — particle physics, systems neuroscience, qu
 fluctuation, spacetime geometry — into end-to-end differentiable PyTorch operators,
 fused Triton GPU kernels, and analytical NumPy reference kernels.
 
-Total: **10,619 lines** of operator code (12 library modules) + a 386-line
-clean-room smoke test.
+Total: **10,233 lines** of operator code across 12 library modules, plus a
+386-line clean-room smoke test (10,619 lines of Python in total).
 
 ---
 
