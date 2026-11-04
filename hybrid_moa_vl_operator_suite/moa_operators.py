@@ -943,6 +943,36 @@ def run_moa_vl_operator_verification() -> None:
     assert r2_vl_branch > r2_lin_branch + 0.15
     print("=" * 96)
 
+if not HAS_TORCH:
+    class RMSNorm:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate RMSNorm.")
+
+    class FusedCrossModalBilinearGateFunction:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate FusedCrossModalBilinearGateFunction.")
+
+    class CrossModalVisionLanguageFusionSubOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate CrossModalVisionLanguageFusionSubOp.")
+
+    class HeterogeneousProposerOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate HeterogeneousProposerOp.")
+
+    class CrossProposalAggregatorOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate CrossProposalAggregatorOp.")
+
+    class MixtureOfAttentionOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate MixtureOfAttentionOp.")
 
 if __name__ == "__main__":
     run_moa_vl_operator_verification()

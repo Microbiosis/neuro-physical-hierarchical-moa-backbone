@@ -185,6 +185,16 @@ if HAS_TRITON:
             out_ptrs = Out_ptr + b_idx * stride_ob + l_idx * stride_ol + cols * stride_od
             tl.store(out_ptrs, acc, mask=mask)
 
+else:
+    def fused_cross_modal_vl_bilinear_fwd_kernel(*args, **kwargs):
+        raise ImportError("Triton is required to launch fused_cross_modal_vl_bilinear_fwd_kernel. Use TritonTileSimulator instead.")
+
+    def fused_cross_modal_vl_bilinear_bwd_kernel(*args, **kwargs):
+        raise ImportError("Triton is required to launch fused_cross_modal_vl_bilinear_bwd_kernel. Use TritonTileSimulator instead.")
+
+    def persistent_norm_sparse_topk_agg_kernel(*args, **kwargs):
+        raise ImportError("Triton is required to launch persistent_norm_sparse_topk_agg_kernel. Use TritonTileSimulator instead.")
+
 
 # ==============================================================================
 # 2. Deterministic Tile-by-Tile Triton SRAM Simulator & HBM Profiler
@@ -361,11 +371,16 @@ def run_triton_vl_benchmark() -> None:
         launch_str = f"{r.eager_launches:4d} -> {r.triton_launches:2d} ({r.launch_reduction_factor:5.1f}x)"
         print(
             f"{r.kernel_name:46s} | Diff={r.max_abs_diff_vs_ref:.2e} | "
-            f"Launches: {launch_str:20s} | HBM Saved: {r.bandwidth_reduction_pct:5.1f}%"
+            f"Launches: {launch_str:20s} | HBM Saved: {r.bandwidth_reduction_pct:5.1f}%  [PASS]"
         )
         assert r.max_abs_diff_vs_ref < 1e-12
     print("=" * 98)
 
+
+
+# Functional shortcuts for Triton simulator
+simulate_fused_cross_modal_vl_bilinear = TritonTileSimulator.simulate_fused_cross_modal_vl_bilinear
+simulate_persistent_norm_sparse_topk_megakernel = TritonTileSimulator.simulate_persistent_norm_sparse_topk_megakernel
 
 if __name__ == "__main__":
     run_triton_vl_benchmark()

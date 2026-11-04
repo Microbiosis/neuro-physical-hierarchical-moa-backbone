@@ -916,6 +916,21 @@ def run_spinal_pathway_verification_suite() -> None:
     assert max_tile_diff < 1e-14
     print("=" * 92)
 
+if not HAS_TORCH:
+    class RMSNorm:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate RMSNorm.")
+
+    class FusedSpinalDorsalReflexRenshawFunction:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate FusedSpinalDorsalReflexRenshawFunction.")
+
+    class SpinalCordPathwayOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate SpinalCordPathwayOp.")
 
 if __name__ == "__main__":
     run_spinal_pathway_verification_suite()

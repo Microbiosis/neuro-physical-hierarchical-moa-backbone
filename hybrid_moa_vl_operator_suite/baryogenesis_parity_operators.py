@@ -878,6 +878,21 @@ def run_parity_baryogenesis_verification_suite() -> None:
     assert max_tile_diff < 1e-14 and mean_npos > mean_nneg
     print("=" * 94)
 
+if not HAS_TORCH:
+    class RMSNorm:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate RMSNorm.")
+
+    class FusedParityCPBaryogenesisFunction:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate FusedParityCPBaryogenesisFunction.")
+
+    class ParityBaryogenesisAsymmetryOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate ParityBaryogenesisAsymmetryOp.")
 
 if __name__ == "__main__":
     run_parity_baryogenesis_verification_suite()

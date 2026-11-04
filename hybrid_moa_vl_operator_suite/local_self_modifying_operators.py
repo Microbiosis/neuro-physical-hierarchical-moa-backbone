@@ -776,6 +776,21 @@ def run_local_self_modifying_verification_suite() -> None:
     assert max_tile_diff < 1e-14
     print("=" * 90)
 
+if not HAS_TORCH:
+    class RMSNorm:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate RMSNorm.")
+
+    class FusedLocalSelfModWeightFunction:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate FusedLocalSelfModWeightFunction.")
+
+    class LocalNonlinearSelfModifyingOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate LocalNonlinearSelfModifyingOp.")
 
 if __name__ == "__main__":
     run_local_self_modifying_verification_suite()

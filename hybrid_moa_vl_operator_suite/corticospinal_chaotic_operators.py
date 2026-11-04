@@ -918,6 +918,21 @@ def run_corticospinal_chaotic_verification_suite() -> None:
     assert max_tile_diff < 1e-14 and float(np.mean(cache_b["local_div"])) < 0.0
     print("=" * 94)
 
+if not HAS_TORCH:
+    class RMSNorm:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate RMSNorm.")
+
+    class FusedCorticospinalChaoticManifoldFunction:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate FusedCorticospinalChaoticManifoldFunction.")
+
+    class CorticospinalChaoticPathwayOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate CorticospinalChaoticPathwayOp.")
 
 if __name__ == "__main__":
     run_corticospinal_chaotic_verification_suite()

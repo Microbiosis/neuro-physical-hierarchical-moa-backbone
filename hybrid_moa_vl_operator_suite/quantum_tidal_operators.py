@@ -842,6 +842,21 @@ def run_quantum_tidal_verification_suite() -> None:
     assert max_tile_diff < 1e-14
     print("=" * 88)
 
+if not HAS_TORCH:
+    class RMSNorm:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate RMSNorm.")
+
+    class FusedQuantumTidalWaveFunction:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate FusedQuantumTidalWaveFunction.")
+
+    class QuantumTidalFluctuationOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate QuantumTidalFluctuationOp.")
 
 if __name__ == "__main__":
     run_quantum_tidal_verification_suite()

@@ -445,3 +445,95 @@ if HAS_TORCH:
                     ),
                 }
             return out, diagnostics
+
+
+# ==============================================================================
+# 4. Standalone Verification Suite (7-Var Gradcheck & +50.0 Shock Safety)
+# ==============================================================================
+
+def run_dissociative_trauma_verification_suite() -> None:
+    rng = np.random.default_rng(2026)
+    print("=" * 92)
+    print("DISSOCIATIVE TRAUMA & CORTICOLIMBIC DEFENSE OPERATOR — STANDALONE VERIFICATION SUITE")
+    print("=" * 92)
+
+    B, L, D = 2, 5, 6
+    beta_vmpfc = 0.45
+    x_sens = rng.standard_normal((B, L, D)).astype(np.float64) * 0.7
+    s_amyg = rng.standard_normal((B, L, D)).astype(np.float64) * 0.7
+    c_vmpfc = rng.standard_normal((B, L, D)).astype(np.float64) * 0.7
+    theta_dissoc = rng.uniform(0.4, 0.9, size=(D,)).astype(np.float64)
+    kappa_dissoc = rng.uniform(1.0, 2.2, size=(D,)).astype(np.float64)
+    alpha_hyper = rng.uniform(0.3, 0.8, size=(D,)).astype(np.float64)
+    gamma_dpdr = rng.uniform(0.4, 1.0, size=(D,)).astype(np.float64)
+    grad_out = rng.standard_normal((B, L, D)).astype(np.float64)
+
+    _, cache = DissociativeTraumaAnalyticalKernels.fused_corticolimbic_dissociative_dpdr_forward(
+        x_sens, s_amyg, c_vmpfc, theta_dissoc, kappa_dissoc, alpha_hyper, gamma_dpdr, beta_vmpfc
+    )
+    ana = DissociativeTraumaAnalyticalKernels.fused_corticolimbic_dissociative_dpdr_backward(
+        grad_out, cache
+    )
+
+    eps = 1e-6
+    checks = [
+        ("x_sens", x_sens, ana["d_xsens"]),
+        ("s_amyg", s_amyg, ana["d_samyg"]),
+        ("c_vmpfc", c_vmpfc, ana["d_cvmpfc"]),
+        ("theta_dissoc", theta_dissoc, ana["d_theta"]),
+        ("kappa_dissoc", kappa_dissoc, ana["d_kappa"]),
+        ("alpha_hyper", alpha_hyper, ana["d_alphahyper"]),
+        ("gamma_dpdr", gamma_dpdr, ana["d_gammadpdr"]),
+    ]
+    for name, arr, g_ana in checks:
+        g_num = np.zeros_like(arr)
+        for idx in np.ndindex(arr.shape):
+            orig = arr[idx]
+            arr[idx] = orig + eps
+            yp, _ = DissociativeTraumaAnalyticalKernels.fused_corticolimbic_dissociative_dpdr_forward(
+                x_sens, s_amyg, c_vmpfc, theta_dissoc, kappa_dissoc, alpha_hyper, gamma_dpdr, beta_vmpfc
+            )
+            lp = np.sum(yp * grad_out)
+            arr[idx] = orig - eps
+            ym, _ = DissociativeTraumaAnalyticalKernels.fused_corticolimbic_dissociative_dpdr_forward(
+                x_sens, s_amyg, c_vmpfc, theta_dissoc, kappa_dissoc, alpha_hyper, gamma_dpdr, beta_vmpfc
+            )
+            lm = np.sum(ym * grad_out)
+            arr[idx] = orig
+            g_num[idx] = (lp - lm) / (2.0 * eps)
+        rel_err = np.linalg.norm(g_ana - g_num) / (np.linalg.norm(g_ana) + np.linalg.norm(g_num) + 1e-15)
+        print(f"   Gradcheck dL/d({name:13s}) | Relative L2 Error: {rel_err:.3e}  [PASS < 1e-8]")
+        assert rel_err < 1e-8
+
+    # Extreme +50.0 Trauma Shock Protection Verification
+    x_shock = x_sens.copy()
+    s_shock = s_amyg.copy()
+    x_shock[:, 2, :] += 50.0
+    s_shock[:, 2, :] += 50.0
+    out_shock, shock_cache = DissociativeTraumaAnalyticalKernels.fused_corticolimbic_dissociative_dpdr_forward(
+        x_shock, s_shock, c_vmpfc, theta_dissoc, kappa_dissoc, alpha_hyper, gamma_dpdr, beta_vmpfc
+    )
+    max_norm = float(np.max(np.abs(out_shock)))
+    mean_shut_at_shock = float(np.mean(shock_cache["g_shut"][:, 2, :]))
+    print(f"   Extreme +50.0 Shock Max Output Magnitude: {max_norm:.4f} (Bounded < 5.0) | PAG Shutdown Gate: {mean_shut_at_shock:.3e}")
+    assert np.all(np.isfinite(out_shock)) and max_norm < 5.0
+    print("=" * 92)
+
+if not HAS_TORCH:
+    class RMSNorm:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate RMSNorm.")
+
+    class FusedCorticolimbicDissociativeDPDRFunction:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate FusedCorticolimbicDissociativeDPDRFunction.")
+
+    class DissociativeTraumaNeuroOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate DissociativeTraumaNeuroOp.")
+
+if __name__ == "__main__":
+    run_dissociative_trauma_verification_suite()

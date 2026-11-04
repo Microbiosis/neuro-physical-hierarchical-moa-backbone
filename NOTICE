@@ -14,30 +14,31 @@ hetero-moe research repository
 research/aligner/v62_dimension_projection_space/ and are distributed under
 the same license.
 
-Two files were changed on top of the shipped archive, in order to make the
-package importable at all. Everything else is byte-identical to the archive:
+Changes made on top of the shipped archive
+------------------------------------------
+The shipped archive is the authority for everything except the two import
+fixes below, without which the package cannot be imported at all. Every
+other byte of every operator module is identical to the archive.
 
   1. hybrid_moa_vl_operator_suite/__init__.py
-     The shipped version imported 20 symbol names that do not exist in the
-     modules (e.g. TritonKernelBenchmarkResult, NumpyQuantumTidalKernels,
-     SupermembraneOperatorConfig, SpinalPathwayConfig, TulpaOperatorConfig,
-     CorticospinalChaosConfig, BaryogenesisParityConfig, ...), so
-     `import hybrid_moa_vl_operator_suite` raised ImportError. The imports and
-     __all__ now use the names the modules actually define.
+     The shipped version imports `persistent_norm_sparse_topk_agg_kernel`
+     from moa_triton_kernels, but that name is the *no-Triton stub*: it only
+     exists when Triton is NOT installed. With Triton installed the real
+     kernel is called `persistent_moa_norm_sparse_topk_megakernel`, so the
+     import raised ImportError on any Triton-equipped machine (and the flat
+     fallback then failed with ModuleNotFoundError). The import now resolves
+     the real name first and falls back to the stub, exposing one stable
+     public name either way.
 
   2. hybrid_moa_vl_operator_suite/unified_hybrid_moa_architecture.py
      The shipped version used bare module imports (`from moa_operators import
-     ...`) inside `try: import torch ... except ImportError: HAS_TORCH = False`.
-     Loaded as a package those bare imports fail, so the ImportError was
-     swallowed and the entire torch layer (UnifiedInterdisciplinaryMoALayer)
-     was silently disabled. Imports are now dual-mode: package-relative first,
-     plain module path when the file is executed directly
-     (`python3 unified_hybrid_moa_architecture.py`). The sys.path manipulation
-     that used to sit at the top of the file was removed.
-
-Per-module license headers were deliberately not inserted, so the operator
-files stay byte-identical to the archive apart from the two fixes above; the
-repository-level LICENSE file applies to every file here.
+     ...`) guarded by a `sys.path.insert(0, _CURRENT_DIR)` hack. Loaded as a
+     package that imports a *second* copy of every module under its bare name,
+     so two copies of every class coexist and `isinstance` checks across them
+     fail. Imports are now dual-mode: package-relative first, plain module
+     path when the file is executed directly
+     (`python3 unified_hybrid_moa_architecture.py`); the sys.path hack was
+     removed.
 
 smoke_test.py, README.md, NOTICE and .gitignore were written for this
 repository and are likewise covered by the LICENSE file.

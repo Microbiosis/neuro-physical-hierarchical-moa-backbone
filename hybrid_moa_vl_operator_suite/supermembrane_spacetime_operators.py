@@ -844,6 +844,21 @@ def run_supermembrane_verification_suite() -> None:
     assert max_tile_diff < 1e-14
     print("=" * 92)
 
+if not HAS_TORCH:
+    class RMSNorm:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate RMSNorm.")
+
+    class FusedSupermembraneDBIWarpedFunction:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate FusedSupermembraneDBIWarpedFunction.")
+
+    class SupermembraneSpacetimeOp:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate SupermembraneSpacetimeOp.")
 
 if __name__ == "__main__":
     run_supermembrane_verification_suite()

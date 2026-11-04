@@ -331,6 +331,48 @@ def test_torch_unified_layer():
     return f"8 专家前向 ok, {n / 1e3:.1f}K params, |grad|={gnorm:.4f}, diag keys={len(diag)}"
 
 
+def test_torch_unified_backbone():
+    """多层骨干：UnifiedHybridMoABackbone 堆叠 N 层 + final norm。"""
+    import torch
+
+    U = importlib.import_module(f"{PKG}.unified_hybrid_moa_architecture")
+    if not getattr(U, "HAS_TORCH", False):
+        return "skipped (torch layer disabled upstream)"
+    torch.manual_seed(5)
+    cfg = U.UnifiedHybridArchitectureConfig(d_model=64, n_heads=4, n_layers=3,
+                                            num_proposers=8, top_k_proposers=3,
+                                            num_cross_modal_anchors=8, num_local_groups=4,
+                                            local_rank=2, num_extra_dims=3, num_tulpas=2)
+    backbone = U.UnifiedHybridMoABackbone(cfg)
+    x = torch.randn(2, 10, cfg.d_model, requires_grad=True)
+    out, aux, telemetries = backbone(x)
+    assert out.shape == x.shape, f"backbone out {tuple(out.shape)}"
+    assert torch.isfinite(out).all()
+    assert len(telemetries) == cfg.n_layers, f"telemetries {len(telemetries)} != n_layers {cfg.n_layers}"
+    (out.float().pow(2).mean() + aux).backward()
+    gnorm = float(x.grad.norm())
+    assert gnorm > 0.0, "no gradient through the backbone"
+    n = sum(p.numel() for p in backbone.parameters())
+    return f"{cfg.n_layers} 层堆叠 ok, {n / 1e3:.1f}K params, |grad|={gnorm:.4f}"
+
+
+def test_upstream_dissociative_suite():
+    """跑包内自带的解离/创伤验证套件（7 变量 gradcheck + 极端冲击安全性）。"""
+    import contextlib
+    import io
+
+    dt = importlib.import_module(f"{PKG}.dissociative_trauma_neuro_operators")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        dt.run_dissociative_trauma_verification_suite()
+    out = buf.getvalue()
+    n_pass = out.count("[PASS")
+    assert "FAIL" not in out, "上游验证套件出现 FAIL"
+    assert n_pass >= 7, f"只看到 {n_pass} 个 PASS（预期 ≥7）"
+    assert "Bounded" in out, "缺少极端冲击有界性检查"
+    return f"上游套件 {n_pass} 项 PASS，冲击输出有界"
+
+
 def test_domain_ops():
     import torch
 
@@ -408,7 +450,7 @@ def main() -> int:
           + (", torch available" if torch_ok else ", torch MISSING (torch checks skipped)"))
     print("-" * 74)
 
-    check("package imports (12 modules + 24 exports)", test_imports)
+    check("package imports (12 modules + package exports)", test_imports)
     check("numpy branch RMSNorm fwd/bwd + FD gradient", test_numpy_rmsnorm)
     check("numpy cross-modal anchor co-attention (zero decay)", test_numpy_cross_modal_anchor_co_attention)
     check("numpy VL Hadamard-bilinear fusion + gradient", test_numpy_vl_bilinear_fusion)
@@ -419,7 +461,9 @@ def main() -> int:
         check("torch CrossModalVisionLanguageFusionSubOp fwd/bwd", test_torch_vl_fusion)
         check("torch MoA stack (proposer + attention + 2 aggregators)", test_torch_moa_stack)
         check("torch UnifiedInterdisciplinaryMoALayer (8 experts)", test_torch_unified_layer)
+        check("torch UnifiedHybridMoABackbone (3 layers)", test_torch_unified_backbone)
         check("torch domain operators (quantum tidal, neuro)", test_domain_ops)
+        check("upstream dissociative verification suite", test_upstream_dissociative_suite)
         check("triton tile simulators vs references", test_triton_simulators)
     elif not quick:
         print("  SKIP  torch / simulator sections (torch not installed)")

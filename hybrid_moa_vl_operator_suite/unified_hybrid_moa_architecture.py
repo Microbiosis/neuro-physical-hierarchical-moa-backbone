@@ -22,8 +22,8 @@ import math
 import numpy as np
 
 # Import analytical kernels and configs from all 9 standalone operator libraries.
-# Dual-mode import: relative when loaded as part of the package, plain when this
-# file is executed directly (python3 unified_hybrid_moa_architecture.py).
+# Dual-mode import: package-relative first, plain module path when this file is
+# executed directly (python3 unified_hybrid_moa_architecture.py).
 try:
     from .moa_operators import MoAOperatorConfig, NumpyMoAOperatorKernels
     from .moa_triton_kernels import TritonTileSimulator
@@ -78,7 +78,6 @@ try:
     import torch.nn as nn
     import torch.nn.functional as F
 
-    # dual-mode import: package-relative first, plain module path when standalone
     try:
         from .moa_operators import (
             RMSNorm,
@@ -296,6 +295,31 @@ if HAS_TORCH:
                 "baryon_matter_to_antimatter_ratio": baryon_diag["matter_to_antimatter_ratio"],
             }
             return out, aux_loss, telemetry
+
+    class UnifiedHybridMoABackbone(nn.Module):
+        """
+        Multi-Layer Deep Backbone stacking N `UnifiedInterdisciplinaryMoALayer` blocks
+        with optional embedding layer, residual skip connections, and final RMSNorm.
+        """
+        def __init__(self, cfg: UnifiedHybridArchitectureConfig):
+            super().__init__()
+            self.cfg = cfg
+            self.layers = nn.ModuleList([
+                UnifiedInterdisciplinaryMoALayer(cfg) for _ in range(cfg.n_layers)
+            ])
+            self.final_norm = RMSNorm(cfg.d_model, eps=cfg.rms_norm_eps)
+
+        def forward(
+            self, x: torch.Tensor
+        ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, object]]]:
+            total_aux_loss = torch.tensor(0.0, device=x.device, dtype=x.dtype) if HAS_TORCH else 0.0
+            telemetries: List[Dict[str, object]] = []
+            h = x
+            for layer in self.layers:
+                h, aux_loss, telem = layer(h)
+                total_aux_loss = total_aux_loss + aux_loss
+                telemetries.append(telem)
+            return self.final_norm(h), total_aux_loss, telemetries
 
 
 # ==============================================================================
@@ -1016,6 +1040,21 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     print(f"   Unified Representation Effective Rank (exp(H(sigma))) : {eff_rank:.2f} / {D_m} dims")
     print("=" * 98)
 
+if not HAS_TORCH:
+    class RMSNorm:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate RMSNorm.")
+
+    class UnifiedInterdisciplinaryMoALayer:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate UnifiedInterdisciplinaryMoALayer.")
+
+    class UnifiedHybridMoABackbone:
+        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate UnifiedHybridMoABackbone.")
 
 if __name__ == "__main__":
     run_comprehensive_multi_verification_and_cross_validation()
