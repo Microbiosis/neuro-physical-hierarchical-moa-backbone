@@ -9,8 +9,8 @@ kernels, `torch.nn.Module` operators, and fused `autograd.Function` / `@triton.j
 implementations — and every layer is importable even without torch installed
 (fallback stubs raise a clear `ImportError` only when instantiated).
 
-Total: **9,742 lines** of operator code across 12 modules
-(+ 249 lines of package `__init__.py` = 9,991 lines of Python), plus a 482-line
+Total: **9,772 lines** of operator code across 12 modules
+(+ 248 lines of package `__init__.py` = 10,020 lines of Python), plus a 482-line
 clean-room smoke test.
 
 ---
@@ -19,15 +19,15 @@ clean-room smoke test.
 
 ```
 .
-├── LICENSE / NOTICE                  Apache-2.0 + provenance + fix log
+├── LICENSE / NOTICE                  Apache-2.0 + provenance
 ├── smoke_test.py                     clean-room verification (13/13)
 ├── README.md                         本文件
 └── hybrid_moa_vl_operator_suite/     算子包（Python package）
-    ├── __init__.py                   55 个公开导出（Config / Kernels / Op / Function / Triton 内核）
+    ├── __init__.py                   56 个公开导出（Config / Kernels / Op / Function / Triton 内核）
     ├── README.md                     包内说明（原始版本文档）
     ├── moa_operators.py              系统级 MoA + 跨模态图文融合（978 行）
-    ├── moa_triton_kernels.py         Triton 内核 + tile 模拟器（386 行）
-    ├── unified_hybrid_moa_architecture.py   九域总装 + 验证引擎（1,060 行）
+    ├── moa_triton_kernels.py         Triton 内核 + tile 模拟器（390 行）
+    ├── unified_hybrid_moa_architecture.py   九域总装 + 验证引擎（1,086 行）
     └── … 9 个领域算子模块
 ```
 
@@ -38,15 +38,20 @@ Two import styles are supported:
 from hybrid_moa_vl_operator_suite import MoAOperatorConfig, NumpyMoAOperatorKernels
 from hybrid_moa_vl_operator_suite.moa_operators import CrossModalVisionLanguageFusionSubOp
 
-# 2) 直接在包目录里跑单个模块的验证套件
+# 2) 平目录 / 直接跑单个模块的验证套件
 #    python3 hybrid_moa_vl_operator_suite/unified_hybrid_moa_architecture.py
+#    sys.path.insert(0, "hybrid_moa_vl_operator_suite"); import unified_hybrid_moa_architecture
 ```
+
+Import mode is selected with `if __package__:` (not `try/except ImportError`), so a
+missing-symbol `ImportError` surfaces with the real module and symbol name instead of
+being masked by the fallback branch.
 
 ## Modules
 
 | Module | Domain | Lines |
 |---|---|---|
-| `unified_hybrid_moa_architecture.py` | 九域总装层 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 执行引擎 + LODO 消融 | 1,060 |
+| `unified_hybrid_moa_architecture.py` | 九域总装层 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 执行引擎 + LODO 消融 | 1,086 |
 | `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + **跨模态图文融合** | 978 |
 | `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 938 |
 | `spinal_cord_pathway_operators.py` | 脊髓节段通路、Melzack-Wall 门控、Renshaw 递归 | 936 |
@@ -57,7 +62,7 @@ from hybrid_moa_vl_operator_suite.moa_operators import CrossModalVisionLanguageF
 | `local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 | 796 |
 | `tulpa_neuro_operators.py` | 多子人格吸引子、精度加权自由能路由、Agency 比较器 | 692 |
 | `dissociative_trauma_neuro_operators.py` | Stage-I 前门控：杏仁核超唤醒、PAG 过载关断、ANP/EP 隔离 + 独立验证套件 | 539 |
-| `moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 386 |
+| `moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 390 |
 
 ## What this edition contains
 
@@ -68,11 +73,11 @@ from hybrid_moa_vl_operator_suite.moa_operators import CrossModalVisionLanguageF
   复杂度 `O(L·R_anchor·D)`，没有指数衰减项。
 - **多层骨干** `UnifiedHybridMoABackbone`：堆叠 N 个 `UnifiedInterdisciplinaryMoALayer`
   （残差 + final RMSNorm），返回逐层遥测。
-- **无 torch 也可 import**：每个模块在 `not HAS_TORCH` 时定义 stub 类
-  （`RMSNorm` / `Fused*Function` / `*Op`），实例化时才抛 `ImportError` 并提示改用
-  `AnalyticalKernels`；numpy 路径完全不依赖 torch。
-- **包结构**：12 个模块收进 `hybrid_moa_vl_operator_suite/`，`__init__.py` 导出 55 个符号，
-  支持包导入与平目录导入两种方式。
+- **无 torch 也可 import**：每个模块（含 unified）在 `not HAS_TORCH` 时定义 stub 类，
+  实例化时才抛 `ImportError` 并提示改用 `AnalyticalKernels`；numpy 路径完全不依赖 torch。
+- **Triton 内核双名并存**：`persistent_moa_norm_sparse_topk_megakernel`（有 triton 时的真内核）
+  与 `persistent_norm_sparse_topk_agg_kernel`（稳定公开名）在任何环境下都是同一个对象，
+  `__init__` 两个名字都导出。
 
 ### 融合算子的数学形式
 
@@ -140,7 +145,7 @@ Result: **13/13 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 
 | Check | Result |
 |---|---|
-| package imports (12 modules, 55 exports) | 12/12 |
+| package imports (12 modules, 56 exports) | 12/12 |
 | branch RMSNorm fwd/bwd + finite-difference gradient | fwd 1.8e-15, grad 2.7e-09 |
 | cross-modal anchor co-attention (zero decay, both attentions normalised) | 0.0e+00, head/tail = 1.003 |
 | VL Hadamard-bilinear fusion: closed form, β=0 degeneration, gate saturation, backward gradient | fwd 8.9e-16, grad 7.7e-11 |
@@ -170,11 +175,13 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
   used inside [hetero-moe](https://github.com/Microbiosis/hetero-moe)
   (`research/aligner/v62_dimension_projection_space/`) are modified for that project
   and are maintained there.
-- Two files were patched on top of the shipped archive so the package imports at all —
-  see `NOTICE` for exactly what changed: `__init__.py` imported a Triton kernel name
-  that only exists when Triton is **absent**, and
-  `unified_hybrid_moa_architecture.py` used bare imports plus a `sys.path` hack that
-  loaded a second copy of every module.
+- Everything under `hybrid_moa_vl_operator_suite/` is byte-identical to the shipped
+  archive. The only files written for this repository are `smoke_test.py`, `README.md`,
+  `NOTICE` and `.gitignore`.
+- Import-mode history, for the record: v2 of the archive imported 20 symbol names that
+  did not exist, and v3 imported a Triton kernel name that only exists when Triton is
+  absent; both were fixed upstream in the current archive (`if __package__:` dual-mode
+  imports, and the megakernel exposed under both names in every environment).
 
 ## License
 
@@ -183,6 +190,5 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 Provenance: written to specifications provided by the copyright holder, with
 implementation assistance from Google Gemini. Per-module license headers were
 deliberately not inserted so the operator files stay byte-identical to the shipped
-archive (except the two import fixes noted above); the repository-level `LICENSE`
-applies to every file here. Apache-2.0 §3 grants patent rights with defensive
-termination; §6 grants no trademark rights.
+archive; the repository-level `LICENSE` applies to every file here. Apache-2.0 §3
+grants patent rights with defensive termination; §6 grants no trademark rights.

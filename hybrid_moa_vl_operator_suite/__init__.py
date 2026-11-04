@@ -1,10 +1,13 @@
 """
 Unified 9-Domain Interdisciplinary Hybrid MoA Operator Suite (`hybrid_moa_vl_operator_suite`).
-Pure Vision-Language Cross-Modal Fusion Edition — Canonical Class Exports Only (Zero Alias Clutter).
-Supports both package import (`import hybrid_moa_vl_operator_suite`) and flat directory import.
+Pure Vision-Language Cross-Modal Fusion Edition.
+Uses `if __package__:` dual-mode imports (avoiding masking symbol ImportErrors) and
+resolves the real Triton kernel `persistent_moa_norm_sparse_topk_megakernel` first
+with fallback to `persistent_norm_sparse_topk_agg_kernel`.
 """
 
-try:
+if __package__:
+    from . import moa_triton_kernels as _triton_mod
     from .moa_operators import (
         MoAOperatorConfig,
         NumpyMoAOperatorKernels,
@@ -23,15 +26,6 @@ try:
         simulate_fused_cross_modal_vl_bilinear,
         simulate_persistent_norm_sparse_topk_megakernel,
     )
-    # The megakernel is named differently depending on whether Triton is
-    # installed (real @triton.jit kernel vs. no-triton stub); expose one
-    # stable public name either way.
-    try:
-        from .moa_triton_kernels import (
-            persistent_moa_norm_sparse_topk_megakernel as persistent_norm_sparse_topk_agg_kernel,
-        )
-    except ImportError:
-        from .moa_triton_kernels import persistent_norm_sparse_topk_agg_kernel
     from .quantum_tidal_operators import (
         QuantumTidalConfig,
         QuantumTidalAnalyticalKernels,
@@ -92,7 +86,8 @@ try:
         UnifiedInterdisciplinaryMoALayer,
         UnifiedHybridMoABackbone,
     )
-except ImportError:
+else:
+    import moa_triton_kernels as _triton_mod
     from moa_operators import (
         MoAOperatorConfig,
         NumpyMoAOperatorKernels,
@@ -111,12 +106,6 @@ except ImportError:
         simulate_fused_cross_modal_vl_bilinear,
         simulate_persistent_norm_sparse_topk_megakernel,
     )
-    try:
-        from moa_triton_kernels import (
-            persistent_moa_norm_sparse_topk_megakernel as persistent_norm_sparse_topk_agg_kernel,
-        )
-    except ImportError:
-        from moa_triton_kernels import persistent_norm_sparse_topk_agg_kernel
     from quantum_tidal_operators import (
         QuantumTidalConfig,
         QuantumTidalAnalyticalKernels,
@@ -178,6 +167,15 @@ except ImportError:
         UnifiedHybridMoABackbone,
     )
 
+# Resolve real Triton kernel name (`persistent_moa_norm_sparse_topk_megakernel`) first,
+# falling back to stub (`persistent_norm_sparse_topk_agg_kernel`), and expose unified public names.
+persistent_moa_norm_sparse_topk_megakernel = getattr(
+    _triton_mod,
+    "persistent_moa_norm_sparse_topk_megakernel",
+    getattr(_triton_mod, "persistent_norm_sparse_topk_agg_kernel", None),
+)
+persistent_norm_sparse_topk_agg_kernel = persistent_moa_norm_sparse_topk_megakernel
+
 __all__ = [
     # 1. MoA & Vision-Language Cross-Modal Core
     "MoAOperatorConfig",
@@ -193,6 +191,7 @@ __all__ = [
     "TritonTileSimulator",
     "fused_cross_modal_vl_bilinear_fwd_kernel",
     "fused_cross_modal_vl_bilinear_bwd_kernel",
+    "persistent_moa_norm_sparse_topk_megakernel",
     "persistent_norm_sparse_topk_agg_kernel",
     "simulate_fused_cross_modal_vl_bilinear",
     "simulate_persistent_norm_sparse_topk_megakernel",

@@ -185,6 +185,8 @@ if HAS_TRITON:
             out_ptrs = Out_ptr + b_idx * stride_ob + l_idx * stride_ol + cols * stride_od
             tl.store(out_ptrs, acc, mask=mask)
 
+    persistent_norm_sparse_topk_agg_kernel = persistent_moa_norm_sparse_topk_megakernel
+
 else:
     def fused_cross_modal_vl_bilinear_fwd_kernel(*args, **kwargs):
         raise ImportError("Triton is required to launch fused_cross_modal_vl_bilinear_fwd_kernel. Use TritonTileSimulator instead.")
@@ -192,8 +194,10 @@ else:
     def fused_cross_modal_vl_bilinear_bwd_kernel(*args, **kwargs):
         raise ImportError("Triton is required to launch fused_cross_modal_vl_bilinear_bwd_kernel. Use TritonTileSimulator instead.")
 
-    def persistent_norm_sparse_topk_agg_kernel(*args, **kwargs):
-        raise ImportError("Triton is required to launch persistent_norm_sparse_topk_agg_kernel. Use TritonTileSimulator instead.")
+    def persistent_moa_norm_sparse_topk_megakernel(*args, **kwargs):
+        raise ImportError("Triton is required to launch persistent_moa_norm_sparse_topk_megakernel. Use TritonTileSimulator instead.")
+
+    persistent_norm_sparse_topk_agg_kernel = persistent_moa_norm_sparse_topk_megakernel
 
 
 # ==============================================================================

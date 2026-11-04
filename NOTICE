@@ -14,34 +14,19 @@ hetero-moe research repository
 research/aligner/v62_dimension_projection_space/ and are distributed under
 the same license.
 
-Changes made on top of the shipped archive
-------------------------------------------
-The shipped archive is the authority for everything except the two import
-fixes below, without which the package cannot be imported at all. Every
-other byte of every operator module is identical to the archive.
+Scope of this repository
+------------------------
+Everything under hybrid_moa_vl_operator_suite/ is byte-identical to the
+shipped archive, including the import fixes it carries (if __package__:
+dual-mode imports, and the persistent sparse top-k megakernel exposed under
+both persistent_moa_norm_sparse_topk_megakernel and
+persistent_norm_sparse_topk_agg_kernel in every environment).
 
-  1. hybrid_moa_vl_operator_suite/__init__.py
-     The shipped version imports `persistent_norm_sparse_topk_agg_kernel`
-     from moa_triton_kernels, but that name is the *no-Triton stub*: it only
-     exists when Triton is NOT installed. With Triton installed the real
-     kernel is called `persistent_moa_norm_sparse_topk_megakernel`, so the
-     import raised ImportError on any Triton-equipped machine (and the flat
-     fallback then failed with ModuleNotFoundError). The import now resolves
-     the real name first and falls back to the stub, exposing one stable
-     public name either way.
+The only files written for this repository are smoke_test.py, README.md,
+NOTICE and .gitignore; they are covered by the LICENSE file below.
 
-  2. hybrid_moa_vl_operator_suite/unified_hybrid_moa_architecture.py
-     The shipped version used bare module imports (`from moa_operators import
-     ...`) guarded by a `sys.path.insert(0, _CURRENT_DIR)` hack. Loaded as a
-     package that imports a *second* copy of every module under its bare name,
-     so two copies of every class coexist and `isinstance` checks across them
-     fail. Imports are now dual-mode: package-relative first, plain module
-     path when the file is executed directly
-     (`python3 unified_hybrid_moa_architecture.py`); the sys.path hack was
-     removed.
-
-smoke_test.py, README.md, NOTICE and .gitignore were written for this
-repository and are likewise covered by the LICENSE file.
+Per-module license headers were deliberately not inserted, so the operator
+files stay byte-identical to the shipped archive.
 
 License
 -------

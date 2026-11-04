@@ -19,97 +19,128 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 import math
+import os
+import sys
 import numpy as np
 
-# Import analytical kernels and configs from all 9 standalone operator libraries.
-# Dual-mode import: package-relative first, plain module path when this file is
-# executed directly (python3 unified_hybrid_moa_architecture.py).
-try:
-    from .moa_operators import MoAOperatorConfig, NumpyMoAOperatorKernels
+# Dual-mode imports: use package-relative imports when loaded as a package
+# (preventing duplicate top-level modules in sys.modules and preserving isinstance
+# identity across package and submodule), and flat imports when run directly as a script.
+if __package__:
+    from .moa_operators import (
+        MoAOperatorConfig,
+        NumpyMoAOperatorKernels,
+        RMSNorm,
+        CrossModalVisionLanguageFusionSubOp,
+        CrossProposalAggregatorOp,
+        MixtureOfAttentionOp,
+    )
     from .moa_triton_kernels import TritonTileSimulator
-    from .quantum_tidal_operators import QuantumTidalConfig, QuantumTidalAnalyticalKernels
-    from .neuro_nonlinear_operators import NeuroNonlinearConfig, NeuroNonlinearAnalyticalKernels
-    from .local_self_modifying_operators import LocalSelfModConfig, LocalSelfModifyingAnalyticalKernels
+    from .quantum_tidal_operators import (
+        QuantumTidalConfig,
+        QuantumTidalAnalyticalKernels,
+        QuantumTidalFluctuationOp,
+    )
+    from .neuro_nonlinear_operators import (
+        NeuroNonlinearConfig,
+        NeuroNonlinearAnalyticalKernels,
+        NonlinearDendriticNeuroOp,
+    )
+    from .local_self_modifying_operators import (
+        LocalSelfModConfig,
+        LocalSelfModifyingAnalyticalKernels,
+        LocalNonlinearSelfModifyingOp,
+    )
     from .supermembrane_spacetime_operators import (
         SupermembraneSpacetimeConfig,
         SupermembraneAnalyticalKernels,
+        SupermembraneSpacetimeOp,
     )
-    from .spinal_cord_pathway_operators import SpinalCordPathwayConfig, SpinalCordAnalyticalKernels
-    from .tulpa_neuro_operators import TulpaNeuroConfig, TulpaAnalyticalKernels
+    from .spinal_cord_pathway_operators import (
+        SpinalCordPathwayConfig,
+        SpinalCordAnalyticalKernels,
+        SpinalCordPathwayOp,
+    )
+    from .tulpa_neuro_operators import (
+        TulpaNeuroConfig,
+        TulpaAnalyticalKernels,
+        TulpaNeuroCognitiveOp,
+    )
     from .dissociative_trauma_neuro_operators import (
         DissociativeTraumaConfig,
         DissociativeTraumaAnalyticalKernels,
+        DissociativeTraumaNeuroOp,
     )
     from .corticospinal_chaotic_operators import (
         CorticospinalChaoticConfig,
         CorticospinalChaoticAnalyticalKernels,
+        CorticospinalChaoticPathwayOp,
     )
     from .baryogenesis_parity_operators import (
         ParityBaryogenesisConfig,
         ParityBaryogenesisAnalyticalKernels,
+        ParityBaryogenesisAsymmetryOp,
     )
-except ImportError:  # standalone execution
-    from moa_operators import MoAOperatorConfig, NumpyMoAOperatorKernels
+else:
+    from moa_operators import (
+        MoAOperatorConfig,
+        NumpyMoAOperatorKernels,
+        RMSNorm,
+        CrossModalVisionLanguageFusionSubOp,
+        CrossProposalAggregatorOp,
+        MixtureOfAttentionOp,
+    )
     from moa_triton_kernels import TritonTileSimulator
-    from quantum_tidal_operators import QuantumTidalConfig, QuantumTidalAnalyticalKernels
-    from neuro_nonlinear_operators import NeuroNonlinearConfig, NeuroNonlinearAnalyticalKernels
-    from local_self_modifying_operators import LocalSelfModConfig, LocalSelfModifyingAnalyticalKernels
+    from quantum_tidal_operators import (
+        QuantumTidalConfig,
+        QuantumTidalAnalyticalKernels,
+        QuantumTidalFluctuationOp,
+    )
+    from neuro_nonlinear_operators import (
+        NeuroNonlinearConfig,
+        NeuroNonlinearAnalyticalKernels,
+        NonlinearDendriticNeuroOp,
+    )
+    from local_self_modifying_operators import (
+        LocalSelfModConfig,
+        LocalSelfModifyingAnalyticalKernels,
+        LocalNonlinearSelfModifyingOp,
+    )
     from supermembrane_spacetime_operators import (
         SupermembraneSpacetimeConfig,
         SupermembraneAnalyticalKernels,
+        SupermembraneSpacetimeOp,
     )
-    from spinal_cord_pathway_operators import SpinalCordPathwayConfig, SpinalCordAnalyticalKernels
-    from tulpa_neuro_operators import TulpaNeuroConfig, TulpaAnalyticalKernels
+    from spinal_cord_pathway_operators import (
+        SpinalCordPathwayConfig,
+        SpinalCordAnalyticalKernels,
+        SpinalCordPathwayOp,
+    )
+    from tulpa_neuro_operators import (
+        TulpaNeuroConfig,
+        TulpaAnalyticalKernels,
+        TulpaNeuroCognitiveOp,
+    )
     from dissociative_trauma_neuro_operators import (
         DissociativeTraumaConfig,
         DissociativeTraumaAnalyticalKernels,
+        DissociativeTraumaNeuroOp,
     )
     from corticospinal_chaotic_operators import (
         CorticospinalChaoticConfig,
         CorticospinalChaoticAnalyticalKernels,
+        CorticospinalChaoticPathwayOp,
     )
     from baryogenesis_parity_operators import (
         ParityBaryogenesisConfig,
         ParityBaryogenesisAnalyticalKernels,
+        ParityBaryogenesisAsymmetryOp,
     )
 
 try:
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
-
-    try:
-        from .moa_operators import (
-            RMSNorm,
-            CrossModalVisionLanguageFusionSubOp,
-            CrossProposalAggregatorOp,
-            MixtureOfAttentionOp,
-        )
-        from .quantum_tidal_operators import QuantumTidalFluctuationOp
-        from .neuro_nonlinear_operators import NonlinearDendriticNeuroOp
-        from .local_self_modifying_operators import LocalNonlinearSelfModifyingOp
-        from .supermembrane_spacetime_operators import SupermembraneSpacetimeOp
-        from .spinal_cord_pathway_operators import SpinalCordPathwayOp
-        from .tulpa_neuro_operators import TulpaNeuroCognitiveOp
-        from .dissociative_trauma_neuro_operators import DissociativeTraumaNeuroOp
-        from .corticospinal_chaotic_operators import CorticospinalChaoticPathwayOp
-        from .baryogenesis_parity_operators import ParityBaryogenesisAsymmetryOp
-    except ImportError:
-        from moa_operators import (
-            RMSNorm,
-            CrossModalVisionLanguageFusionSubOp,
-            CrossProposalAggregatorOp,
-            MixtureOfAttentionOp,
-        )
-        from quantum_tidal_operators import QuantumTidalFluctuationOp
-        from neuro_nonlinear_operators import NonlinearDendriticNeuroOp
-        from local_self_modifying_operators import LocalNonlinearSelfModifyingOp
-        from supermembrane_spacetime_operators import SupermembraneSpacetimeOp
-        from spinal_cord_pathway_operators import SpinalCordPathwayOp
-        from tulpa_neuro_operators import TulpaNeuroCognitiveOp
-        from dissociative_trauma_neuro_operators import DissociativeTraumaNeuroOp
-        from corticospinal_chaotic_operators import CorticospinalChaoticPathwayOp
-        from baryogenesis_parity_operators import ParityBaryogenesisAsymmetryOp
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -1041,11 +1072,6 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     print("=" * 98)
 
 if not HAS_TORCH:
-    class RMSNorm:
-        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
-        def __init__(self, *args, **kwargs):
-            raise ImportError("PyTorch is required to instantiate RMSNorm.")
-
     class UnifiedInterdisciplinaryMoALayer:
         """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
         def __init__(self, *args, **kwargs):
