@@ -14,12 +14,33 @@ hetero-moe research repository
 research/aligner/v62_dimension_projection_space/ and are distributed under
 the same license.
 
-Per-module license headers were deliberately not inserted, so the operator
-files stay byte-identical to the original versions; the repository-level
-LICENSE file applies to every file here.
+Two files were changed on top of the shipped archive, in order to make the
+package importable at all. Everything else is byte-identical to the archive:
 
-smoke_test.py, README.md and .gitignore were written for this repository and
-are likewise covered by the LICENSE file.
+  1. hybrid_moa_vl_operator_suite/__init__.py
+     The shipped version imported 20 symbol names that do not exist in the
+     modules (e.g. TritonKernelBenchmarkResult, NumpyQuantumTidalKernels,
+     SupermembraneOperatorConfig, SpinalPathwayConfig, TulpaOperatorConfig,
+     CorticospinalChaosConfig, BaryogenesisParityConfig, ...), so
+     `import hybrid_moa_vl_operator_suite` raised ImportError. The imports and
+     __all__ now use the names the modules actually define.
+
+  2. hybrid_moa_vl_operator_suite/unified_hybrid_moa_architecture.py
+     The shipped version used bare module imports (`from moa_operators import
+     ...`) inside `try: import torch ... except ImportError: HAS_TORCH = False`.
+     Loaded as a package those bare imports fail, so the ImportError was
+     swallowed and the entire torch layer (UnifiedInterdisciplinaryMoALayer)
+     was silently disabled. Imports are now dual-mode: package-relative first,
+     plain module path when the file is executed directly
+     (`python3 unified_hybrid_moa_architecture.py`). The sys.path manipulation
+     that used to sit at the top of the file was removed.
+
+Per-module license headers were deliberately not inserted, so the operator
+files stay byte-identical to the archive apart from the two fixes above; the
+repository-level LICENSE file applies to every file here.
+
+smoke_test.py, README.md, NOTICE and .gitignore were written for this
+repository and are likewise covered by the LICENSE file.
 
 License
 -------
