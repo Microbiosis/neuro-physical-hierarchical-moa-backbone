@@ -117,6 +117,18 @@ together with four further independence dimensions).
   v9 三处一起修：`e_loc` 标量化、新增 `persistent_delta_oja_sram_fused_bwd_kernel`
   （反向时间单次 launch、零 atomic，前向额外存 W_t 轨迹）、以及所有领域模块
   `torch.empty_like(..., memory_format=torch.contiguous_format)`（非连续输出缓冲区修正）。
+- **DeltaOja v6 → v9 T4 实测**（Kaggle GPU kernel `redmingwei/hetero-moe-deltaoja-fix`，
+  同一权重同一输入，B=4 / L=128 / D=256 / G=16）：
+
+  | | v6 串行 | v9 persistent SRAM | 加速 |
+  |---|---|---|---|
+  | 前向 | 59.11 ms | **1.71 ms** | **34.5×** |
+  | 前向 + 反向 | 250.09 ms | **123.28 ms** | **2.03×** |
+  | 与 v6 串行实现的输出差 | — | **1.431e-06**（浮点级） | — |
+
+  v8 曾有三条缺陷（`e_loc` 类型错致 T4 编译失败 / 反向仍串行占 99% / 输出差 6.596e+00），
+  v9 全部修复：前反向各一次 persistent launch（反向时间、零 atomic）、`e_loc` 标量化、
+  所有领域模块 `torch.empty_like(..., memory_format=torch.contiguous_format)`。
 - **Triton 内核双名并存**：`persistent_moa_norm_sparse_topk_megakernel` 与
   `persistent_norm_sparse_topk_agg_kernel` 在任何环境下都是同一个对象，两个名字都导出。
 
