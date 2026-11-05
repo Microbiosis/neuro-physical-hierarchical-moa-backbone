@@ -302,8 +302,8 @@ def sc1(fig, t, d):
     ax3.fill_between(xs, mn, mx, color=c, alpha=0.25)
     ax3.plot(xs, mn, color=c, lw=2.0)
     ax3.axhline(0.05, color=AMBER, lw=1.4, ls="--")
-    ax3.text(len(mn) * 0.99, 0.05, " ε = 0.05 下限", color=AMBER, fontsize=9,
-             family=MONO, ha="right", va="bottom")
+    ax3.text(len(mn) * 0.99, 0.05, " ε = 0.05 零点能下限", color=AMBER, fontsize=9,
+             family=CN, ha="right", va="bottom")
     ax3.set_xlabel("channel", color=FAINT, fontsize=9)
     ax4 = panel(fig, [0.66, 0.16, 0.314, 0.24], "锚点数 R_vac")
     bignum(ax4, float(d["vac_attn_abs"].shape[2]), "个共享潜锚点", c, fmt="{:.0f}", size=44)
@@ -513,6 +513,16 @@ def main():
                     "-i", lst, "-c", "copy", final], check=True)
     sz = os.path.getsize(final) / 1e6
     print(f"[render] done -> {final}  ({sz:.2f} MB, {total:.1f}s)")
+
+    # 合成后清掉中间产物，让 kernel output 只剩最终视频（Kaggle 下载限速时很重要）
+    if "--keep-frames" not in sys.argv:
+        import shutil
+
+        for s in segs:
+            os.remove(s)
+        shutil.rmtree(FRAMES, ignore_errors=True)
+        os.remove(lst)
+        print("[render] 已清理中间帧与分段视频，output 仅保留 v6_mechanism.mp4")
 
 
 if __name__ == "__main__":
