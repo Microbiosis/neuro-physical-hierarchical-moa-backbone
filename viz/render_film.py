@@ -29,14 +29,39 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import FancyBboxPatch, Rectangle
 
 # ---- 注册中文字体（matplotlib 默认不索引这些路径）----
-for _p in ("/workspace/fonts/NotoSansSC-Regular.ttf", "/workspace/fonts/NotoSansSC-Bold.ttf",
-           "/root/.fonts/NotoSansSC-VF.ttf",
-           "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"):
+_FONT_CANDS = [
+    "/workspace/fonts/NotoSansSC-Regular.ttf",
+    "/workspace/fonts/NotoSansSC-Bold.ttf",
+    "/kaggle/working/fonts/NotoSansSC-Regular.otf",
+    "/kaggle/working/fonts/NotoSansSC-Regular.ttf",
+    "/root/.fonts/NotoSansSC-VF.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+]
+for _p in _FONT_CANDS:
     if os.path.exists(_p):
         try:
             font_manager.fontManager.addfont(_p)
         except Exception:  # noqa: BLE001
             pass
+_have_cn = any("Noto Sans SC" == f.name or "Noto Sans CJK SC" == f.name
+               for f in font_manager.fontManager.ttflist)
+if not _have_cn:  # 让 fc-match 兜底
+    try:
+        import subprocess as _sp
+
+        out = _sp.run(["fc-match", "-f", "%{file}", "sans-serif:lang=zh"],
+                      capture_output=True, text=True, timeout=20).stdout.strip()
+        if out and os.path.exists(out):
+            font_manager.fontManager.addfont(out)
+            _have_cn = True
+    except Exception:  # noqa: BLE001
+        pass
+if not _have_cn:
+    raise RuntimeError(
+        "找不到中文字体：请把 NotoSansSC-Regular.ttf 放到 /workspace/fonts/ 或 "
+        "/kaggle/working/fonts/，或先 `apt-get install fonts-noto-cjk`")
 plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["font.sans-serif"] = ["Noto Sans SC", "Noto Sans CJK SC", "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
