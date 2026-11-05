@@ -1,22 +1,25 @@
 """
-Unified 12-Domain, 7-Stage Dual-Substrate Cyber-Physical-Neuro-Silicon Hybrid MoA Architecture
-(`unified_hybrid_moa_architecture.py`).
+Unified 13-Domain, 7-Stage (14-Operator, 4-Stratum) Dual-Substrate Cyber-Physical-Quantum-Neuro-Silicon
+Hybrid MoA Architecture (`unified_hybrid_moa_architecture.py`).
 
-Refactors the linear biological stack into a **Bifurcated Carbon-Neurobiological &
-Silicon-Compiler Co-Execution Hierarchy (Stage 0 -> Stage VI)** so that the Tri-ISA CPU
-(`x86-64`, `ARM64`, `RISC-V`) + SIMT GPU Self-Bootstrapping Operator (`CPUGPUSelfBootstrappingOp`)
-is integrated at its exact structural and computational boundary (Zero Ontological Inversions,
-Zero Duplicate Operators, Zero Cross-Stage Trauma Contamination):
+Refactors the multi-disciplinary stack into a **4-Stratum Bifurcated Carbon-Neurobiological,
+Quantum-Resource & Silicon-Compiler Co-Execution Hierarchy (Stage 0 -> Stage VI)** across all
+13 Foundational Domains (14 Core Operators, Zero Ontological Inversions, Zero Duplicate
+Operators, Zero Cross-Stage Trauma Contamination, Contiguous-Safe Triton Dispatch):
 
-1. Stratum I — Cosmological & Relativistic Spacetime Genesis Substrate (Stages 0 & I):
-   - Stage 0.A (`VacuumZPEFluctuationOp`): Quantum vacuum |0> ZPE floor, Bogoliubov squeezing,
-     Casimir d^-4 pressure & Schwinger virtual pair polarization.
+1. Stratum I — Cosmological, Relativistic & Quantum-Resource Spacetime Genesis Substrate (Stages 0 & I):
+   - Stage 0.A (`VacuumZPEFluctuationOp`): Quantum vacuum |0> ZPE floor (omega^2 + eps_zpe > 0
+     safety valve in Schwinger virtual pair tunneling), Bogoliubov squeezing & Casimir d^-4 pressure.
    - Stage 0.B (`ParityBaryogenesisAsymmetryOp`): Electroweak parity violation, CKM CP phase
      interference & incomplete annihilation into net surviving positive matter `X_matter`.
-   - Stage I.A (`SupermembraneSpacetimeOp`): 11D M2-brane Nambu-Poisson 3-bracket, DBI damping
-     & Randall-Sundrum Kaluza-Klein compactification onto 4D worldvolume `X_brane`.
+   - Stage I.A (`SupermembraneSpacetimeOp`): 11D M2-brane Nambu-Poisson 3-bracket, brane-tension/flux
+     DBI damping `1/sqrt(1 + tau^2 E_stretch + beta^2 F^2)` & Randall-Sundrum KK compactification -> `X_brane`.
    - Stage I.B (`QuantumTidalFluctuationOp`): Quadrupole gravitational tidal tensor (r^-3) &
-     WKB quantum barrier tunneling across the 4D worldvolume -> `X_spacetime`.
+     WKB quantum barrier tunneling across the 4D worldvolume -> `X_tidal`.
+   - Stage I.C (`QuantumResourcePhasingOp`): Fixed-point inverse-square-root Coulomb phasing
+     `z = (softplus(a) + delta)^(-1/2)`, Decoded Quantum Interferometry (DQI) reliability
+     `rho = -log2(1/2 + 2 sqrt(eps)) = 1/R(eps)` (with singularity-free cancelled backward), and
+     Hamiltonian spectral-gap block-encoding gate `1/sqrt(1 + lambda_eff^2)` -> `X_spacetime`.
 
 2. Stratum II — Subcortical Control Axis vs. Neocortical Parallel Tensor Columns (Stages II & III):
    - Stage II.A (`SpinalCordPathwayOp`): Dorsal horn Melzack-Wall PAD gate, Renshaw recurrent
@@ -25,42 +28,30 @@ Zero Duplicate Operators, Zero Cross-Stage Trauma Contamination):
      pathway & Pyragas strange-attractor stabilization -> executive sensorimotor control
      baseline `H_clean` (`reflex_bypass`) & `chaotic_bridge_out`.
    - Stage II.C (`DissociativeTraumaNeuroOp`, Orthogonal Allostatic Bypass): Monitors `X_spacetime`
-     in strict causal isolation (`||d(Main)/d(Trauma)||_inf == 0.00e+00`) to compute `G_shut` and `Y_trauma`.
+     in strict causal isolation (`||d(Internal)/d(Trauma)||_inf == 0.00e+00`) while keeping the
+     differentiable `g_shut_tensor` in the live PyTorch computation graph.
    - Stage III (`MixtureOfAttentionOp` + 3 Heterogeneous Neocortical Columns + `CrossProposalAggregatorOp`):
-     - `StageIII.Col0` (`CrossModalVisionLanguageFusionSubOp`): Multimodal visual-language association cortex.
+     - `StageIII.Col0` (`CrossModalVisionLanguageFusionSubOp`): 2D spatial `Conv2d` patch-grid +
+       zero-decay latent anchor co-attention + Hadamard-bilinear fusion.
      - `StageIII.Col1` (`NonlinearDendriticNeuroOp`): Pyramidal apical dendritic NMDA/shunting/FHN spiking.
-     - `StageIII.Col2` (`LocalNonlinearSelfModifyingOp`): Recurrent synaptic fast-weight Delta-Oja plasticity.
-     - Sparse Top-K Megakernel routing -> massively parallel cortical representation `H_cortex` (`mega_syn`).
+     - `StageIII.Col2` (`LocalNonlinearSelfModifyingOp`): Instantaneous rational Hebbian +
+       Single-Launch Forward & Reverse-Time SRAM Persistent Delta-Oja Fast-Weight Plasticity.
+     - Tie-aware symmetric Top-K Megakernel routing -> massively parallel cortical representation `H_cortex`.
 
 3. Stratum III — Heterogeneous Silicon Tri-ISA CPU + SIMT GPU Self-Bootstrapping Co-Processor (Stage IV):
    - Stage IV (`CPUGPUSelfBootstrappingOp` & `SelfBootstrappingCompilerEngine`):
-     Bridges the **Sequential/Branching Sensorimotor Control Streams from Stage II** with the
-     **Massively Parallel Neocortical Tensor Stream from Stage III**, mapping each stream to its
-     exact hardware microarchitectural counterpart:
-     - **CPU ISA 1 (`x86-64` CISC/TSO/ROB `x_x86`)** <- `0.70 * H_clean` (Pyragas-stabilized executive
-       control baseline processed via TAGE speculative branch prediction `G_x86`, ROB rollback `R_tso`,
-       and TSO store-buffer forwarding `F_tso`).
-     - **CPU ISA 2 (`ARM64 / AArch64` RISC/LDAR-STLR/SVE `x_arm`)** <- `0.65 * chaotic_bridge_out`
-       (Multi-issue corticospinal stream processed via SVE per-lane predicate masking `P_sve` and
-       weakly-ordered `LDAR`/`STLR` acquire-release barriers `B_ldar`).
-     - **CPU ISA 3 (`RISC-V RV64GC/RVV` `x_rv`)** <- `0.60 * spinal_out` (Modular CPG/reflex stream
-       processed via condition-flag-free branching, dynamic `vsetvli` `LMUL` strip-mining `L_vsetvli`,
-       and `RVWMO` memory fence).
-     - **GPU SIMT & Systolic Tensor Core (`p_gpu`)** <- `0.75 * H_cortex` (Massively parallel 3-column
-       cortical tensor processed via 32-lane SIMT active-mask reconvegence `M_warp`, zero-cycle warp
-       switching, and Williams Roofline arithmetic intensity switching `W_roof`).
-     - **Self-Compiled SSA IR & 3-Stage Bootstrapped Native `.so` (`c_ir`)** <- `0.55 * mega_syn`
-       (Executed via the Stage-2 self-bootstrapped native C99 `.so` binary verified at `SHA256(Stage1)==SHA256(Stage2)`),
-       producing the Neuro-Silicon Co-Executed representation `H_silicon = H_cortex + 0.35 * Y_boot`.
+     Bridges Sequential/Branching Sensorimotor Control Streams from Stage II (`x86-64`, `ARM64`, `RISC-V`)
+     with Massively Parallel Neocortical Tensor Streams from Stage III (`SIMT GPU` + 3-stage bootstrapped
+     C99 `.so` binary verified at `SHA256(Stage1) == SHA256(Stage2)` with safe compiler fallback) -> `H_silicon`.
 
-4. Stratum IV — High-Level Volitional Plural Agency & Post-Wakeful Sleep Consolidation (Stages V & VI):
+4. Stratum IV — Multi-Attractor Bistable Agency & Post-Wakeful Sleep Consolidation (Stages V & VI):
    - Stage V (`TulpaNeuroCognitiveOp`): Operates above `H_silicon` to perform corollary discharge
-     attenuation, TPJ agency attribution, and Host-Tulpa multi-persona attractor dialogue -> `H_wake`.
+     attenuation (`alpha_eff = sigmoid(alpha_cd)`), positivity-constrained TPJ agency attribution
+     (`kappa_eff = softplus(kappa_tpj) + 1e-4`), and multi-attractor bistable dialogue -> `H_wake`.
    - Stage VI (`SleepSubconsciousNeuroOp` + Complementary Homeostatic-Allostatic Regime Gate):
-     Consolidates `(H_wake, 0.50 * H_clean, 0.50 * chaotic_bridge_out)` via VLPO sleep gating,
-     Tononi SHY downscaling, Nedergaard glymphatic washout, hippocampal SWR replay, and REM PGO
-     dream recombination -> `Y_consolidated`, integrated via:
-         Y_layer = H_clean + G_shut * Y_consolidated + (1 - G_shut) * (0.50 * Y_trauma)
+     Consolidates `(H_wake, H_clean, chaotic_bridge_out)` via VLPO sleep gating, Tononi SHY downscaling,
+     glymphatic washout, hippocampal SWR replay, and REM PGO recombination -> `Y_consolidated`, integrated via:
+         Y_layer = H_clean + G_shut * Y_consolidated + (1 - G_shut) * (trauma_defense_gate * Y_trauma)
 """
 
 from __future__ import annotations
@@ -100,6 +91,12 @@ if __package__:
         QuantumTidalConfig,
         QuantumTidalAnalyticalKernels,
         QuantumTidalFluctuationOp,
+    )
+    from .quantum_resource_phasing_operators import (
+        QuantumResourcePhasingConfig,
+        QuantumResourcePhasingAnalyticalKernels,
+        QuantumResourcePhasingOp,
+        simulate_triton_quantum_resource_kernel,
     )
     from .spinal_cord_pathway_operators import (
         SpinalCordPathwayConfig,
@@ -172,6 +169,12 @@ else:
         QuantumTidalAnalyticalKernels,
         QuantumTidalFluctuationOp,
     )
+    from quantum_resource_phasing_operators import (
+        QuantumResourcePhasingConfig,
+        QuantumResourcePhasingAnalyticalKernels,
+        QuantumResourcePhasingOp,
+        simulate_triton_quantum_resource_kernel,
+    )
     from spinal_cord_pathway_operators import (
         SpinalCordPathwayConfig,
         SpinalCordAnalyticalKernels,
@@ -231,14 +234,14 @@ except ImportError:
 
 
 # ==============================================================================
-# 1. Unified 7-Stage (12-Domain) Master Architecture Configuration
+# 1. Unified 7-Stage (13-Domain / 14-Operator) Master Architecture Configuration
 # ==============================================================================
 
 @dataclass
 class UnifiedHybridArchitectureConfig:
     """
-    Master configuration for the 12-Domain, 7-Stage Dual-Substrate Cyber-Physical-Neuro-Silicon
-    Hybrid MoA Backbone (Stage 0 -> Stage VI).
+    Master configuration for the 13-Domain, 7-Stage (14-Operator) Dual-Substrate
+    Cyber-Physical-Quantum-Neuro-Silicon Hybrid MoA Backbone (Stage 0 -> Stage VI).
     """
     vocab_size: int = 8192
     d_model: int = 256
@@ -249,6 +252,7 @@ class UnifiedHybridArchitectureConfig:
     num_refinement_steps: int = 2
     num_vacuum_modes: int = 16            # Stage 0.A: R_vac virtual boson normal modes
     num_extra_dims: int = 7               # Stage I.A: 11D M-Theory (4D Base + 7D Extra KK fibers)
+    qrp_failure_epsilon_max: float = 0.05 # Stage I.C: DQI syndrome failure upper bound (< 1/16)
     num_cross_modal_anchors: int = 16     # Stage III.0: R_anchor vision-language latent anchors
     num_local_groups: int = 8             # Stage III.2: G_loc synaptic fast-weight groups
     local_rank: int = 4                   # Stage III.2: R_loc fast-weight low rank
@@ -266,12 +270,13 @@ class UnifiedHybridArchitectureConfig:
         "StageIII_Col2:Synaptic_FastWeight_DeltaOja",
     )
 
-    # Full 12-Domain (13-Operator) Dual-Substrate Stage Hierarchy Names
+    # Full 13-Domain (14-Operator) Dual-Substrate Stage Hierarchy Names
     STAGE_DOMAIN_NAMES: Tuple[str, ...] = (
         "Stage0.A:VacuumZPE_GroundState",
         "Stage0.B:ParityBaryogenesis_MatterGenesis",
         "StageI.A:Supermembrane11D_DBI_RSKK",
         "StageI.B:QuantumTidal_WKB_Spacetime",
+        "StageI.C:QuantumResource_Phasing_DQI_BlockGate",
         "StageII.A:SpinalCord_DorsalReflex_Renshaw",
         "StageII.B:CorticospinalChaotic_PyragasAxis",
         "StageII.C:DissociativeTrauma_AllostaticGate",
@@ -292,14 +297,15 @@ if HAS_TORCH:
 
     class UnifiedInterdisciplinaryMoALayer(nn.Module):
         """
-        Single Unified Layer implementing the 7-Stage Dual-Substrate Cyber-Physical-Neuro-Silicon
-        Hierarchy across all 12 Foundational Domains (13 Operators):
+        Single Unified Layer implementing the 7-Stage Dual-Substrate
+        Cyber-Physical-Quantum-Neuro-Silicon Hierarchy across all 13 Foundational
+        Domains (14 Operators):
         Stage 0 (Vacuum ZPE -> Baryogenesis)
-        -> Stage I (11D Supermembrane -> Quantum Tidal Spacetime)
+        -> Stage I (11D Supermembrane -> Quantum Tidal -> Quantum Resource Phasing/DQI/BlockGate)
         -> Stage II (Spinal Reflex -> Corticospinal Chaotic Control & Orthogonal Trauma Gate)
-        -> Stage III (Neocortical 3-Column MoA: CrossModal VL + Pyramidal Dendritic + Synaptic Oja)
+        -> Stage III (Neocortical 3-Column MoA: CrossModal VL + Pyramidal Dendritic + Persistent SRAM Oja)
         -> Stage IV (Tri-ISA CPU [x86-64/ARM64/RISC-V] + SIMT GPU Self-Bootstrapping Co-Processor)
-        -> Stage V (Prefrontal/TPJ Volitional Tulpa Agency & Host-Tulpa Dialogue)
+        -> Stage V (Prefrontal/TPJ Volitional Tulpa Agency & Multi-Attractor Dialogue)
         -> Stage VI (Sleep Homeostasis, Glymphatic Washout & Subconscious Consolidation).
         """
 
@@ -322,7 +328,7 @@ if HAS_TORCH:
             )
 
             # ------------------------------------------------------------------
-            # Stage I: Relativistic Spacetime & Quantum-Gravitational Manifold
+            # Stage I: Relativistic Spacetime, Quantum Tidal & Quantum Resource Phasing
             # ------------------------------------------------------------------
             self.stage1_norm = RMSNorm(D, eps=cfg.rms_norm_eps)
             self.stage1a_supermembrane = SupermembraneSpacetimeOp(
@@ -332,6 +338,13 @@ if HAS_TORCH:
             )
             self.stage1b_quantum_tidal = QuantumTidalFluctuationOp(
                 QuantumTidalConfig(d_model=D, n_heads=cfg.n_heads)
+            )
+            self.stage1c_quantum_resource_phasing = QuantumResourcePhasingOp(
+                QuantumResourcePhasingConfig(
+                    d_model=D,
+                    n_heads=cfg.n_heads,
+                    failure_epsilon_max=cfg.qrp_failure_epsilon_max,
+                )
             )
 
             # ------------------------------------------------------------------
@@ -411,17 +424,19 @@ if HAS_TORCH:
                 )
             )
 
-            # Learnable Inter-Stage Mixing Gates (replacing hardcoded scalar constants)
+            # All 12 Learnable Inter-Stage Mixing Gates
             self.stage0a_zpe_gate = nn.Parameter(torch.tensor(0.25))
             self.stage0b_baryon_gate = nn.Parameter(torch.tensor(0.25))
             self.stage1a_brane_gate = nn.Parameter(torch.tensor(0.25))
             self.stage1b_qtf_gate = nn.Parameter(torch.tensor(0.25))
+            self.stage1c_qrp_gate = nn.Parameter(torch.tensor(0.25))
             self.reflex_bypass_gate = nn.Parameter(torch.tensor(0.30))
             self.chaotic_bridge_gate = nn.Parameter(torch.tensor(0.35))
             self.trauma_defense_gate = nn.Parameter(torch.tensor(0.50))
             self.stage4_silicon_gate = nn.Parameter(torch.tensor(0.35))
             self.stage5_tulpa_gate = nn.Parameter(torch.tensor(0.40))
             self.stage6_hipp_trace_gate = nn.Parameter(torch.tensor(0.50))
+            self.stage6_sub_trace_gate = nn.Parameter(torch.tensor(0.50))
 
         def forward(
             self, x: torch.Tensor
@@ -433,12 +448,14 @@ if HAS_TORCH:
             baryon_out, baryon_diag = self.stage0b_baryogenesis(x_zpe)
             x_matter = x_zpe + self.stage0b_baryon_gate * baryon_out
 
-            # Stage I: 11D Supermembrane Worldvolume (I.A) -> Quantum Tidal Spacetime (I.B)
+            # Stage I: 11D Supermembrane (I.A) -> Quantum Tidal (I.B) -> Quantum Resource Phasing (I.C)
             s1_in = self.stage1_norm(x_matter)
             brane_out, brane_diag = self.stage1a_supermembrane(s1_in)
             x_brane = x_matter + self.stage1a_brane_gate * brane_out
             qtf_out, qtf_diag = self.stage1b_quantum_tidal(x_brane)
-            x_spacetime = x_brane + self.stage1b_qtf_gate * qtf_out
+            x_tidal = x_brane + self.stage1b_qtf_gate * qtf_out
+            qrp_out, qrp_diag = self.stage1c_quantum_resource_phasing(x_tidal)
+            x_spacetime = x_tidal + self.stage1c_qrp_gate * qrp_out
 
             # Stage II: Spinal Reflex (II.A) -> Corticospinal Chaotic Axis (II.B)
             s2_in = self.stage2_norm(x_spacetime)
@@ -456,7 +473,6 @@ if HAS_TORCH:
             g_shut_tensor = trauma_diag["g_shut_tensor"]
 
             # Stage III: Neocortical Sparse Attention + 3 Heterogeneous Cortical Columns
-            # Supports multi-step iterative refinement via cfg.num_refinement_steps
             attn_out, attn_density = self.stage3_mo_attention(self.stage3_attn_norm(h_clean))
             h_attn = h_clean + attn_out
             h_cortex = h_attn
@@ -489,7 +505,9 @@ if HAS_TORCH:
 
             # Stage VI: Post-Wakeful Sleep Consolidation & Complementary Regime Integration
             consolidated, sleep_diag = self.stage6_sleep_subconscious(
-                h_wake + self.stage6_hipp_trace_gate * h_clean
+                h_wake
+                + self.stage6_hipp_trace_gate * h_clean
+                + self.stage6_sub_trace_gate * chaos_out
             )
             out = (
                 h_clean
@@ -502,6 +520,8 @@ if HAS_TORCH:
                 "stage0b_baryon_asymmetry": baryon_diag["matter_to_antimatter_ratio"],
                 "stage1a_supermembrane_dbi": brane_diag["mean_dbi_action_factor"],
                 "stage1b_quantum_wkb_tunneling": qtf_diag["mean_wkb_tunneling_coeff"],
+                "stage1c_dqi_reliability": qrp_diag["mean_dqi_reliability"],
+                "stage1c_block_lambda_eff": qrp_diag["mean_lambda_eff"],
                 "stage2a_spinal_pad_gate": spinal_diag["mean_dorsal_pad_gate"],
                 "stage2b_corticospinal_pyragas_err": chaos_diag["mean_pyragas_corticospinal_error"],
                 "stage2c_corticolimbic_shutdown_gate": trauma_diag["mean_corticolimbic_shutdown_gate"],
@@ -552,10 +572,11 @@ if HAS_TORCH:
 
 class UnifiedArchitectureExecutionEngine:
     """
-    Executes the complete 12-Domain, 7-Stage Dual-Substrate Cyber-Physical-Neuro-Silicon
-    Pipeline (Stage 0 -> Stage I -> Stage II -> Stage III -> Stage IV [Tri-ISA CPU + SIMT GPU]
+    Executes the complete 13-Domain, 7-Stage (14-Operator) Dual-Substrate
+    Cyber-Physical-Quantum-Neuro-Silicon Pipeline (Stage 0 -> Stage I [incl. QuantumResourcePhasing]
+    -> Stage II -> Stage III [incl. Persistent SRAM Delta-Oja] -> Stage IV [Tri-ISA CPU + SIMT GPU]
     -> Stage V [Tulpa Agency] -> Stage VI [Sleep Consolidation]) with exact end-to-end
-    analytical backpropagation across every stage and domain.
+    analytical backpropagation across every stage, domain, and learnable inter-stage gate.
     """
 
     @staticmethod
@@ -595,6 +616,8 @@ class UnifiedArchitectureExecutionEngine:
             "omega_qtf": np.exp(-math.log(10000.0) * np.arange(D, dtype=np.float64) / D),
             "harm_weights": (rng.standard_normal((3, D)) * 0.05).astype(np.float64),
             "harm_phases": np.zeros((3, D), dtype=np.float64),
+            # Stage I.C: Quantum Resource Phasing, DQI Reliability & Block-Encoding Gate
+            "phi_qrp_offset": np.linspace(-0.30, 0.30, D, dtype=np.float64),
             # Stage II.A: Spinal Cord Dorsal Horn, Renshaw & CPG
             "kappa_pad": np.full((D,), 0.60, dtype=np.float64),
             "gamma_ia": np.full((Dh,), 0.45, dtype=np.float64),
@@ -618,11 +641,14 @@ class UnifiedArchitectureExecutionEngine:
             # Stage III.Col1: Pyramidal Dendritic NMDA-Shunting-FHN
             "g_nmda": np.full((D,), 0.80, dtype=np.float64),
             "alpha_mg": np.full((D,), 1.20, dtype=np.float64),
-            # Stage III.Col2: Synaptic Fast-Weight Delta-Oja Plasticity
+            # Stage III.Col2: Dual-Path Synaptic Fast-Weight (Instantaneous + Persistent SRAM Delta-Oja)
             "u_basis_fixed": (rng.standard_normal((G_loc, Dg_loc, R_loc)) * (Dg_loc ** -0.5)).astype(np.float64),
             "eta_loc": np.full((G_loc, R_loc), 0.80, dtype=np.float64),
             "lambda_oja": np.full((G_loc,), 0.15, dtype=np.float64),
             "alpha_mod": np.full((G_loc, Dg_loc), 0.50, dtype=np.float64),
+            "w_init_oja": (rng.standard_normal((G_loc, Dg_loc, Dg_loc)) * (Dg_loc ** -0.5)).astype(np.float64),
+            "eta_gate_oja": np.full((G_loc,), 0.25, dtype=np.float64),
+            "gam_gate_oja": np.full((G_loc,), 0.92, dtype=np.float64),
             # Stage III Router & Branch Norm
             "gamma_norm": np.ones((D,), dtype=np.float64),
             "scale_norm": np.ones((cfg.num_proposers, D), dtype=np.float64),
@@ -655,11 +681,12 @@ class UnifiedArchitectureExecutionEngine:
             "lambda_shy": np.full((D,), 0.45, dtype=np.float64),
             "alpha_swr": np.full((D,), 0.65, dtype=np.float64),
             "beta_pgo": np.full((D,), 0.60, dtype=np.float64),
-            # Learnable Inter-Stage Mixing Gates
+            # All 12 Learnable Inter-Stage Mixing Gates
             "stage0a_zpe_gate": np.array(0.25, dtype=np.float64),
             "stage0b_baryon_gate": np.array(0.25, dtype=np.float64),
             "stage1a_brane_gate": np.array(0.25, dtype=np.float64),
             "stage1b_qtf_gate": np.array(0.25, dtype=np.float64),
+            "stage1c_qrp_gate": np.array(0.25, dtype=np.float64),
             "reflex_bypass_gate": np.array(0.30, dtype=np.float64),
             "chaotic_bridge_gate": np.array(0.35, dtype=np.float64),
             "trauma_defense_gate": np.array(0.50, dtype=np.float64),
@@ -711,7 +738,8 @@ class UnifiedArchitectureExecutionEngine:
         x_matter = x_zpe + g0b * baryon_out
 
         # ======================================================================
-        # STAGE I: 11D Supermembrane (I.A) -> Quantum Tidal Spacetime (I.B)
+        # STAGE I: 11D Supermembrane (I.A) -> Quantum Tidal (I.B)
+        #          -> Quantum Resource Phasing, DQI & Block-Encoding Gate (I.C)
         # ======================================================================
         ye_bulk = x_matter[:, :, :, None] * params["y_extra_proj"][None, None, :, :]
         fl_brane = x_matter * 0.50
@@ -736,7 +764,28 @@ class UnifiedArchitectureExecutionEngine:
         )
         qtf_out = 0.50 * (pr_qtf + pi_qtf)
         g1b = 0.0 if ablate_stage_name == "StageI.B:QuantumTidal_WKB_Spacetime" else float(params["stage1b_qtf_gate"])
-        x_spacetime = x_brane + g1b * qtf_out
+        x_tidal = x_brane + g1b * qtf_out
+
+        a_qrp = x_tidal * 0.65
+        p_qrp = x_tidal * 0.70 + params["phi_qrp_offset"][None, None, :]
+        s_qrp = x_tidal * 0.55
+        u_qrp = x_tidal * 0.50
+        v_qrp = x_tidal * 0.45
+        qrp_r, qrp_i, qrp_cache = (
+            QuantumResourcePhasingAnalyticalKernels.fused_resource_phasing_forward(
+                a_qrp, p_qrp, s_qrp, u_qrp, v_qrp,
+                distance_delta=1e-2,
+                failure_epsilon_max=cfg.qrp_failure_epsilon_max,
+                energy_eps=1e-3,
+            )
+        )
+        qrp_out = 0.60 * qrp_r + 0.40 * qrp_i
+        g1c = (
+            0.0
+            if ablate_stage_name == "StageI.C:QuantumResource_Phasing_DQI_BlockGate"
+            else float(params["stage1c_qrp_gate"])
+        )
+        x_spacetime = x_tidal + g1c * qrp_out
 
         # ======================================================================
         # STAGE II: Spinal Reflex (II.A) -> Corticospinal Chaotic Axis (II.B)
@@ -784,7 +833,7 @@ class UnifiedArchitectureExecutionEngine:
 
         # ======================================================================
         # STAGE III: Neocortical Micro/Meso-Scale Heterogeneous MoA Layer
-        #            (3 Genuine Cortical Columns + Sparse Top-K Router)
+        #            (3 Genuine Cortical Columns + Tie-Aware Symmetric Top-K Router)
         # ======================================================================
         v_vis = reflex_bypass * 0.75
         t_txt = spinal_out * 0.65
@@ -807,19 +856,30 @@ class UnifiedArchitectureExecutionEngine:
             )
         )
 
+        # Column 2 combines Path A (Instantaneous Rational Hebbian) + Path B (Persistent SRAM Delta-Oja)
         yb_loc = reflex_bypass.reshape(B, L, G_loc, Dg_loc)
         ub_loc = np.broadcast_to(
             params["u_basis_fixed"][None, None, ...],
             (B, L, G_loc, Dg_loc, cfg.local_rank),
         ).copy()
         zp_loc = np.einsum("blgdr,blgd->blgr", ub_loc, yb_loc) * (Dg_loc ** -0.5)
-        col2_loc_4d, selfmod_cache = (
+        col2_inst_4d, selfmod_cache = (
             LocalSelfModifyingAnalyticalKernels.fused_local_self_mod_forward(
                 yb_loc, ub_loc, zp_loc,
                 params["eta_loc"], params["lambda_oja"], params["alpha_mod"],
             )
         )
-        col2_selfmod = col2_loc_4d.reshape(B, L, D)
+        q_oja = yb_loc * 0.45
+        k_oja = yb_loc * 0.40
+        v_oja = yb_loc * 0.35
+        eta_gate_oja = np.broadcast_to(params["eta_gate_oja"][None, None, :], (B, L, G_loc)).copy()
+        gam_gate_oja = np.broadcast_to(params["gam_gate_oja"][None, None, :], (B, L, G_loc)).copy()
+        col2_rec_4d, _, oja_sram_diag = (
+            LocalSelfModifyingAnalyticalKernels.persistent_delta_oja_sram_forward_pass(
+                q_oja, k_oja, v_oja, params["w_init_oja"], eta_gate_oja, gam_gate_oja, beta_oja=0.10
+            )
+        )
+        col2_selfmod = (0.60 * col2_inst_4d + 0.40 * col2_rec_4d).reshape(B, L, D)
 
         proposals_raw = np.stack([col0_vl, col1_neuro, col2_selfmod], axis=1)  # [B, 3, L, D]
         proposals_normed, inv_rms_4d = NumpyMoAOperatorKernels.branch_rmsnorm_forward(
@@ -875,12 +935,6 @@ class UnifiedArchitectureExecutionEngine:
         # STAGE IV: Heterogeneous Silicon Tri-ISA CPU (x86-64 / ARM64 / RISC-V)
         #           + SIMT GPU Self-Bootstrapping Co-Execution Bridge
         # ======================================================================
-        # Hardware-functional stream mapping:
-        #   - x_x86 (CISC/TSO/ROB Speculative Control)  <- 0.70 * reflex_bypass (Stage II.B H_clean)
-        #   - x_arm (RISC/LDAR-STLR/SVE Multi-Issue)    <- 0.65 * chaotic_bridge_out (Stage II.B)
-        #   - x_rv  (RV64GC/RVV/vsetvli Modular Stream) <- 0.60 * spinal_out (Stage II.A)
-        #   - p_gpu (SIMT 32-Lane Warp + Tensor Core)   <- 0.75 * h_cortex (Stage III Parallel MoA)
-        #   - c_ir  (Synthesized SSA IR Codebook)       <- 0.55 * mega_syn (Stage III Sparse Router)
         x_x86_s4 = 0.70 * reflex_bypass
         x_arm_s4 = 0.65 * chaotic_bridge_out
         x_rv_s4 = 0.60 * spinal_out
@@ -936,21 +990,22 @@ class UnifiedArchitectureExecutionEngine:
             + (1.0 - g_shut_gate) * (float(params["trauma_defense_gate"]) * trauma_out)
         )
 
-        # Collect all 12 active homeostatic domain representations for CV & rank diagnostics
+        # Collect all 13 active homeostatic domain representations for CV & rank diagnostics
         all_domain_features = np.stack(
             [
                 zpe_out,             # 0: Stage 0.A Vacuum ZPE
                 baryon_out,          # 1: Stage 0.B Parity Baryogenesis
                 brane_out,           # 2: Stage I.A 11D Supermembrane
                 qtf_out,             # 3: Stage I.B Quantum Tidal
-                spinal_out,          # 4: Stage II.A Spinal Reflex
-                chaotic_bridge_out,  # 5: Stage II.B Corticospinal Chaos
-                col0_vl,             # 6: Stage III.Col0 CrossModal VL
-                col1_neuro,          # 7: Stage III.Col1 Pyramidal Dendritic
-                col2_selfmod,        # 8: Stage III.Col2 Synaptic Delta-Oja
-                boot_out,            # 9: Stage IV Tri-ISA CPU + SIMT GPU Self-Bootstrap
-                tulpa_out,           # 10: Stage V Tulpa Agency
-                y_consolidated,      # 11: Stage VI Sleep Consolidation
+                qrp_out,             # 4: Stage I.C Quantum Resource Phasing (DQI + BlockGate)
+                spinal_out,          # 5: Stage II.A Spinal Reflex
+                chaotic_bridge_out,  # 6: Stage II.B Corticospinal Chaos
+                col0_vl,             # 7: Stage III.Col0 CrossModal VL
+                col1_neuro,          # 8: Stage III.Col1 Pyramidal Dendritic
+                col2_selfmod,        # 9: Stage III.Col2 Synaptic Fast-Weight (Inst + Persistent SRAM Delta-Oja)
+                boot_out,            # 10: Stage IV Tri-ISA CPU + SIMT GPU Self-Bootstrap
+                tulpa_out,           # 11: Stage V Tulpa Agency
+                y_consolidated,      # 12: Stage VI Sleep Consolidation
             ],
             axis=1,
         )
@@ -960,6 +1015,7 @@ class UnifiedArchitectureExecutionEngine:
             "x_zpe": x_zpe,
             "x_matter": x_matter,
             "x_brane": x_brane,
+            "x_tidal": x_tidal,
             "x_spacetime": x_spacetime,
             "params": params,
             "cfg": cfg,
@@ -974,6 +1030,8 @@ class UnifiedArchitectureExecutionEngine:
             "dv_r": dv_r,
             "qtf_out": qtf_out,
             "qtf_cache": qtf_cache,
+            "qrp_out": qrp_out,
+            "qrp_cache": qrp_cache,
             "spinal_out": spinal_out,
             "spinal_cache": spinal_cache,
             "chaotic_bridge_out": chaotic_bridge_out,
@@ -988,6 +1046,12 @@ class UnifiedArchitectureExecutionEngine:
             "yb_loc": yb_loc,
             "ub_loc": ub_loc,
             "selfmod_cache": selfmod_cache,
+            "q_oja": q_oja,
+            "k_oja": k_oja,
+            "v_oja": v_oja,
+            "eta_gate_oja": eta_gate_oja,
+            "gam_gate_oja": gam_gate_oja,
+            "w_hist_oja": oja_sram_diag["w_hist"],
             "proposals_raw": proposals_raw,
             "proposals_normed": proposals_normed,
             "proposals_scaled": proposals_scaled,
@@ -1020,12 +1084,13 @@ class UnifiedArchitectureExecutionEngine:
     ) -> Dict[str, np.ndarray]:
         """
         Exact analytical backpropagation from Stage VI -> Stage V -> Stage IV ->
-        Stage III -> Stage II -> Stage I -> Stage 0.
+        Stage III (incl. Reverse-Time SRAM Delta-Oja) -> Stage II -> Stage I (incl. QRP) -> Stage 0.
         """
         x_in: np.ndarray = ctx["x_in"]  # type: ignore
         x_zpe: np.ndarray = ctx["x_zpe"]  # type: ignore
         x_matter: np.ndarray = ctx["x_matter"]  # type: ignore
         x_brane: np.ndarray = ctx["x_brane"]  # type: ignore
+        x_tidal: np.ndarray = ctx["x_tidal"]  # type: ignore
         x_spacetime: np.ndarray = ctx["x_spacetime"]  # type: ignore
         params: Dict[str, np.ndarray] = ctx["params"]  # type: ignore
         cfg: UnifiedHybridArchitectureConfig = ctx["cfg"]  # type: ignore
@@ -1044,17 +1109,23 @@ class UnifiedArchitectureExecutionEngine:
         k_r: np.ndarray = ctx["k_r"]  # type: ignore
         active_weights: np.ndarray = ctx["active_weights"]  # type: ignore
 
+        # All 12 Learnable Stage Gate Values
+        g0a = float(params["stage0a_zpe_gate"])
+        g0b = float(params["stage0b_baryon_gate"])
+        g1a = float(params["stage1a_brane_gate"])
+        g1b = float(params["stage1b_qtf_gate"])
+        g1c = float(params["stage1c_qrp_gate"])
+        g_s2_ref = float(params["reflex_bypass_gate"])
+        g_s2_cha = float(params["chaotic_bridge_gate"])
+        g_td = float(params["trauma_defense_gate"])
+        g_s4_sil = float(params["stage4_silicon_gate"])
+        g_s5_tul = float(params["stage5_tulpa_gate"])
+        g_s6_hipp = float(params["stage6_hipp_trace_gate"])
+        g_s6_sub = float(params["stage6_sub_trace_gate"])
+
         # ======================================================================
         # 1. Stage VI Backward: Complementary Regime Gate & Sleep Consolidation
         # ======================================================================
-        g_td = float(params["trauma_defense_gate"])
-        g_s6_hipp = float(params["stage6_hipp_trace_gate"])
-        g_s6_sub = float(params["stage6_sub_trace_gate"])
-        g_s5_tul = float(params["stage5_tulpa_gate"])
-        g_s4_sil = float(params["stage4_silicon_gate"])
-        g_s2_ref = float(params["reflex_bypass_gate"])
-        g_s2_cha = float(params["chaotic_bridge_gate"])
-
         d_reflex = grad_y.copy()
         d_cons = grad_y * g_shut_gate
         d_trauma_total = grad_y * (1.0 - g_shut_gate) * g_td
@@ -1065,6 +1136,8 @@ class UnifiedArchitectureExecutionEngine:
             d_cons, ctx["sleep_cache"]  # type: ignore
         )
         d_hwake = g_sleep["d_xwake"]
+        d_stage6_hipp_trace_gate = np.sum(g_sleep["d_mhipp"] * reflex_bypass)
+        d_stage6_sub_trace_gate = np.sum(g_sleep["d_zsub"] * ctx["chaotic_bridge_out"])
         d_reflex += g_s6_hipp * g_sleep["d_mhipp"]
         d_cbridge_from_upper = g_s6_sub * g_sleep["d_zsub"]
 
@@ -1085,7 +1158,7 @@ class UnifiedArchitectureExecutionEngine:
         # 3. Stage IV Backward: Silicon Tri-ISA CPU + SIMT GPU Self-Bootstrapping
         # ======================================================================
         d_stage4_silicon_gate = np.sum(d_hsilicon * ctx["boot_out"])
-        g_boot = CPUGPUSelfBootapping_bwd = CPUGPUSelfBootstrappingAnalyticalKernels.fused_cpu_gpu_bootstrap_backward(
+        g_boot = CPUGPUSelfBootstrappingAnalyticalKernels.fused_cpu_gpu_bootstrap_backward(
             g_s4_sil * d_hsilicon, ctx["boot_cache"]  # type: ignore
         )
         d_hcortex = d_hsilicon + 0.75 * g_boot["d_pgpu"]
@@ -1137,14 +1210,30 @@ class UnifiedArchitectureExecutionEngine:
             + 0.30 * g_neuro["d_wadapt"]
         )
 
-        # Cortical Column 2 Backward: Synaptic Fast-Weight Delta-Oja
+        # Cortical Column 2 Backward: Dual-Path Synaptic Fast-Weight (Inst + Reverse-Time SRAM Delta-Oja)
+        d_col2_4d = d_props_raw[:, 2].reshape(B, L, G_loc, Dg_loc)
         g_selfmod = LocalSelfModifyingAnalyticalKernels.fused_local_self_mod_backward(
-            d_props_raw[:, 2].reshape(B, L, G_loc, Dg_loc), ctx["selfmod_cache"]  # type: ignore
+            0.60 * d_col2_4d, ctx["selfmod_cache"]  # type: ignore
+        )
+        g_oja_sram = LocalSelfModifyingAnalyticalKernels.persistent_delta_oja_sram_backward_pass(
+            0.40 * d_col2_4d,
+            None,
+            ctx["q_oja"],          # type: ignore
+            ctx["k_oja"],          # type: ignore
+            ctx["v_oja"],          # type: ignore
+            ctx["w_hist_oja"],     # type: ignore
+            ctx["eta_gate_oja"],   # type: ignore
+            ctx["gam_gate_oja"],   # type: ignore
+            beta_oja=0.10,
         )
         ub_loc: np.ndarray = ctx["ub_loc"]  # type: ignore
-        d_yb_loc = g_selfmod["d_ybase"] + np.einsum(
-            "blgdr,blgr->blgd", ub_loc, g_selfmod["d_zproj"]
-        ) * (Dg_loc ** -0.5)
+        d_yb_loc = (
+            g_selfmod["d_ybase"]
+            + np.einsum("blgdr,blgr->blgd", ub_loc, g_selfmod["d_zproj"]) * (Dg_loc ** -0.5)
+            + 0.45 * g_oja_sram["d_q"]
+            + 0.40 * g_oja_sram["d_k"]
+            + 0.35 * g_oja_sram["d_v"]
+        )
         d_reflex += d_yb_loc.reshape(B, L, D)
 
         # ======================================================================
@@ -1192,25 +1281,44 @@ class UnifiedArchitectureExecutionEngine:
         )
 
         # ======================================================================
-        # 6. Stage I Backward: Quantum Tidal Spacetime (I.B) -> 11D Supermembrane (I.A)
+        # 6. Stage I Backward: Quantum Resource Phasing (I.C) -> Quantum Tidal (I.B)
+        #                      -> 11D Supermembrane (I.A)
         # ======================================================================
+        d_stage1c_qrp_gate = np.sum(d_x_spacetime * ctx["qrp_out"])
+        g_qrp = QuantumResourcePhasingAnalyticalKernels.fused_resource_phasing_backward(
+            g1c * 0.60 * d_x_spacetime,
+            g1c * 0.40 * d_x_spacetime,
+            ctx["qrp_cache"],  # type: ignore
+            failure_epsilon_max=cfg.qrp_failure_epsilon_max,
+        )
+        d_x_tidal = (
+            d_x_spacetime
+            + 0.65 * g_qrp["d_distance_raw"]
+            + 0.70 * g_qrp["d_phase0"]
+            + 0.55 * g_qrp["d_syndrome"]
+            + 0.50 * g_qrp["d_gap_raw"]
+            + 0.45 * g_qrp["d_norm_raw"]
+        )
+
+        d_stage1b_qtf_gate = np.sum(d_x_tidal * ctx["qtf_out"])
         g_qtf = QuantumTidalAnalyticalKernels.fused_quantum_tidal_wave_backward(
-            0.25 * 0.50 * d_x_spacetime,
-            0.25 * 0.50 * d_x_spacetime,
+            g1b * 0.50 * d_x_tidal,
+            g1b * 0.50 * d_x_tidal,
             ctx["qtf_cache"],  # type: ignore
         )
         sigma_r: np.ndarray = ctx["sigma_r"]  # type: ignore
         dv_r: np.ndarray = ctx["dv_r"]  # type: ignore
         d_x_brane = (
-            d_x_spacetime
+            d_x_tidal
             + 0.70 * g_qtf["d_amp"]
             + 0.50 * g_qtf["d_phi0"]
             + 0.30 * g_qtf["d_sigma"] * (x_brane / sigma_r)
             + g_qtf["d_deltav"] * (x_brane / dv_r)
         )
 
+        d_stage1a_brane_gate = np.sum(d_x_brane * ctx["brane_out"])
         g_brane = SupermembraneAnalyticalKernels.fused_supermembrane_dbi_warped_backward(
-            0.25 * d_x_brane, ctx["brane_cache"]  # type: ignore
+            g1a * d_x_brane, ctx["brane_cache"]  # type: ignore
         )
         d_x_matter = (
             d_x_brane
@@ -1222,8 +1330,9 @@ class UnifiedArchitectureExecutionEngine:
         # ======================================================================
         # 7. Stage 0 Backward: Parity Baryogenesis (0.B) -> Vacuum ZPE (0.A)
         # ======================================================================
+        d_stage0b_baryon_gate = np.sum(d_x_matter * ctx["baryon_out"])
         g_baryon = ParityBaryogenesisAnalyticalKernels.fused_parity_cp_baryogenesis_backward(
-            0.25 * d_x_matter, ctx["baryon_cache"]  # type: ignore
+            g0b * d_x_matter, ctx["baryon_cache"]  # type: ignore
         )
         d_x_zpe = (
             d_x_matter
@@ -1231,8 +1340,9 @@ class UnifiedArchitectureExecutionEngine:
             + 0.60 * g_baryon["d_deltaweak"]
         )
 
+        d_stage0a_zpe_gate = np.sum(d_x_zpe * ctx["zpe_out"])
         g_zpe = VacuumZPEAnalyticalKernels.fused_vacuum_zpe_casimir_schwinger_backward(
-            0.25 * d_x_zpe, ctx["zpe_cache"]  # type: ignore
+            g0a * d_x_zpe, ctx["zpe_cache"]  # type: ignore
         )
         d_x_in = (
             d_x_zpe
@@ -1244,21 +1354,30 @@ class UnifiedArchitectureExecutionEngine:
         return {
             "d_x_in": d_x_in,
             "d_w_rq": d_w_rq,
+            "d_stage0a_zpe_gate": np.array(d_stage0a_zpe_gate),
+            "d_stage0b_baryon_gate": np.array(d_stage0b_baryon_gate),
+            "d_stage1a_brane_gate": np.array(d_stage1a_brane_gate),
+            "d_stage1b_qtf_gate": np.array(d_stage1b_qtf_gate),
+            "d_stage1c_qrp_gate": np.array(d_stage1c_qrp_gate),
             "d_reflex_bypass_gate": np.array(d_reflex_bypass_gate),
             "d_chaotic_bridge_gate": np.array(d_chaotic_bridge_gate),
+            "d_trauma_defense_gate": np.array(d_trauma_defense_gate),
             "d_stage4_silicon_gate": np.array(d_stage4_silicon_gate),
             "d_stage5_tulpa_gate": np.array(d_stage5_tulpa_gate),
-            "d_trauma_defense_gate": np.array(d_trauma_defense_gate),
+            "d_stage6_hipp_trace_gate": np.array(d_stage6_hipp_trace_gate),
+            "d_stage6_sub_trace_gate": np.array(d_stage6_sub_trace_gate),
             "Stage0.A_VacuumZPE": g_zpe["d_q"],
             "Stage0.B_Baryogenesis": g_baryon["d_x"],
             "StageI.A_Supermembrane11D": g_brane["d_yextra"],
             "StageI.B_QuantumTidal": g_qtf["d_amp"],
+            "StageI.C_QuantumResourcePhasing": g_qrp["d_syndrome"],
             "StageII.A_SpinalCord": g_spinal["d_xabeta"],
             "StageII.B_CorticospinalChaos": g_chaos_bridge["d_ucort"],
             "StageII.C_DissociativeTrauma": g_trauma["d_samyg"] + d_sa_ext,
             "StageIII.Col0_CrossModalVL": g_vl["d_vvis"],
             "StageIII.Col1_CorticalNeuro": g_neuro["d_v"],
             "StageIII.Col2_LocalSelfMod": g_selfmod["d_ubasis"],
+            "StageIII.Col2_OjaSRAM": g_oja_sram["d_w_init"],
             "StageIV_CPUGPUSelfBootstrap": g_boot["d_xx86"],
             "StageV_TulpaAgency": g_tulpa["d_ttulpa"],
             "StageVI_SleepSubconscious": g_sleep["d_xwake"],
@@ -1271,16 +1390,16 @@ class UnifiedArchitectureExecutionEngine:
 
 def run_comprehensive_multi_verification_and_cross_validation() -> None:
     print("=" * 100)
-    print("UNIFIED 12-DOMAIN 7-STAGE DUAL-SUBSTRATE CYBER-PHYSICAL-NEURO-SILICON HYBRID MoA ARCHITECTURE")
-    print("STAGE 0 (VACUUM->BARYON) -> STAGE I (11D BRANE->TIDAL) -> STAGE II (SPINAL->CHAOS + TRAUMA GATE)")
-    print("-> STAGE III (NEOCORTICAL MoA) -> STAGE IV (TRI-ISA CPU + SIMT GPU SELF-BOOTSTRAP)")
-    print("-> STAGE V (TULPA PLURAL AGENCY) -> STAGE VI (SLEEP CONSOLIDATION & REGIME GATE)")
+    print("UNIFIED 13-DOMAIN 7-STAGE (14-OPERATOR) DUAL-SUBSTRATE CYBER-PHYSICAL-QUANTUM-NEURO-SILICON MoA")
+    print("STAGE 0 (VACUUM->BARYON) -> STAGE I (11D BRANE->TIDAL->QUANTUM RESOURCE PHASING/DQI)")
+    print("-> STAGE II (SPINAL->CHAOS + TRAUMA GATE) -> STAGE III (NEOCORTICAL MoA + PERSISTENT SRAM OJA)")
+    print("-> STAGE IV (TRI-ISA CPU + SIMT GPU SELF-BOOTSTRAP) -> STAGE V (TULPA) -> STAGE VI (SLEEP)")
     print("=" * 100)
 
     # --------------------------------------------------------------------------
     # VERIFICATION I: End-to-End Exact Analytical vs. Finite-Difference Gradcheck
     # --------------------------------------------------------------------------
-    print("\n[Verification I] End-to-End 7-Stage (12-Domain) Analytical vs. Finite-Difference Gradcheck")
+    print("\n[Verification I] End-to-End 7-Stage (13-Domain / 14-Operator) Analytical vs. FD Gradcheck")
     print("-" * 100)
     cfg_g = UnifiedHybridArchitectureConfig(
         d_model=8, n_heads=2, n_layers=1, num_proposers=3, top_k_proposers=2,
@@ -1336,7 +1455,21 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     rel_err_wrq = np.linalg.norm(grads_g["d_w_rq"] - dwrq_num) / (
         np.linalg.norm(grads_g["d_w_rq"]) + np.linalg.norm(dwrq_num) + 1e-15
     )
-    for gname in ["reflex_bypass_gate", "chaotic_bridge_gate", "stage4_silicon_gate", "stage5_tulpa_gate", "trauma_defense_gate"]:
+    gate_names = [
+        "stage0a_zpe_gate",
+        "stage0b_baryon_gate",
+        "stage1a_brane_gate",
+        "stage1b_qtf_gate",
+        "stage1c_qrp_gate",
+        "reflex_bypass_gate",
+        "chaotic_bridge_gate",
+        "trauma_defense_gate",
+        "stage4_silicon_gate",
+        "stage5_tulpa_gate",
+        "stage6_hipp_trace_gate",
+        "stage6_sub_trace_gate",
+    ]
+    for gname in gate_names:
         orig_g = float(params_g[gname])
         params_g[gname] = np.array(orig_g + eps)
         yp_g, _ = UnifiedArchitectureExecutionEngine.forward_unified_layer_exact(x_g, params_g, cfg_g, use_smooth_router=True)
@@ -1346,17 +1479,17 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
         dg_num = (np.sum(yp_g * grad_y_g) - np.sum(ym_g * grad_y_g)) / (2.0 * eps)
         dg_ana = float(grads_g["d_" + gname])
         rel_g = abs(dg_ana - dg_num) / (abs(dg_ana) + abs(dg_num) + 1e-15)
-        print(f"   Learnable Stage Gate Gradcheck dL/d({gname:19s}): {rel_g:.3e}  [PASS < 1e-8]")
+        print(f"   Learnable Stage Gate Gradcheck dL/d({gname:22s}): {rel_g:.3e}  [PASS < 1e-8]")
         assert rel_g < 1e-8
 
-    print(f"   Full 7-Stage (12-Domain) Input Gradcheck dL/d(x_in): {rel_err_xin:.3e}  [PASS < 1e-8]")
-    print(f"   Stage-III Neocortical Router Gradcheck   dL/d(w_rq): {rel_err_wrq:.3e}  [PASS < 1e-8]")
+    print(f"   Full 7-Stage (14-Operator) Input Gradcheck  dL/d(x_in): {rel_err_xin:.3e}  [PASS < 1e-8]")
+    print(f"   Stage-III Neocortical Router Gradcheck      dL/d(w_rq): {rel_err_wrq:.3e}  [PASS < 1e-8]")
     assert rel_err_xin < 1e-8 and rel_err_wrq < 5e-8
 
     # --------------------------------------------------------------------------
     # VERIFICATION II: Cross-Implementation Equivalence (Eager vs. Native .so + Triton Megakernel)
     # --------------------------------------------------------------------------
-    print("\n[Verification II] Cross-Implementation Equivalence (Eager vs. Bootstrapped .so + Triton Megakernel)")
+    print("\n[Verification II] Cross-Implementation Equivalence (Eager vs. Bootstrapped .so + Triton Simulators)")
     print("-" * 100)
     cfg_main = UnifiedHybridArchitectureConfig(
         d_model=128, n_heads=8, n_layers=4, num_proposers=3, top_k_proposers=2,
@@ -1368,6 +1501,14 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     y_dense, ctx_m = UnifiedArchitectureExecutionEngine.forward_unified_layer_exact(
         x_m, params_m, cfg_main, use_smooth_router=False
     )
+
+    qrp_cache = ctx_m["qrp_cache"]
+    qrp_sim_r, qrp_sim_i, _ = simulate_triton_quantum_resource_kernel(
+        qrp_cache["distance_raw"], qrp_cache["phase0"], qrp_cache["syndrome"],
+        qrp_cache["gap_raw"], qrp_cache["norm_raw"],
+        distance_delta=1e-2, failure_epsilon_max=cfg_main.qrp_failure_epsilon_max, energy_eps=1e-3,
+    )
+    diff_qrp_kernel = float(np.max(np.abs((0.60 * qrp_sim_r + 0.40 * qrp_sim_i) - ctx_m["qrp_out"])))
 
     vl_cache = ctx_m["vl_cache"]
     p0_tri, _ = TritonTileSimulator.simulate_fused_cross_modal_vl_bilinear(
@@ -1382,7 +1523,6 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     )
     h_cortex_tri = ctx_m["reflex_bypass"] + mega_tri
 
-    # Execute Stage IV via the Stage-2 Self-Bootstrapped Native C99 `.so` binary AND Triton Tile Simulator!
     boot_info = SelfBootstrappingCompilerEngine.execute_three_stage_self_bootstrap()
     stage2_so = boot_info["stage2"]
     boot_so_out = stage2_so.forward_callable(
@@ -1400,35 +1540,38 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
         params_m["eta_boot"],
     )
     diff_boot_so = float(np.max(np.abs(boot_so_out - ctx_m["boot_out"])))
-    h_silicon_tri = h_cortex_tri + 0.35 * boot_so_out
+    h_silicon_tri = h_cortex_tri + float(params_m["stage4_silicon_gate"]) * boot_so_out
 
     t_streams_tri = h_silicon_tri[:, :, :, None] * params_m["tulpa_proj"][None, None, :, :]
     tulpa_tri, _ = TulpaAnalyticalKernels.fused_tulpa_corollary_agency_dialogue_forward(
         h_silicon_tri, t_streams_tri, params_m["attr_a"],
         params_m["alpha_cd"], params_m["kappa_tpj"], params_m["beta_attr"], params_m["w_dialogue"],
     )
-    h_wake_tri = h_silicon_tri + 0.40 * tulpa_tri
+    h_wake_tri = h_silicon_tri + float(params_m["stage5_tulpa_gate"]) * tulpa_tri
     y_cons_tri, _ = SleepSubconsciousAnalyticalKernels.fused_sleep_shy_swr_pgo_forward(
-        h_wake_tri, 0.50 * ctx_m["reflex_bypass"], 0.50 * ctx_m["chaotic_bridge_out"],
+        h_wake_tri,
+        float(params_m["stage6_hipp_trace_gate"]) * ctx_m["reflex_bypass"],
+        float(params_m["stage6_sub_trace_gate"]) * ctx_m["chaotic_bridge_out"],
         params_m["theta_sleep"], params_m["kappa_vlpo"], params_m["lambda_shy"],
         params_m["alpha_swr"], params_m["beta_pgo"],
     )
     y_triton_path = (
         ctx_m["reflex_bypass"]
         + ctx_m["g_shut_gate"] * y_cons_tri
-        + (1.0 - ctx_m["g_shut_gate"]) * (0.50 * ctx_m["trauma_out"])
+        + (1.0 - ctx_m["g_shut_gate"]) * (float(params_m["trauma_defense_gate"]) * ctx_m["trauma_out"])
     )
     diff_triton_paths = float(np.max(np.abs(y_dense - y_triton_path)))
 
+    print(f"   |Eager Stage-I.C QRP - Fused Triton QRP Kernel|       : {diff_qrp_kernel:.2e}  [PASS < 1e-14]")
     print(f"   |Eager CrossModal VL - Fused Triton VL Kernel|        : {diff_vl_kernel:.2e}  [PASS < 1e-14]")
     print(f"   |Eager Stage-IV Boot - Self-Compiled Stage-2 .so|     : {diff_boot_so:.2e}  [PASS < 1e-14]")
     print(f"   |Dense 7-Stage Layer - .so + Triton Megakernel Path|  : {diff_triton_paths:.2e}  [PASS < 1e-14]")
-    assert diff_vl_kernel < 1e-14 and diff_boot_so < 1e-14 and diff_triton_paths < 1e-14
+    assert diff_qrp_kernel < 1e-14 and diff_vl_kernel < 1e-14 and diff_boot_so < 1e-14 and diff_triton_paths < 1e-14
 
     # --------------------------------------------------------------------------
     # VERIFICATION III: 5-Fold Cross-Validation on Image-Text Multimodal Fusion Task
     # --------------------------------------------------------------------------
-    print("\n[Verification III] 5-Fold CV on Image-Text Fusion (7-Stage 12-Domain Unified vs. Baselines)")
+    print("\n[Verification III] 5-Fold CV on Image-Text Fusion (7-Stage 13-Domain Unified vs. Baselines)")
     print("-" * 100)
     N_samples, L_cv, D_cv = 60, 48, 32
     rng_cv = np.random.default_rng(888)
@@ -1446,7 +1589,7 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     _, ctx_vl_all = UnifiedArchitectureExecutionEngine.forward_unified_layer_exact(
         X_img_txt, p_cv, cfg_cv, use_smooth_router=True
     )
-    all_dom_feats = ctx_vl_all["all_domain_features"]  # [N, 12, L, D]
+    all_dom_feats = ctx_vl_all["all_domain_features"]  # [N, 13, L, D]
 
     anchors_cv = rng_cv.standard_normal((16, D_cv)) * (D_cv ** -0.5)
     c_align_cv, _ = NumpyMoAOperatorKernels.cross_modal_anchor_co_attention_forward(
@@ -1457,7 +1600,7 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
         np.full((D_cv,), 0.8), np.full((D_cv,), 0.8), np.full((D_cv,), 0.65)
     )
 
-    dom_weights = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.34, 0.05, 0.05, 0.08, 0.09, 0.09])
+    dom_weights = np.array([0.04, 0.04, 0.04, 0.04, 0.05, 0.05, 0.05, 0.34, 0.05, 0.05, 0.07, 0.09, 0.09])
     Y_multimodal_target = (
         np.einsum("n,bnld->bld", dom_weights, all_dom_feats[:, :, 32:, :])
         + 1.35 * vl_cross_feat
@@ -1470,7 +1613,7 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     )
     unaligned_linear = 0.5 * (X_img_txt[:, :16, :] + X_img_txt[:, 32:, :])
     dom_no_vl = all_dom_feats.copy()
-    dom_no_vl[:, 6, 32:, :] = unaligned_linear
+    dom_no_vl[:, 7, 32:, :] = unaligned_linear
     feat_unaligned = np.concatenate(
         [dom_no_vl[:, :, 32:, :].transpose(0, 2, 1, 3).reshape(N_samples, 16, -1), unaligned_linear],
         axis=-1,
@@ -1514,9 +1657,9 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     assert np.mean(r2_unified_vl) > 0.99 and np.mean(r2_unified_vl) > np.mean(r2_unaligned) + 0.07
 
     # --------------------------------------------------------------------------
-    # VERIFICATION IV: Leave-One-Stage/Domain-Out (LOSO) Ablation Across All 13 Roles
+    # VERIFICATION IV: Leave-One-Stage/Domain-Out (LOSO) Ablation Across All 14 Roles
     # --------------------------------------------------------------------------
-    print("\n[Verification IV] Leave-One-Stage/Domain-Out (LOSO) Cross-Ablation Across All 7 Stages (13 Roles)")
+    print("\n[Verification IV] Leave-One-Stage/Domain-Out (LOSO) Cross-Ablation Across All 7 Stages (14 Roles)")
     print("-" * 100)
     y_full, _ = UnifiedArchitectureExecutionEngine.forward_unified_layer_exact(
         x_m, params_m, cfg_main, use_smooth_router=True
@@ -1530,7 +1673,7 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
             x_m, params_m, cfg_main, use_smooth_router=True, ablate_stage_name=stage_name
         )
         rel_impact = float(np.linalg.norm(y_full - y_abl) / np.linalg.norm(y_full))
-        print(f"   LOSO Ablate [{stage_name:43s}] | Relative Output Impact: {rel_impact:6.2%} | Active")
+        print(f"   LOSO Ablate [{stage_name:45s}] | Relative Output Impact: {rel_impact:6.2%} | Active")
         assert rel_impact > 0.005
     print(f"   Unified 7-Stage Representation Effective Rank (exp(H(sigma))) : {eff_rank:.2f} / {D_m} dims")
 
@@ -1547,17 +1690,19 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     )
     zpe_diff = float(np.max(np.abs(ctx_m["zpe_out"] - ctx_pert["zpe_out"])))
     baryon_diff = float(np.max(np.abs(ctx_m["baryon_out"] - ctx_pert["baryon_out"])))
+    qrp_diff = float(np.max(np.abs(ctx_m["qrp_out"] - ctx_pert["qrp_out"])))
     cortex_diff = float(np.max(np.abs(ctx_m["h_cortex"] - ctx_pert["h_cortex"])))
     boot_diff = float(np.max(np.abs(ctx_m["boot_out"] - ctx_pert["boot_out"])))
     tulpa_diff = float(np.max(np.abs(ctx_m["tulpa_out"] - ctx_pert["tulpa_out"])))
     sleep_diff = float(np.max(np.abs(ctx_m["y_consolidated"] - ctx_pert["y_consolidated"])))
 
     print(f"   Stage-0 Vacuum & Baryogenesis ||d(Stage0)      / d(Trauma)||_inf : {max(zpe_diff, baryon_diff):.2e}  [PASS == 0.00e+00]")
+    print(f"   Stage-I.C Quantum Phasing DQI ||d(StageI.C)    / d(Trauma)||_inf : {qrp_diff:.2e}  [PASS == 0.00e+00]")
     print(f"   Stage-III Neocortical Columns ||d(Cortex)      / d(Trauma)||_inf : {cortex_diff:.2e}  [PASS == 0.00e+00]")
     print(f"   Stage-IV Tri-ISA CPU+SIMT GPU ||d(SiliconBoot) / d(Trauma)||_inf : {boot_diff:.2e}  [PASS == 0.00e+00]")
     print(f"   Stage-V Tulpa Agency          ||d(Tulpa)       / d(Trauma)||_inf : {tulpa_diff:.2e}  [PASS == 0.00e+00]")
     print(f"   Stage-VI Sleep Consolidation  ||d(Sleep)       / d(Trauma)||_inf : {sleep_diff:.2e}  [PASS == 0.00e+00]")
-    assert max(zpe_diff, baryon_diff, cortex_diff, boot_diff, tulpa_diff, sleep_diff) == 0.0
+    assert max(zpe_diff, baryon_diff, qrp_diff, cortex_diff, boot_diff, tulpa_diff, sleep_diff) == 0.0
 
     g_eustress = float(np.mean(ctx_m["g_shut_gate"]))
     x_shock = x_m.copy()
@@ -1588,6 +1733,18 @@ if not HAS_TORCH:
         """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
         def __init__(self, *args, **kwargs):
             raise ImportError("PyTorch is required to instantiate UnifiedHybridMoABackbone.")
+
+
+__all__ = [
+    _k
+    for _k, _v in list(globals().items())
+    if not _k.startswith("_")
+    and (
+        getattr(_v, "__module__", None) == __name__
+        or "triton" in str(type(_v)).lower()
+    )
+]
+
 
 if __name__ == "__main__":
     run_comprehensive_multi_verification_and_cross_validation()

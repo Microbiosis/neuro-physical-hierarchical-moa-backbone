@@ -246,6 +246,15 @@ if HAS_TRITON:
             tl.store(GradNormRaw_ptr + offsets, d_v, mask=mask)
 
 
+
+else:
+    def fused_quantum_resource_phasing_fwd_kernel(*args, **kwargs):
+        raise ImportError("Triton is required to launch fused_quantum_resource_phasing_fwd_kernel.")
+
+    def fused_quantum_resource_phasing_bwd_kernel(*args, **kwargs):
+        raise ImportError("Triton is required to launch fused_quantum_resource_phasing_bwd_kernel.")
+
+
 # ==============================================================================
 # 3. NumPy analytical kernels
 # ==============================================================================
@@ -1059,6 +1068,18 @@ if not HAS_TORCH:
                 "PyTorch is required to instantiate QuantumResourcePhasingOp; "
                 "use QuantumResourcePhasingAnalyticalKernels for NumPy execution."
             )
+
+
+
+__all__ = [
+    _k
+    for _k, _v in list(globals().items())
+    if not _k.startswith("_")
+    and (
+        getattr(_v, "__module__", None) == __name__
+        or "triton" in str(type(_v)).lower()
+    )
+]
 
 
 if __name__ == "__main__":

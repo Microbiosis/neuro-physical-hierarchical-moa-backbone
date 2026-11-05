@@ -872,5 +872,17 @@ if not HAS_TORCH:
         def __init__(self, *args, **kwargs):
             raise ImportError("PyTorch is required to instantiate SupermembraneSpacetimeOp.")
 
+
+__all__ = [
+    _k
+    for _k, _v in list(globals().items())
+    if not _k.startswith("_")
+    and (
+        getattr(_v, "__module__", None) == __name__
+        or "triton" in str(type(_v)).lower()
+    )
+]
+
+
 if __name__ == "__main__":
     run_supermembrane_verification_suite()

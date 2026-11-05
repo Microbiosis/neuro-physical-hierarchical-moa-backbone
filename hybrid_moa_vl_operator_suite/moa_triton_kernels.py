@@ -448,5 +448,21 @@ def run_triton_kernel_verification() -> None:
     print("=" * 92)
 
 
+
+__all__ = [
+    _k
+    for _k, _v in list(globals().items())
+    if not _k.startswith("_")
+    and (
+        getattr(_v, "__module__", None) == __name__
+        or "triton" in str(type(_v)).lower()
+    )
+]
+
+
 if __name__ == "__main__":
     run_triton_kernel_verification()
+
+# Top-level simulator aliases
+simulate_fused_cross_modal_vl_bilinear = TritonTileSimulator.simulate_fused_cross_modal_vl_bilinear
+simulate_persistent_norm_sparse_topk_megakernel = TritonTileSimulator.simulate_persistent_norm_sparse_topk_megakernel

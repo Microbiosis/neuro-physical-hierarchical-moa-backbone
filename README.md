@@ -12,9 +12,9 @@ kernels, `torch.nn.Module` operators, and fused `autograd.Function` / `@triton.j
 implementations — and every layer is importable even without torch installed
 (fallback stubs raise a clear `ImportError` only when instantiated).
 
-Totals: **15,333 lines** across the 15 standalone operator modules, plus the unified
-orchestrator (1,593 lines), the 5-dimensional independence audit (609 lines) and the
-package `__init__.py` (305 lines) — **17,840 lines of Python** in the package, plus a
+Totals: **15,526 lines** across the 15 standalone operator modules, plus the unified
+orchestrator (1,750 lines), the 5-dimensional independence audit (657 lines) and the
+package `__init__.py` (131 lines) — **18,064 lines of Python** in the package, plus a
 660-line clean-room smoke test.
 
 ---
@@ -27,7 +27,7 @@ package `__init__.py` (305 lines) — **17,840 lines of Python** in the package,
 ├── smoke_test.py                     clean-room verification (16/16)
 ├── README.md                         本文件
 └── hybrid_moa_vl_operator_suite/     算子包（Python package）
-    ├── __init__.py                   70 个公开导出
+    ├── __init__.py                   动态初始化（零硬编码表）→ 138 个公开导出
     ├── README.md                     包内说明（原始版本文档）
     ├── quantum_resource_phasing_operators.py   量子资源相位（1,065 行）← 新增
     ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（2,285 行）
@@ -64,11 +64,11 @@ together with four further independence dimensions).
 | Module | Domain | Lines |
 |---|---|---|
 | `cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,285 |
-| `quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门（独立算子，尚未接入统一层） | 1,065 |
-| `unified_hybrid_moa_architecture.py` | 七阶段总装 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 可学习阶段间混合门 + 执行引擎 + LOSO 消融 + 非创伤解耦审计 | 1,593 |
-| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献），覆盖 14 个独立模块 | 609 |
+| `quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门 → **Stage I.C** | 1,065 |
+| `unified_hybrid_moa_architecture.py` | 七阶段十四算子四地层总装 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 可学习阶段间混合门 + 执行引擎 + LOSO 消融 + 非创伤解耦审计 | 1,750 |
+| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献），覆盖 15 个独立模块 | 657 |
 | `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,007 |
-| `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,157 |
+| `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,169 |
 | `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 938 |
 | `spinal_cord_pathway_operators.py` | 脊髓节段通路、Melzack-Wall 门控、Renshaw 递归 | 936 |
 | `vacuum_zpe_fluctuation_operators.py` | 真空零点能下限、Casimir 压力、Schwinger 对产生、虚玻色子传播子 | 928 |
@@ -76,7 +76,7 @@ together with four further independence dimensions).
 | `supermembrane_spacetime_operators.py` | 11 维超膜 DBI、Randall-Sundrum 翘曲 KK 模态 | 864 |
 | `quantum_tidal_operators.py` | WKB 隧穿、Schwarzschild 四极潮汐张量 | 862 |
 | `neuro_nonlinear_operators.py` | 树突 NMDA 镁门控、FitzHugh-Nagumo、Kuramoto 相位耦合 | 793 |
-| `local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 + 自举编译接口 + **persistent SRAM 单次 launch 前反向** | 1,419 |
+| `local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 + 自举编译接口 + **persistent SRAM 单次 launch 前反向** | 1,431 |
 | `tulpa_neuro_operators.py` | 多子人格吸引子、精度加权自由能路由、Agency 比较器 | 692 |
 | `dissociative_trauma_neuro_operators.py` | Stage-I 前门控：杏仁核超唤醒、PAG 过载关断、ANP/EP 隔离 + 独立验证套件 | 539 |
 | `moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 390 |
@@ -205,6 +205,23 @@ c_align, cache = k.cross_modal_anchor_co_attention_forward(v_vis, t_txt, anchors
 out, cache = k.cross_modal_vl_bilinear_fusion_forward(
     v_vis, t_txt, c_align, alpha_vis, alpha_txt, beta_bilin, lam_norm=0.35)
 ```
+
+## Package initializer (v12)
+
+`__init__.py` is no longer a hand-written export table. It now:
+
+1. discovers every submodule via `pkgutil.iter_modules` (ordering standalone
+   operator/kernel modules before the unified-assembly and verification modules);
+2. scans each submodule's `__all__` (each module now also generates its own
+   `__all__` from its own namespace) and resolves every symbol through `getattr`
+   with a fault-tolerant fallback into nested `*Kernels` / `*Simulator` /
+   `*Engine` classes;
+3. exposes a PEP 562 module-level `__getattr__` for on-demand cross-submodule lookup.
+
+Effect: renaming or moving a symbol in one operator module no longer breaks
+`import hybrid_moa_vl_operator_suite` — the three earlier import failures
+(v2: 20 missing class names; v8/v9: 2 missing module-level functions) become
+impossible by construction. Measured: **138 exports, package imports with no patch.**
 
 ## Verification
 

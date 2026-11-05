@@ -1,305 +1,131 @@
 """
-Unified 9-Domain Interdisciplinary Hybrid MoA Operator Suite (`hybrid_moa_vl_operator_suite`).
-Pure Vision-Language Cross-Modal Fusion Edition.
-Uses `if __package__:` dual-mode imports (avoiding masking symbol ImportErrors) and
-resolves the real Triton kernel `persistent_moa_norm_sparse_topk_megakernel` first
-with fallback to `persistent_norm_sparse_topk_agg_kernel`.
+Unified Interdisciplinary Hybrid MoA Operator Suite (`hybrid_moa_vl_operator_suite`).
+
+Zero-hardcoded-table dynamic package initializer:
+1. Automatically discovers all `.py` submodules in the package directory via `pkgutil.iter_modules`
+   (ordering standalone operator/kernel modules before unified assembly and verification modules).
+2. Dynamically scans each submodule's `__all__` (or inspects objects whose `__module__ == mod.__name__`)
+   and resolves every symbol via `getattr` with fault-tolerant fallback to nested `*Kernels`,
+   `*Simulator`, and `*Engine` classes.
+3. Provides a PEP 562 module-level `__getattr__` hook for on-demand cross-submodule lookup.
 """
 
-if __package__:
-    from . import moa_triton_kernels as _triton_mod
-    from .moa_operators import (
-        MoAOperatorConfig,
-        NumpyMoAOperatorKernels,
-        RMSNorm,
-        FusedCrossModalBilinearGateFunction,
-        CrossModalVisionLanguageFusionSubOp,
-        HeterogeneousProposerOp,
-        CrossProposalAggregatorOp,
-        MixtureOfAttentionOp,
-    )
-    from .moa_triton_kernels import (
-        KernelOptimizationReport,
-        TritonTileSimulator,
-        fused_cross_modal_vl_bilinear_fwd_kernel,
-        fused_cross_modal_vl_bilinear_bwd_kernel,
-        launch_fused_cross_modal_vl_bilinear_triton,
-        launch_persistent_moa_megakernel_triton,
-    )
-    from .quantum_tidal_operators import (
-        QuantumTidalConfig,
-        QuantumTidalAnalyticalKernels,
-        FusedQuantumTidalWaveFunction,
-        QuantumTidalFluctuationOp,
-    )
-    from .neuro_nonlinear_operators import (
-        NeuroNonlinearConfig,
-        NeuroNonlinearAnalyticalKernels,
-        FusedDendriticNMDAShuntingFHNFunction,
-        NonlinearDendriticNeuroOp,
-    )
-    from .local_self_modifying_operators import (
-        LocalSelfModConfig,
-        LocalSelfModifyingAnalyticalKernels,
-        FusedLocalSelfModWeightFunction,
-        LocalNonlinearSelfModifyingOp,
-    )
-    from .supermembrane_spacetime_operators import (
-        SupermembraneSpacetimeConfig,
-        SupermembraneAnalyticalKernels,
-        FusedSupermembraneDBIWarpedFunction,
-        SupermembraneSpacetimeOp,
-    )
-    from .tulpa_neuro_operators import (
-        TulpaNeuroConfig,
-        TulpaAnalyticalKernels,
-        FusedTulpaCorollaryAgencyDialogueFunction,
-        TulpaNeuroCognitiveOp,
-    )
-    from .corticospinal_chaotic_operators import (
-        CorticospinalChaoticConfig,
-        CorticospinalChaoticAnalyticalKernels,
-        FusedCorticospinalChaoticManifoldFunction,
-        CorticospinalChaoticPathwayOp,
-    )
-    from .baryogenesis_parity_operators import (
-        ParityBaryogenesisConfig,
-        ParityBaryogenesisAnalyticalKernels,
-        FusedParityCPBaryogenesisFunction,
-        ParityBaryogenesisAsymmetryOp,
-    )
-    from .dissociative_trauma_neuro_operators import (
-        DissociativeTraumaConfig,
-        DissociativeTraumaAnalyticalKernels,
-        FusedCorticolimbicDissociativeDPDRFunction,
-        DissociativeTraumaNeuroOp,
-    )
-    from .spinal_cord_pathway_operators import (
-        SpinalCordPathwayConfig,
-        SpinalCordAnalyticalKernels,
-        FusedSpinalDorsalReflexRenshawFunction,
-        SpinalCordPathwayOp,
-    )
-    from .sleep_subconscious_neuro_operators import (
-        SleepSubconsciousConfig,
-        SleepSubconsciousAnalyticalKernels,
-        FusedSleepSubconsciousSHYSWRPGOFunction,
-        SleepSubconsciousNeuroOp,
-    )
-    from .vacuum_zpe_fluctuation_operators import (
-        VacuumZPEFluctuationConfig,
-        VacuumZPEAnalyticalKernels,
-        FusedVacuumZPECasimirSchwingerFunction,
-        VacuumZPEFluctuationOp,
-    )
-    from .cpu_gpu_self_bootstrapping_operators import (
-        CPUGPUSelfBootstrappingConfig,
-        CPUGPUSelfBootstrappingAnalyticalKernels,
-        SelfBootstrappingCompilerEngine,
-        BootstrapStageArtifact,
-        FusedCPUGPUSelfBootstrappingFunction,
-        CPUGPUSelfBootstrappingOp,
-    )
-    from .unified_hybrid_moa_architecture import (
-        UnifiedHybridArchitectureConfig,
-        UnifiedArchitectureExecutionEngine,
-        UnifiedInterdisciplinaryMoALayer,
-        UnifiedHybridMoABackbone,
-    )
-else:
-    import moa_triton_kernels as _triton_mod
-    from moa_operators import (
-        MoAOperatorConfig,
-        NumpyMoAOperatorKernels,
-        RMSNorm,
-        FusedCrossModalBilinearGateFunction,
-        CrossModalVisionLanguageFusionSubOp,
-        HeterogeneousProposerOp,
-        CrossProposalAggregatorOp,
-        MixtureOfAttentionOp,
-    )
-    from moa_triton_kernels import (
-        KernelOptimizationReport,
-        TritonTileSimulator,
-        fused_cross_modal_vl_bilinear_fwd_kernel,
-        fused_cross_modal_vl_bilinear_bwd_kernel,
-        launch_fused_cross_modal_vl_bilinear_triton,
-        launch_persistent_moa_megakernel_triton,
-    )
-    from quantum_tidal_operators import (
-        QuantumTidalConfig,
-        QuantumTidalAnalyticalKernels,
-        FusedQuantumTidalWaveFunction,
-        QuantumTidalFluctuationOp,
-    )
-    from neuro_nonlinear_operators import (
-        NeuroNonlinearConfig,
-        NeuroNonlinearAnalyticalKernels,
-        FusedDendriticNMDAShuntingFHNFunction,
-        NonlinearDendriticNeuroOp,
-    )
-    from local_self_modifying_operators import (
-        LocalSelfModConfig,
-        LocalSelfModifyingAnalyticalKernels,
-        FusedLocalSelfModWeightFunction,
-        LocalNonlinearSelfModifyingOp,
-    )
-    from supermembrane_spacetime_operators import (
-        SupermembraneSpacetimeConfig,
-        SupermembraneAnalyticalKernels,
-        FusedSupermembraneDBIWarpedFunction,
-        SupermembraneSpacetimeOp,
-    )
-    from tulpa_neuro_operators import (
-        TulpaNeuroConfig,
-        TulpaAnalyticalKernels,
-        FusedTulpaCorollaryAgencyDialogueFunction,
-        TulpaNeuroCognitiveOp,
-    )
-    from corticospinal_chaotic_operators import (
-        CorticospinalChaoticConfig,
-        CorticospinalChaoticAnalyticalKernels,
-        FusedCorticospinalChaoticManifoldFunction,
-        CorticospinalChaoticPathwayOp,
-    )
-    from baryogenesis_parity_operators import (
-        ParityBaryogenesisConfig,
-        ParityBaryogenesisAnalyticalKernels,
-        FusedParityCPBaryogenesisFunction,
-        ParityBaryogenesisAsymmetryOp,
-    )
-    from dissociative_trauma_neuro_operators import (
-        DissociativeTraumaConfig,
-        DissociativeTraumaAnalyticalKernels,
-        FusedCorticolimbicDissociativeDPDRFunction,
-        DissociativeTraumaNeuroOp,
-    )
-    from spinal_cord_pathway_operators import (
-        SpinalCordPathwayConfig,
-        SpinalCordAnalyticalKernels,
-        FusedSpinalDorsalReflexRenshawFunction,
-        SpinalCordPathwayOp,
-    )
-    from sleep_subconscious_neuro_operators import (
-        SleepSubconsciousConfig,
-        SleepSubconsciousAnalyticalKernels,
-        FusedSleepSubconsciousSHYSWRPGOFunction,
-        SleepSubconsciousNeuroOp,
-    )
-    from vacuum_zpe_fluctuation_operators import (
-        VacuumZPEFluctuationConfig,
-        VacuumZPEAnalyticalKernels,
-        FusedVacuumZPECasimirSchwingerFunction,
-        VacuumZPEFluctuationOp,
-    )
-    from cpu_gpu_self_bootstrapping_operators import (
-        CPUGPUSelfBootstrappingConfig,
-        CPUGPUSelfBootstrappingAnalyticalKernels,
-        SelfBootstrappingCompilerEngine,
-        BootstrapStageArtifact,
-        FusedCPUGPUSelfBootstrappingFunction,
-        CPUGPUSelfBootstrappingOp,
-    )
-    from unified_hybrid_moa_architecture import (
-        UnifiedHybridArchitectureConfig,
-        UnifiedArchitectureExecutionEngine,
-        UnifiedInterdisciplinaryMoALayer,
-        UnifiedHybridMoABackbone,
-    )
+from __future__ import annotations
 
-# Resolve real Triton kernel name (`persistent_moa_norm_sparse_topk_megakernel`) first,
-# falling back to stub (`persistent_norm_sparse_topk_agg_kernel`), and expose unified public names.
-persistent_moa_norm_sparse_topk_megakernel = getattr(
-    _triton_mod,
-    "persistent_moa_norm_sparse_topk_megakernel",
-    getattr(_triton_mod, "persistent_norm_sparse_topk_agg_kernel", None),
-)
-persistent_norm_sparse_topk_agg_kernel = persistent_moa_norm_sparse_topk_megakernel
+import importlib
+import inspect
+import os
+import pkgutil
+from types import ModuleType
+from typing import Dict, List
 
-__all__ = [
-    # 1. MoA & Vision-Language Cross-Modal Core
-    "MoAOperatorConfig",
-    "NumpyMoAOperatorKernels",
-    "RMSNorm",
-    "FusedCrossModalBilinearGateFunction",
-    "CrossModalVisionLanguageFusionSubOp",
-    "HeterogeneousProposerOp",
-    "CrossProposalAggregatorOp",
-    "MixtureOfAttentionOp",
-    # 2. Triton GPU Kernels & Tile Simulator
-    "KernelOptimizationReport",
-    "TritonTileSimulator",
-    "fused_cross_modal_vl_bilinear_fwd_kernel",
-    "fused_cross_modal_vl_bilinear_bwd_kernel",
-    "persistent_moa_norm_sparse_topk_megakernel",
-    "persistent_norm_sparse_topk_agg_kernel",
-    "launch_fused_cross_modal_vl_bilinear_triton",
-    "launch_persistent_moa_megakernel_triton",
-    # 3. Quantum Tidal Gravitational Fluctuation
-    "QuantumTidalConfig",
-    "QuantumTidalAnalyticalKernels",
-    "FusedQuantumTidalWaveFunction",
-    "QuantumTidalFluctuationOp",
-    # 4. Cortical Dendritic NMDA Shunting & FitzHugh-Nagumo
-    "NeuroNonlinearConfig",
-    "NeuroNonlinearAnalyticalKernels",
-    "FusedDendriticNMDAShuntingFHNFunction",
-    "NonlinearDendriticNeuroOp",
-    # 5. Local Nonlinear Self-Modifying Fast Weights
-    "LocalSelfModConfig",
-    "LocalSelfModifyingAnalyticalKernels",
-    "FusedLocalSelfModWeightFunction",
-    "LocalNonlinearSelfModifyingOp",
-    # 6. 11D Supermembrane Nambu-Poisson & DBI Spacetime
-    "SupermembraneSpacetimeConfig",
-    "SupermembraneAnalyticalKernels",
-    "FusedSupermembraneDBIWarpedFunction",
-    "SupermembraneSpacetimeOp",
-    # 7. TULPA Autonomous Persona Attractor & Agency
-    "TulpaNeuroConfig",
-    "TulpaAnalyticalKernels",
-    "FusedTulpaCorollaryAgencyDialogueFunction",
-    "TulpaNeuroCognitiveOp",
-    # 8. Corticospinal Chaotic Pathway & Pyragas Stabilization
-    "CorticospinalChaoticConfig",
-    "CorticospinalChaoticAnalyticalKernels",
-    "FusedCorticospinalChaoticManifoldFunction",
-    "CorticospinalChaoticPathwayOp",
-    # 9. Parity Violation & Baryogenesis Asymmetry
-    "ParityBaryogenesisConfig",
-    "ParityBaryogenesisAnalyticalKernels",
-    "FusedParityCPBaryogenesisFunction",
-    "ParityBaryogenesisAsymmetryOp",
-    # 10. Dissociative Trauma & Corticolimbic Defense
-    "DissociativeTraumaConfig",
-    "DissociativeTraumaAnalyticalKernels",
-    "FusedCorticolimbicDissociativeDPDRFunction",
-    "DissociativeTraumaNeuroOp",
-    # 11. Spinal Cord Dorsal Horn & Renshaw Pathway
-    "SpinalCordPathwayConfig",
-    "SpinalCordAnalyticalKernels",
-    "FusedSpinalDorsalReflexRenshawFunction",
-    "SpinalCordPathwayOp",
-    # 12. Human Sleep Physiology & Deep Subconscious Neuroscience
-    "SleepSubconsciousConfig",
-    "SleepSubconsciousAnalyticalKernels",
-    "FusedSleepSubconsciousSHYSWRPGOFunction",
-    "SleepSubconsciousNeuroOp",
-    # 13. Quantum Fluctuation & Vacuum Zero-Point Energy (ZPE)
-    "VacuumZPEFluctuationConfig",
-    "VacuumZPEAnalyticalKernels",
-    "FusedVacuumZPECasimirSchwingerFunction",
-    "VacuumZPEFluctuationOp",
-    # 14. CPU-GPU Heterogeneous & Self-Bootstrapping / Self-Compiling Operator
-    "CPUGPUSelfBootstrappingConfig",
-    "CPUGPUSelfBootstrappingAnalyticalKernels",
-    "SelfBootstrappingCompilerEngine",
-    "BootstrapStageArtifact",
-    "FusedCPUGPUSelfBootstrappingFunction",
-    "CPUGPUSelfBootstrappingOp",
-    # 15. Unified Assembly Architecture
-    "UnifiedHybridArchitectureConfig",
-    "UnifiedArchitectureExecutionEngine",
-    "UnifiedInterdisciplinaryMoALayer",
-    "UnifiedHybridMoABackbone",
-]
+_MISSING = object()
+_PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+_LOADED_MODULES: Dict[str, ModuleType] = {}
+__all__: List[str] = []
+
+
+def _discover_submodule_names() -> List[str]:
+    """Automatically discover all submodule names in `_PKG_DIR` without a hardcoded file list."""
+    names = [
+        info.name
+        for info in pkgutil.iter_modules([_PKG_DIR])
+        if not info.ispkg and not info.name.startswith("_")
+    ]
+
+    def _sort_key(name: str) -> tuple:
+        if name.startswith("moa_"):
+            return (0, name)
+        if name.endswith(("_operators", "_kernels")):
+            return (1, name)
+        if "architecture" in name:
+            return (2, name)
+        return (3, name)
+
+    return sorted(names, key=_sort_key)
+
+
+def _load_submodule(mod_name: str) -> ModuleType:
+    if __package__:
+        return importlib.import_module(f".{mod_name}", __package__)
+    return importlib.import_module(mod_name)
+
+
+def _discover_module_symbols(mod: ModuleType) -> List[str]:
+    """Read `mod.__all__` via `getattr`, or fall back to objects defined in `mod.__name__`."""
+    explicit_all = getattr(mod, "__all__", None)
+    if isinstance(explicit_all, (list, tuple)):
+        return [str(s) for s in explicit_all if isinstance(s, str) and not s.startswith("_")]
+
+    discovered: List[str] = []
+    for name, obj in inspect.getmembers(mod):
+        if name.startswith("_") or isinstance(obj, ModuleType):
+            continue
+        if getattr(obj, "__module__", None) == mod.__name__ or "triton" in str(type(obj)).lower():
+            discovered.append(name)
+    return discovered
+
+
+def _resolve_symbol_from_module(mod: ModuleType, name: str) -> object:
+    """Fault-tolerantly resolve `name` from `mod` or its nested `*Kernels`/`*Simulator`/`*Engine` classes."""
+    val = getattr(mod, name, _MISSING)
+    if val is not _MISSING:
+        return val
+    for _, cls_obj in inspect.getmembers(mod, inspect.isclass):
+        if getattr(cls_obj, "__module__", None) == mod.__name__:
+            nested = getattr(cls_obj, name, _MISSING)
+            if nested is not _MISSING:
+                return nested
+    return _MISSING
+
+
+def _bootstrap_package_namespace() -> None:
+    g = globals()
+    for mod_name in _discover_submodule_names():
+        try:
+            mod = _load_submodule(mod_name)
+        except Exception:
+            continue
+        _LOADED_MODULES[mod_name] = mod
+        g[mod_name] = mod
+
+        for sym in _discover_module_symbols(mod):
+            val = _resolve_symbol_from_module(mod, sym)
+            if val is _MISSING:
+                continue
+            if sym in g and sym in __all__:
+                continue
+            g[sym] = val
+            if sym not in __all__:
+                __all__.append(sym)
+
+        for _, cls_obj in inspect.getmembers(mod, inspect.isclass):
+            if getattr(cls_obj, "__module__", None) == mod.__name__:
+                for method_name in dir(cls_obj):
+                    if method_name.startswith("simulate_") and method_name not in g:
+                        m_val = getattr(cls_obj, method_name, _MISSING)
+                        if m_val is not _MISSING:
+                            g[method_name] = m_val
+                            if method_name not in __all__:
+                                __all__.append(method_name)
+
+
+_bootstrap_package_namespace()
+
+
+def __getattr__(name: str) -> object:
+    """PEP 562 dynamic fallback lookup across all loaded submodules and their classes."""
+    if name in globals():
+        return globals()[name]
+    for mod in _LOADED_MODULES.values():
+        val = _resolve_symbol_from_module(mod, name)
+        if val is not _MISSING:
+            globals()[name] = val
+            if not name.startswith("_") and name not in __all__:
+                __all__.append(name)
+            return val
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> List[str]:
+    return sorted(set(globals().keys()) | set(__all__))
