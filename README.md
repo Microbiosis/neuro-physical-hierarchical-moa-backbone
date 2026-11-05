@@ -253,7 +253,10 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
   and are maintained there.
 - Everything under `hybrid_moa_vl_operator_suite/` is byte-identical to the shipped
   archive. The only files written for this repository are `smoke_test.py`, `README.md`,
-  `NOTICE` and `.gitignore`.
+  `NOTICE`, `.gitignore` and the files under `docs/`.
+- `docs/TAXONOMY_AUDIT.md` audits an external taxonomy write-up of this architecture
+  claim by claim against the code (which claims hold, which are overstated, and what
+  the write-up missed).
 - Import-mode history, for the record: v2 of the archive imported 20 symbol names that
   did not exist, and v3 imported a Triton kernel name that only exists when Triton is
   absent; both were fixed upstream in the current archive (`if __package__:` dual-mode
