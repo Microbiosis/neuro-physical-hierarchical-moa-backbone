@@ -25,7 +25,7 @@
 | 1 | 类淋巴冲刷 `W_glymph = 1 - G_sleep·ε/(x²+ε)` | `sleep_subconscious_neuro_operators.py:143`（Triton）、`:590`（numpy），解析反向 `:195`/`:226` | ✅ 一字不差，且反向解析式在手 |
 | 2 | Stage 0.A 与 Stage V.A 也用 `R≪L` 潜锚点 | 真空：`vacuum_zpe_fluctuation_operators.py:423-429`（`attn_emit[B,R_vac,L]→v_boson[B,R_vac,D]→attn_abs[B,L,R_vac]`）；睡眠：`sleep_subconscious_neuro_operators.py:477,486-487`（`scores_pool[B,R,L]→z_dream→z_sub[B,L,D]`） | ✅ 属实。这是该分析抓到的一个真结构性共性，不是修辞 |
 | 3 | 有界 Hadamard 双线性 `(V⊙T+C)/√(1+λ(V²+T²))` | `moa_operators.py:122`（门）、`:126`（插值）、`:132`（归一化）、`:136`（合成） | ✅ 一致 |
-| 4 | Renshaw 分式递归负反馈 | `spinal_cord_pathway_operators.py:111`（`R_f = S_f - γ_ia·(S_e/(1+S_e²))`）、`:113` 附近的 `M = R/(1+λ_rc·R²)`；公式注释在 `:23-29` | ✅ 一致，含交互抑制 |
+| 4 | Renshaw 分式递归负反馈 | `spinal_cord_pathway_operators.py:114-115`（Triton：`Out = R/(1+λ_rc·R²) + α_cpg·sin(ω_cpg·l)`）、`:332`（numpy：`m_renshaw = r_reflex/denom_rc`）、`:111`（Sherrington 交互抑制 `R_f = S_f - γ_ia·(S_e/(1+S_e²))`）；公式注释在 `:23-29` | ✅ 一致，含交互抑制与 CPG 半中枢振荡 |
 | 5 | Pyragas 时滞反馈镇定 + 有限速度轴突延迟 | `corticospinal_chaotic_operators.py:38`（延迟）、`:82`（`kappa_ctrl`）、`:117`（闭环偏差反馈） | ✅ 一致 |
 | 6 | Stage III 为 token 级 top-k 路由 + 负载均衡 + Z-loss | `moa_operators.py:369`（`argpartition` top-k）、`:364`（`z_loss = mean(lse²)`）、`:383`（`load_balance = N·Σf_i·p_i`） | ✅ 一致 |
 | 7 | 统一层的 Stage III 确实由 `CrossProposalAggregatorOp` + Triton megakernel 承担 | `unified_hybrid_moa_architecture.py:360`（实例化，`aggregator_mode="sparse_router"`）、`:418`（调用） | ✅ 一致 |
