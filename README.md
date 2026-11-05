@@ -247,11 +247,15 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
   | Dimension | Result |
   |---|---|
   | I · file & runtime isolation | 14/14 modules: zero sibling imports, standalone run PASS |
-  | II · forward-representation independence | joint subspace rank **12/12 full**; mean off-diag \|cos\| 0.0844; max VIF 1.72 (< 2.0) |
-  | III · input-gradient subspace independence | gradient matrix rank **12/12**; mean \|cos(Gi,Gj)\| 0.0934 (max 0.5803 < 0.80); max gradient VIF 1.90 (< 5.0) |
-  | IV · parameter cross-sensitivity Jacobian | off-diagonal cross-talk **exactly 0.00e+00**; min diagonal self-sensitivity 8.16e-02 > 0 (all 12 active) |
-  | V · leave-one-operator-out (CV) | full-ensemble CV R² **0.9997**; every operator irreplaceable, unique ΔR² **+0.0306 … +0.0509** |
+  | II · forward-representation independence | joint subspace rank **13/13 full**; mean off-diag \|cos\| 0.0789; max VIF 1.74 (< 2.0) |
+  | III · input-gradient subspace independence | gradient matrix rank **13/13**; mean \|cos(Gi,Gj)\| 0.0894 (max 0.5803 < 0.80); max gradient VIF 1.91 (< 5.0) |
+  | IV · parameter cross-sensitivity Jacobian | off-diagonal cross-talk **exactly 0.00e+00**; min diagonal self-sensitivity 8.16e-02 > 0 (all 13 active) |
+  | V · leave-one-operator-out (CV) | full-ensemble CV R² **0.9998**; every operator irreplaceable, unique ΔR² **+0.0277 … +0.0466** |
 
+  v8 起覆盖 **14 个独立模块 / 13 个领域算子**（新增 `13:CPUGPU_TriISA_Bootstrap`，其独有
+  ΔR² = +0.0408）。Kaggle GPU kernel
+  `redmingwei/hetero-moe-operator-independence-v8`，1.1 min 跑完，日志见
+  `docs/operator_independence_audit.log`。
   Note: the script's header says "5-Fold CV" while its result line prints "4-Fold CV R²";
   the fold count is the author's, not something changed here.
 
