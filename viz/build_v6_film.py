@@ -108,8 +108,9 @@ def build_op(idx, dev="cpu"):
     name, mod_name, cfg_name, op_name = OPS[idx]
     mod = importlib.import_module(mod_name)
     if cfg_name is None:  # 跨模态融合：直接吃 d_model / num_anchors
-        return getattr(mod, op_name)(d_model=D, num_anchors=CFG["num_cross_modal_anchors"])
-    op = getattr(mod, op_name)(getattr(mod, cfg_name)(**_cfg_kwargs(mod, cfg_name)))
+        op = getattr(mod, op_name)(d_model=D, num_anchors=CFG["num_cross_modal_anchors"])
+    else:
+        op = getattr(mod, op_name)(getattr(mod, cfg_name)(**_cfg_kwargs(mod, cfg_name)))
     return op.to(dev) if hasattr(op, "to") else op
 
 
