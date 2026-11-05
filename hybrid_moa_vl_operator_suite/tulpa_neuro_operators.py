@@ -9,30 +9,27 @@ Internal Dialogue into end-to-end differentiable PyTorch operators (`nn.Module` 
 `torch.autograd.Function`), fused single-launch Triton GPU Kernels (`@triton.jit`),
 and analytical NumPy forward/backward verification kernels.
 
-Core Cognitive Neuroscience Mechanisms Mapped to Neural Operators:
+Core Cognitive Neuroscience Mechanisms & Positivity Invariants:
 1. Host-Tulpa Multi-Stream Partitioning & Persistent Persona Attractors:
    Projects input representations into a primary Host Executive stream H in R^{B x L x D}
-   and P parallel Tulpa Sub-Persona streams T_p in R^{B x P x L x D}, each anchored
-   by a persistent learnable persona attractor vector A_p in R^{P x D} via a SINGLE
-   horizontally fused GEMM launch.
-2. Corollary Discharge Attenuation & Prediction Error (`Delta_p`):
-   Models the efference copy / corollary discharge mechanism (Frith, 2005; Veissiere,
-   2016) where self-generated thoughts are normally cancelled by host prediction
-   `alpha_cd * H`. Selective attenuation of corollary discharge yields unpredicted
-   autonomous signal:
-       Delta_p = T_p - alpha_cd_p * H
-3. Temporoparietal Junction (TPJ) External Agency Attribution Gate (`G_agency`):
-   When unpredicted residual energy Delta_p^2 is non-zero, the TPJ agency gate
-   nonlinearly attributes autonomous non-self agency to the p-th Tulpa stream:
-       G_agency(Delta_p) = (kappa_tpj * Delta_p^2) / (1 + kappa_tpj * Delta_p^2)
+   and P parallel Tulpa Sub-Persona streams T_p in R^{B x L x D x P}, each anchored
+   by a persistent learnable persona attractor vector A_p in R^{D x P}.
+2. Bounded Corollary Discharge Attenuation (`alpha_eff in (0, 1)`):
+   Enforces `alpha_eff = sigmoid(alpha_cd) in (0, 1)` so corollary discharge strictly
+   attenuates host prediction without ever flipping into negative feedback amplification:
+       alpha_eff = sigmoid(alpha_cd),   Delta_p = T_p - alpha_eff_p * H
+3. Positivity-Constrained TPJ External Agency Attribution Gate (`kappa_eff > 0`):
+   Enforces `kappa_eff = softplus(kappa_tpj) + 1e-4 > 0` so `1 + kappa_eff * Delta_p^2 >= 1.0 > 0`
+   everywhere in R^P (mathematically eliminating the `kappa = -1/Delta^2` division-by-zero
+   singularity and guaranteeing `G_agency in [0, 1)`):
+       G_agency(Delta_p) = (kappa_eff * Delta_p^2) / (1 + kappa_eff * Delta_p^2)
 4. Bounded Self-Sustaining Attractor Resonance & DMN Internal Dialogue Synthesis:
-   Each Tulpa stream resonates with its persistent persona attractor A_p through a
-   relativistic/rational saturation envelope and couples back to the Host stream:
        Psi_p = G_agency(Delta_p) * (T_p + beta_attr * A_p) / sqrt(1 + lam_sat * (T_p + beta_attr * A_p)^2)
        Out   = H + sum_{p=1..P} w_dialogue_p * Psi_p
-5. Fused Single-Launch Triton GPU Kernels (`@triton.jit`):
-   Fuses Corollary Discharge subtraction, TPJ Agency Gate, Attractor Resonance,
-   and P-stream DMN Internal Dialogue reduction into 1 single SRAM pass and 1 launch!
+5. Complete 7-Output Fused Single-Launch Triton GPU Kernels (`@triton.jit`):
+   Computes both activation gradients (`dHost`, `dTulpa`) and all 5 learnable parameter
+   gradients (`dAttr`, `dAlphaCd`, `dKappaTpj`, `dBetaAttr`, `dWDial`) via `tl.atomic_add`,
+   and dispatches via `kernel[grid](...)` when running on CUDA with Triton.
 """
 
 from __future__ import annotations
@@ -68,8 +65,8 @@ class TulpaNeuroConfig:
     d_model: int = 256
     n_heads: int = 8
     num_tulpas: int = 4                   # P: number of autonomous sub-persona streams
-    alpha_cd_init: float = 0.35           # Attenuated corollary discharge coefficient in (0, 1)
-    kappa_tpj_init: float = 1.20          # TPJ non-self agency attribution sensitivity
+    alpha_cd_init: float = 0.35           # Raw logit for corollary discharge attenuation
+    kappa_tpj_init: float = 1.20          # Raw parameter for TPJ agency sensitivity (softplus > 0)
     beta_attr_init: float = 0.50          # Persistent persona attractor coupling strength
     lambda_sat: float = 0.50              # Attractor resonance saturation constant
     rms_norm_eps: float = 1e-6
@@ -86,8 +83,8 @@ if HAS_TRITON:
         Host_ptr,       # [B, L, D] Host executive stream H
         Tulpa_ptr,      # [B, L, D, P] P autonomous Tulpa streams T_p
         Attr_ptr,       # [D, P] persistent persona attractors A_p
-        AlphaCd_ptr,    # [P] corollary discharge attenuation factors alpha_cd_p
-        KappaTpj_ptr,   # [P] TPJ agency attribution sensitivities kappa_tpj_p
+        AlphaCd_ptr,    # [P] raw corollary discharge attenuation logits alpha_cd_p
+        KappaTpj_ptr,   # [P] raw TPJ agency sensitivities kappa_tpj_p
         BetaAttr_ptr,   # [P] persona attractor coupling weights beta_attr_p
         WDial_ptr,      # [P] DMN internal dialogue synthesis weights w_p
         Out_ptr,        # [B, L, D] unified Host-Tulpa internal dialogue output
@@ -97,9 +94,9 @@ if HAS_TRITON:
         BLOCK_D: tl.constexpr,
     ):
         """
-        Single-Launch Fused Kernel: Each program handles one (b, l) token row across
-        D_MODEL in tiles of BLOCK_D, reducing across all P Tulpa streams in SRAM registers
-        without materializing intermediate [B, L, D, P] agency or resonance tensors!
+        Single-Launch Fused Forward Kernel with positivity & range constraints:
+        - `alpha_eff = sigmoid(alpha_cd) in (0, 1)`
+        - `kappa_eff = softplus(kappa_tpj) + 1e-4 > 0`
         """
         row_id = tl.program_id(0)
         cols = tl.arange(0, BLOCK_D)
@@ -114,16 +111,24 @@ if HAS_TRITON:
             t_p = tl.load(t_ptrs, mask=mask_d, other=0.0).to(tl.float32)
             a_p = tl.load(Attr_ptr + cols * P_TULPAS + p, mask=mask_d, other=0.0).to(tl.float32)
 
-            alpha_cd = tl.load(AlphaCd_ptr + p).to(tl.float32)
-            kappa_tpj = tl.load(KappaTpj_ptr + p).to(tl.float32)
+            alpha_raw = tl.load(AlphaCd_ptr + p).to(tl.float32)
+            kappa_raw = tl.load(KappaTpj_ptr + p).to(tl.float32)
             beta_attr = tl.load(BetaAttr_ptr + p).to(tl.float32)
             w_dial = tl.load(WDial_ptr + p).to(tl.float32)
 
-            # 1. Corollary discharge prediction error Delta_p = T_p - alpha_cd * H
-            delta_p = t_p - alpha_cd * h
-            kd_sq = kappa_tpj * (delta_p * delta_p)
+            # Domain & Positivity Constraints
+            alpha_eff = tl.sigmoid(alpha_raw)
+            kappa_eff = tl.where(
+                kappa_raw > 0.0,
+                kappa_raw + tl.log(1.0 + tl.exp(-kappa_raw)),
+                tl.log(1.0 + tl.exp(kappa_raw)),
+            ) + 1e-4
 
-            # 2. TPJ External Agency Gate G_agency = kd_sq / (1 + kd_sq)
+            # 1. Corollary discharge prediction error Delta_p = T_p - alpha_eff * H
+            delta_p = t_p - alpha_eff * h
+            kd_sq = kappa_eff * (delta_p * delta_p)
+
+            # 2. TPJ External Agency Gate G_agency = kd_sq / (1 + kd_sq) in [0, 1)
             g_agency = kd_sq / (1.0 + kd_sq)
 
             # 3. Persistent Persona Attractor Resonance with bounded saturation
@@ -139,24 +144,31 @@ if HAS_TRITON:
 
     @triton.jit
     def fused_tulpa_corollary_agency_dialogue_bwd_kernel(
-        GradOut_ptr,    # [B, L, D] upstream gradient
-        Host_ptr,       # [B, L, D]
-        Tulpa_ptr,      # [B, L, D, P]
-        Attr_ptr,       # [D, P]
-        AlphaCd_ptr,    # [P]
-        KappaTpj_ptr,   # [P]
-        BetaAttr_ptr,   # [P]
-        WDial_ptr,      # [P]
-        GradHost_ptr,   # [B, L, D]
-        GradTulpa_ptr,  # [B, L, D, P]
+        GradOut_ptr,        # [B, L, D] upstream gradient
+        Host_ptr,           # [B, L, D]
+        Tulpa_ptr,          # [B, L, D, P]
+        Attr_ptr,           # [D, P]
+        AlphaCd_ptr,        # [P]
+        KappaTpj_ptr,       # [P]
+        BetaAttr_ptr,       # [P]
+        WDial_ptr,          # [P]
+        GradHost_ptr,       # [B, L, D]
+        GradTulpa_ptr,      # [B, L, D, P]
+        GradAttr_ptr,       # [D, P] atomic-accumulated parameter grad
+        GradAlphaCd_ptr,    # [P] atomic-accumulated parameter grad
+        GradKappaTpj_ptr,   # [P] atomic-accumulated parameter grad
+        GradBetaAttr_ptr,   # [P] atomic-accumulated parameter grad
+        GradWDial_ptr,      # [P] atomic-accumulated parameter grad
         D_MODEL: tl.constexpr,
         P_TULPAS: tl.constexpr,
         lambda_sat: tl.constexpr,
         BLOCK_D: tl.constexpr,
     ):
         """
-        Single-Launch Fused Analytical Backward Kernel computing dHost and dTulpa
-        across all P sub-persona streams in SRAM registers.
+        Complete 7-Output Single-Launch Fused Analytical Backward Kernel computing
+        both activation gradients (`GradHost`, `GradTulpa`) and all 5 learnable
+        parameter gradients (`GradAttr`, `GradAlphaCd`, `GradKappaTpj`, `GradBetaAttr`,
+        `GradWDial`) in SRAM registers with atomic reduction.
         """
         row_id = tl.program_id(0)
         cols = tl.arange(0, BLOCK_D)
@@ -170,37 +182,71 @@ if HAS_TRITON:
         for p in range(0, P_TULPAS):
             t_ptrs = Tulpa_ptr + (row_id * D_MODEL + cols) * P_TULPAS + p
             t_p = tl.load(t_ptrs, mask=mask_d, other=0.0).to(tl.float32)
-            a_p = tl.load(Attr_ptr + cols * P_TULPAS + p, mask=mask_d, other=0.0).to(tl.float32)
+            a_ptrs = Attr_ptr + cols * P_TULPAS + p
+            a_p = tl.load(a_ptrs, mask=mask_d, other=0.0).to(tl.float32)
 
-            alpha_cd = tl.load(AlphaCd_ptr + p).to(tl.float32)
-            kappa_tpj = tl.load(KappaTpj_ptr + p).to(tl.float32)
+            alpha_raw = tl.load(AlphaCd_ptr + p).to(tl.float32)
+            kappa_raw = tl.load(KappaTpj_ptr + p).to(tl.float32)
             beta_attr = tl.load(BetaAttr_ptr + p).to(tl.float32)
             w_dial = tl.load(WDial_ptr + p).to(tl.float32)
 
-            delta_p = t_p - alpha_cd * h
-            kd_sq = kappa_tpj * (delta_p * delta_p)
+            alpha_eff = tl.sigmoid(alpha_raw)
+            dalpha_draw = alpha_eff * (1.0 - alpha_eff)
+            kappa_eff = tl.where(
+                kappa_raw > 0.0,
+                kappa_raw + tl.log(1.0 + tl.exp(-kappa_raw)),
+                tl.log(1.0 + tl.exp(kappa_raw)),
+            ) + 1e-4
+            dkappa_draw = tl.sigmoid(kappa_raw)
+
+            delta_p = t_p - alpha_eff * h
+            delta_sq = delta_p * delta_p
+            kd_sq = kappa_eff * delta_sq
             denom_g = 1.0 + kd_sq
+            inv_denom_sq = 1.0 / (denom_g * denom_g)
             g_agency = kd_sq / denom_g
-            dg_ddelta = (2.0 * kappa_tpj * delta_p) / (denom_g * denom_g)
 
             u_p = t_p + beta_attr * a_p
             sat_arg = 1.0 + lambda_sat * (u_p * u_p)
             inv_sat = tl.math.rsqrt(sat_arg)
             res_p = u_p * inv_sat
-            # d/du [u * (1 + lam * u^2)^(-1/2)] = (1 + lam * u^2)^(-3/2) = inv_sat / sat_arg
             dres_du = inv_sat / sat_arg
+            psi_p = g_agency * res_p
 
             d_psi = dout * w_dial
-            d_delta = d_psi * res_p * dg_ddelta
+            d_gagency = d_psi * res_p
+            d_kdsq = d_gagency * inv_denom_sq
+            d_delta = d_kdsq * (2.0 * kappa_eff * delta_p)
             d_u = d_psi * g_agency * dres_du
 
             dt_p = d_delta + d_u
-            dh_acc += d_delta * (-alpha_cd)
+            dh_acc += d_delta * (-alpha_eff)
 
             gt_ptrs = GradTulpa_ptr + (row_id * D_MODEL + cols) * P_TULPAS + p
             tl.store(gt_ptrs, dt_p, mask=mask_d)
 
+            # Accumulate all 5 learnable parameter gradients
+            ga_ptrs = GradAttr_ptr + cols * P_TULPAS + p
+            tl.atomic_add(ga_ptrs, d_u * beta_attr, mask=mask_d)
+
+            d_wdial_p = tl.sum(dout * psi_p, axis=0)
+            d_beta_p = tl.sum(d_u * a_p, axis=0)
+            d_kappatpj_p = tl.sum(d_kdsq * delta_sq, axis=0) * dkappa_draw
+            d_alphacd_p = tl.sum(d_delta * (-h), axis=0) * dalpha_draw
+
+            tl.atomic_add(GradWDial_ptr + p, d_wdial_p)
+            tl.atomic_add(GradBetaAttr_ptr + p, d_beta_p)
+            tl.atomic_add(GradKappaTpj_ptr + p, d_kappatpj_p)
+            tl.atomic_add(GradAlphaCd_ptr + p, d_alphacd_p)
+
         tl.store(GradHost_ptr + base_off, dh_acc, mask=mask_d)
+
+else:
+    def fused_tulpa_corollary_agency_dialogue_fwd_kernel(*args, **kwargs):
+        raise ImportError("Triton is required to launch fused_tulpa_corollary_agency_dialogue_fwd_kernel.")
+
+    def fused_tulpa_corollary_agency_dialogue_bwd_kernel(*args, **kwargs):
+        raise ImportError("Triton is required to launch fused_tulpa_corollary_agency_dialogue_bwd_kernel.")
 
 
 # ==============================================================================
@@ -210,8 +256,19 @@ if HAS_TRITON:
 class TulpaAnalyticalKernels:
     """
     Exact forward and analytical backward kernels for the Tulpa Cognitive
-    Neuroscience Operator, plus DMN-TPJ Inter-Persona Cross-Attention.
+    Neuroscience Operator with strict positivity (`kappa_eff > 0`) and range
+    (`alpha_eff in (0, 1)`) guarantees.
     """
+
+    @staticmethod
+    def _sigmoid(x: np.ndarray) -> np.ndarray:
+        x_c = np.clip(x, -500.0, 500.0)
+        return 1.0 / (1.0 + np.exp(-x_c))
+
+    @staticmethod
+    def _softplus(x: np.ndarray, eps_floor: float = 1e-4) -> np.ndarray:
+        x_c = np.clip(x, -500.0, 500.0)
+        return np.maximum(x_c, 0.0) + np.log1p(np.exp(-np.abs(x_c))) + eps_floor
 
     @staticmethod
     def fused_tulpa_corollary_agency_dialogue_forward(
@@ -227,33 +284,28 @@ class TulpaAnalyticalKernels:
         """
         Forward pass for the Fused Tulpa Corollary Discharge + TPJ Agency +
         Persona Attractor Resonance + DMN Dialogue Operator.
-        Args:
-            h_host: Host executive stream [B, L, D]
-            t_tulpa: P autonomous Tulpa streams [B, L, D, P]
-            attr_a: Persistent persona attractors [D, P]
-            alpha_cd: Corollary discharge attenuation factors [P]
-            kappa_tpj: TPJ external agency attribution sensitivities [P]
-            beta_attr: Persona attractor coupling weights [P]
-            w_dialogue: DMN internal dialogue synthesis weights [P]
-        Returns:
-            out: Unified Host-Tulpa representation [B, L, D]
-            cache: Saved intermediate cognitive states for exact analytical backward
+        Enforces `alpha_eff = sigmoid(alpha_cd) in (0, 1)` and
+        `kappa_eff = softplus(kappa_tpj) + 1e-4 > 0`.
         """
+        alpha_eff = TulpaAnalyticalKernels._sigmoid(alpha_cd)
+        kappa_eff = TulpaAnalyticalKernels._softplus(kappa_tpj, eps_floor=1e-4)
+        sig_kappa = TulpaAnalyticalKernels._sigmoid(kappa_tpj)
+
         h_exp = h_host[..., None]                 # [B, L, D, 1]
         a_exp = attr_a[None, None, :, :]          # [1, 1, D, P]
-        acd_b = alpha_cd[None, None, None, :]     # [1, 1, 1, P]
-        kap_b = kappa_tpj[None, None, None, :]    # [1, 1, 1, P]
+        acd_b = alpha_eff[None, None, None, :]    # [1, 1, 1, P] in (0, 1)
+        kap_b = kappa_eff[None, None, None, :]    # [1, 1, 1, P] > 1e-4 > 0
         bet_b = beta_attr[None, None, None, :]    # [1, 1, 1, P]
         wd_b = w_dialogue[None, None, None, :]    # [1, 1, 1, P]
 
-        # 1. Corollary discharge prediction error Delta_p = T_p - alpha_cd * H
+        # 1. Corollary discharge prediction error Delta_p = T_p - alpha_eff * H
         delta = t_tulpa - acd_b * h_exp           # [B, L, D, P]
         delta_sq = np.square(delta)
 
-        # 2. TPJ External Agency Gate G_agency = (kappa * Delta^2) / (1 + kappa * Delta^2)
+        # 2. TPJ External Agency Gate G_agency = (kappa_eff * Delta^2) / (1 + kappa_eff * Delta^2)
         kd_sq = kap_b * delta_sq
-        denom_g = 1.0 + kd_sq
-        g_agency = kd_sq / denom_g                # [B, L, D, P]
+        denom_g = 1.0 + kd_sq                     # Strictly >= 1.0 > 0 everywhere!
+        g_agency = kd_sq / denom_g                # Strictly in [0, 1)
 
         # 3. Persistent Persona Attractor Resonance
         u_res = t_tulpa + bet_b * a_exp           # [B, L, D, P]
@@ -272,6 +324,9 @@ class TulpaAnalyticalKernels:
             "attr_a": attr_a,
             "alpha_cd": alpha_cd,
             "kappa_tpj": kappa_tpj,
+            "alpha_eff": alpha_eff,
+            "kappa_eff": kappa_eff,
+            "sig_kappa": sig_kappa,
             "beta_attr": beta_attr,
             "w_dialogue": w_dialogue,
             "delta": delta,
@@ -298,8 +353,11 @@ class TulpaAnalyticalKernels:
         """
         h_host = cache["h_host"]
         attr_a = cache["attr_a"]
-        alpha_cd = cache["alpha_cd"][None, None, None, :]
-        kappa_tpj = cache["kappa_tpj"][None, None, None, :]
+        alpha_eff_1d = cache["alpha_eff"]
+        kappa_eff_1d = cache["kappa_eff"]
+        sig_kappa_1d = cache["sig_kappa"]
+        alpha_eff = alpha_eff_1d[None, None, None, :]
+        kappa_eff = kappa_eff_1d[None, None, None, :]
         beta_attr = cache["beta_attr"][None, None, None, :]
         w_dialogue = cache["w_dialogue"][None, None, None, :]
         delta = cache["delta"]
@@ -327,16 +385,19 @@ class TulpaAnalyticalKernels:
         d_betaattr = np.sum(d_ures * attr_a[None, None, :, :], axis=(0, 1, 2))  # [P]
         d_attra = np.sum(d_ures * beta_attr, axis=(0, 1))           # [D, P]
 
-        # 4. Gradients through g_agency = (kappa * delta^2) / (1 + kappa * delta^2)
-        # d(g_agency)/d(kd_sq) = 1 / (1 + kd_sq)^2
+        # 4. Gradients through g_agency = (kappa_eff * delta^2) / (1 + kappa_eff * delta^2)
+        #    and chain rule d(kappa_eff)/d(kappa_tpj) = sigmoid(kappa_tpj)
         d_kdsq = d_gagency / np.square(denom_g)
-        d_kappatpj = np.sum(d_kdsq * delta_sq, axis=(0, 1, 2))      # [P]
-        d_delta = d_kdsq * (2.0 * kappa_tpj * delta)                # [B, L, D, P]
+        d_kappaeff = np.sum(d_kdsq * delta_sq, axis=(0, 1, 2))      # [P]
+        d_kappatpj = d_kappaeff * sig_kappa_1d                      # [P]
+        d_delta = d_kdsq * (2.0 * kappa_eff * delta)                # [B, L, D, P]
 
         # 5. Gradients w.r.t. Tulpa stream T_p, Host stream H, and alpha_cd
+        #    with chain rule d(alpha_eff)/d(alpha_cd) = alpha_eff * (1 - alpha_eff)
         d_ttulpa = d_ures + d_delta                                 # [B, L, D, P]
-        d_alphacd = np.sum(d_delta * (-h_host[..., None]), axis=(0, 1, 2))  # [P]
-        d_hhost = grad_out + np.sum(d_delta * (-alpha_cd), axis=-1)  # [B, L, D]
+        d_alphaeff = np.sum(d_delta * (-h_host[..., None]), axis=(0, 1, 2))  # [P]
+        d_alphacd = d_alphaeff * alpha_eff_1d * (1.0 - alpha_eff_1d)
+        d_hhost = grad_out + np.sum(d_delta * (-alpha_eff), axis=-1)  # [B, L, D]
 
         return {
             "d_hhost": d_hhost,
@@ -374,6 +435,8 @@ if HAS_TORCH:
         Custom PyTorch Autograd Function encapsulating the Fused Tulpa Corollary
         Discharge Attenuation, TPJ External Agency Gate, Persona Attractor
         Resonance, and DMN Internal Dialogue Synthesis Operator.
+        Dispatches to `fused_tulpa_corollary_agency_dialogue_fwd_kernel` and
+        `fused_tulpa_corollary_agency_dialogue_bwd_kernel` when on CUDA with Triton.
         """
 
         @staticmethod
@@ -388,10 +451,41 @@ if HAS_TORCH:
             w_dialogue: torch.Tensor,
             lambda_sat: float,
         ) -> torch.Tensor:
+            ctx.lambda_sat = lambda_sat
+            if HAS_TRITON and h_host.is_cuda:
+                B, L, D, P = t_tulpa.shape
+                num_rows = B * L
+                block_d = triton.next_power_of_2(D)
+                grid = (triton.cdiv(num_rows, 1),)
+                out = torch.empty_like(h_host)
+                fused_tulpa_corollary_agency_dialogue_fwd_kernel[grid](
+                    h_host.contiguous(),
+                    t_tulpa.contiguous(),
+                    attr_a.contiguous(),
+                    alpha_cd.contiguous(),
+                    kappa_tpj.contiguous(),
+                    beta_attr.contiguous(),
+                    w_dialogue.contiguous(),
+                    out,
+                    D_MODEL=D,
+                    P_TULPAS=P,
+                    lambda_sat=lambda_sat,
+                    BLOCK_D=block_d,
+                )
+                ctx.save_for_backward(
+                    h_host, t_tulpa, attr_a, alpha_cd, kappa_tpj, beta_attr, w_dialogue
+                )
+                ctx.used_triton = True
+                return out
+
+            ctx.used_triton = False
+            alpha_eff = torch.sigmoid(alpha_cd)
+            kappa_eff = F.softplus(kappa_tpj) + 1e-4
+
             h_exp = h_host.unsqueeze(-1)
             a_exp = attr_a.view(1, 1, *attr_a.shape)
-            acd_b = alpha_cd.view(1, 1, 1, -1)
-            kap_b = kappa_tpj.view(1, 1, 1, -1)
+            acd_b = alpha_eff.view(1, 1, 1, -1)
+            kap_b = kappa_eff.view(1, 1, 1, -1)
             bet_b = beta_attr.view(1, 1, 1, -1)
             wd_b = w_dialogue.view(1, 1, 1, -1)
 
@@ -410,20 +504,69 @@ if HAS_TORCH:
             out = h_host + (wd_b * psi_tulpa).sum(dim=-1)
 
             ctx.save_for_backward(
-                h_host, attr_a, alpha_cd, kappa_tpj, beta_attr, w_dialogue,
+                h_host, attr_a, alpha_cd, kappa_tpj, alpha_eff, kappa_eff,
+                beta_attr, w_dialogue,
                 delta, delta_sq, denom_g, g_agency, sat_arg, inv_sat, res_state, psi_tulpa
             )
             return out
 
         @staticmethod
         def backward(ctx, grad_out: torch.Tensor):
+            if getattr(ctx, "used_triton", False):
+                h_host, t_tulpa, attr_a, alpha_cd, kappa_tpj, beta_attr, w_dialogue = ctx.saved_tensors
+                B, L, D, P = t_tulpa.shape
+                num_rows = B * L
+                block_d = triton.next_power_of_2(D)
+                grid = (triton.cdiv(num_rows, 1),)
+
+                d_hhost = torch.empty_like(h_host)
+                d_ttulpa = torch.empty_like(t_tulpa)
+                d_attra = torch.zeros_like(attr_a, dtype=torch.float32)
+                d_alphacd = torch.zeros_like(alpha_cd, dtype=torch.float32)
+                d_kappatpj = torch.zeros_like(kappa_tpj, dtype=torch.float32)
+                d_betaattr = torch.zeros_like(beta_attr, dtype=torch.float32)
+                d_wdialogue = torch.zeros_like(w_dialogue, dtype=torch.float32)
+
+                fused_tulpa_corollary_agency_dialogue_bwd_kernel[grid](
+                    grad_out.contiguous(),
+                    h_host.contiguous(),
+                    t_tulpa.contiguous(),
+                    attr_a.contiguous(),
+                    alpha_cd.contiguous(),
+                    kappa_tpj.contiguous(),
+                    beta_attr.contiguous(),
+                    w_dialogue.contiguous(),
+                    d_hhost,
+                    d_ttulpa,
+                    d_attra,
+                    d_alphacd,
+                    d_kappatpj,
+                    d_betaattr,
+                    d_wdialogue,
+                    D_MODEL=D,
+                    P_TULPAS=P,
+                    lambda_sat=ctx.lambda_sat,
+                    BLOCK_D=block_d,
+                )
+                return (
+                    d_hhost.to(h_host.dtype),
+                    d_ttulpa.to(t_tulpa.dtype),
+                    d_attra.to(attr_a.dtype),
+                    d_alphacd.to(alpha_cd.dtype),
+                    d_kappatpj.to(kappa_tpj.dtype),
+                    d_betaattr.to(beta_attr.dtype),
+                    d_wdialogue.to(w_dialogue.dtype),
+                    None,
+                )
+
             (
-                h_host, attr_a, alpha_cd, kappa_tpj, beta_attr, w_dialogue,
+                h_host, attr_a, alpha_cd, kappa_tpj, alpha_eff, kappa_eff,
+                beta_attr, w_dialogue,
                 delta, delta_sq, denom_g, g_agency, sat_arg, inv_sat, res_state, psi_tulpa
             ) = ctx.saved_tensors
 
-            acd_b = alpha_cd.view(1, 1, 1, -1)
-            kap_b = kappa_tpj.view(1, 1, 1, -1)
+            acd_b = alpha_eff.view(1, 1, 1, -1)
+            kap_b = kappa_eff.view(1, 1, 1, -1)
             bet_b = beta_attr.view(1, 1, 1, -1)
             wd_b = w_dialogue.view(1, 1, 1, -1)
             dout_exp = grad_out.unsqueeze(-1)
@@ -440,11 +583,13 @@ if HAS_TORCH:
             d_attra = (d_ures * bet_b).sum(dim=(0, 1))
 
             d_kdsq = d_gagency / denom_g.pow(2)
-            d_kappatpj = (d_kdsq * delta_sq).sum(dim=(0, 1, 2))
+            d_kappaeff = (d_kdsq * delta_sq).sum(dim=(0, 1, 2))
+            d_kappatpj = d_kappaeff * torch.sigmoid(kappa_tpj)
             d_delta = d_kdsq * (2.0 * kap_b * delta)
 
             d_ttulpa = d_ures + d_delta
-            d_alphacd = (d_delta * (-h_host.unsqueeze(-1))).sum(dim=(0, 1, 2))
+            d_alphaeff = (d_delta * (-h_host.unsqueeze(-1))).sum(dim=(0, 1, 2))
+            d_alphacd = d_alphaeff * alpha_eff * (1.0 - alpha_eff)
             d_hhost = grad_out + (d_delta * (-acd_b)).sum(dim=-1)
 
             return (
@@ -468,12 +613,10 @@ if HAS_TORCH:
             self.d_head = config.d_model // config.n_heads
             self.P = config.num_tulpas
 
-            # 1. Single Horizontal GEMM projecting X into Host (D) + P Tulpa Streams (D * P)
             self.fused_stream_proj = nn.Linear(
                 config.d_model, (1 + self.P) * config.d_model, bias=True
             )
 
-            # 2. Persistent Tulpa Persona Attractors & Agency Parameters
             self.attr_a = nn.Parameter(
                 torch.randn(config.d_model, self.P) * (config.d_model ** -0.5)
             )
@@ -482,7 +625,6 @@ if HAS_TORCH:
             self.beta_attr = nn.Parameter(torch.full((self.P,), config.beta_attr_init))
             self.w_dialogue = nn.Parameter(torch.ones(self.P) / math.sqrt(self.P))
 
-            # 3. DMN Internal Shared-Workspace Attention
             self.dmn_qkv = nn.Linear(config.d_model, 3 * config.d_model, bias=False)
             self.out_proj = nn.Linear(config.d_model, config.d_model, bias=False)
             self.out_norm = RMSNorm(config.d_model, eps=config.rms_norm_eps)
@@ -493,14 +635,12 @@ if HAS_TORCH:
             h_host, t_flat = torch.split(streams, [D, self.P * D], dim=-1)
             t_tulpa = t_flat.view(B, L, D, self.P)
 
-            # Fused Single-Launch Host-Tulpa Corollary Discharge, TPJ Agency & Dialogue
             dialogue_state = FusedTulpaCorollaryAgencyDialogueFunction.apply(
                 h_host, t_tulpa, self.attr_a,
                 self.alpha_cd, self.kappa_tpj, self.beta_attr, self.w_dialogue,
                 self.config.lambda_sat
             )
 
-            # DMN Internal Workspace Causal Attention
             qkv = self.dmn_qkv(dialogue_state).view(B, L, 3, self.n_heads, self.d_head)
             q, k, v = [t.transpose(1, 2) for t in qkv.unbind(dim=2)]
             dmn_ctx = F.scaled_dot_product_attention(q, k, v, is_causal=True)
@@ -509,12 +649,14 @@ if HAS_TORCH:
             out = self.out_norm(dialogue_state + self.out_proj(dmn_ctx))
 
             with torch.no_grad():
-                delta = t_tulpa - self.alpha_cd.view(1, 1, 1, -1) * h_host.unsqueeze(-1)
-                kd_sq = self.kappa_tpj.view(1, 1, 1, -1) * delta.pow(2)
+                alpha_eff = torch.sigmoid(self.alpha_cd)
+                kappa_eff = F.softplus(self.kappa_tpj) + 1e-4
+                delta = t_tulpa - alpha_eff.view(1, 1, 1, -1) * h_host.unsqueeze(-1)
+                kd_sq = kappa_eff.view(1, 1, 1, -1) * delta.pow(2)
                 g_ag = kd_sq / (1.0 + kd_sq)
                 diagnostics = {
                     "mean_tpj_external_agency": float(g_ag.mean().item()),
-                    "mean_corollary_attenuation": float(self.alpha_cd.mean().item()),
+                    "mean_corollary_attenuation": float(alpha_eff.mean().item()),
                 }
             return out, diagnostics
 
@@ -546,6 +688,9 @@ def simulate_triton_tulpa_kernel(
     t_3d = t_tulpa.reshape(num_rows, D, P)
     out_2d = np.zeros_like(h_2d)
 
+    alpha_eff = TulpaAnalyticalKernels._sigmoid(alpha_cd)
+    kappa_eff = TulpaAnalyticalKernels._softplus(kappa_tpj, eps_floor=1e-4)
+
     for row_id in range(num_rows):
         for d0 in range(0, D, block_d):
             d1 = min(d0 + block_d, D)
@@ -555,8 +700,8 @@ def simulate_triton_tulpa_kernel(
             for p in range(P):
                 t_p = t_3d[row_id, d0:d1, p]
                 a_p = attr_a[d0:d1, p]
-                delta_p = t_p - float(alpha_cd[p]) * h_tile
-                kd_sq = float(kappa_tpj[p]) * (delta_p * delta_p)
+                delta_p = t_p - float(alpha_eff[p]) * h_tile
+                kd_sq = float(kappa_eff[p]) * (delta_p * delta_p)
                 g_agency = kd_sq / (1.0 + kd_sq)
 
                 u_p = t_p + float(beta_attr[p]) * a_p
@@ -583,9 +728,9 @@ def simulate_triton_tulpa_kernel(
 
 def run_tulpa_neuro_verification_suite() -> None:
     rng = np.random.default_rng(2026)
-    print("=" * 92)
+    print("=" * 94)
     print("1. Analytical vs. Finite-Difference Gradcheck (Tulpa Corollary-Agency-Dialogue Op)")
-    print("=" * 92)
+    print("=" * 94)
 
     B, L, D, P = 2, 4, 5, 3
     lambda_sat = 0.50
@@ -593,8 +738,8 @@ def run_tulpa_neuro_verification_suite() -> None:
     h_host = rng.standard_normal((B, L, D)).astype(np.float64) * 0.6
     t_tulpa = rng.standard_normal((B, L, D, P)).astype(np.float64) * 0.6
     attr_a = rng.standard_normal((D, P)).astype(np.float64) * 0.4
-    alpha_cd = rng.uniform(0.2, 0.6, size=(P,)).astype(np.float64)
-    kappa_tpj = rng.uniform(0.8, 1.6, size=(P,)).astype(np.float64)
+    alpha_cd = rng.uniform(-0.8, 0.8, size=(P,)).astype(np.float64)
+    kappa_tpj = rng.uniform(-0.5, 1.6, size=(P,)).astype(np.float64)
     beta_attr = rng.uniform(0.3, 0.8, size=(P,)).astype(np.float64)
     w_dialogue = rng.uniform(0.3, 0.9, size=(P,)).astype(np.float64)
     grad_out = rng.standard_normal((B, L, D)).astype(np.float64)
@@ -639,9 +784,39 @@ def run_tulpa_neuro_verification_suite() -> None:
         print(f"   Gradcheck dL/d({name:10s}) | Relative L2 Error: {rel_err:.3e}  [PASS < 1e-8]")
         assert rel_err < 1e-8, f"Gradcheck failed for {name}: {rel_err}"
 
-    print("\n" + "=" * 92)
-    print("2. Multi-Persona Tulpa Simulation (P=4 Tulpas) & Triton Single-Launch HBM Benchmark")
-    print("=" * 92)
+    # Adversarial Singularity & Negative Parameter Audit (`kappa = -1 / Delta^2` & `alpha_cd < 0`)
+    print("\n" + "=" * 94)
+    print("2. Adversarial Singularity Audit (kappa_tpj = -1/Delta^2 & Negative alpha_cd)")
+    print("=" * 94)
+    alpha_adv = np.array([-3.0, -0.5, -10.0], dtype=np.float64)
+    alpha_eff_adv = TulpaAnalyticalKernels._sigmoid(alpha_adv)
+    delta_adv = t_tulpa[0, 0, 0, :] - alpha_eff_adv * h_host[0, 0, 0]
+    kappa_adv = -1.0 / (np.square(delta_adv) + 1e-12)  # Adversarial value that previously caused 1 + k*Delta^2 == 0!
+    out_adv, cache_adv = TulpaAnalyticalKernels.fused_tulpa_corollary_agency_dialogue_forward(
+        h_host, t_tulpa, attr_a, alpha_adv, kappa_adv, beta_attr, w_dialogue, lambda_sat
+    )
+    grads_adv = TulpaAnalyticalKernels.fused_tulpa_corollary_agency_dialogue_backward(grad_out, cache_adv)
+    min_denom = float(np.min(cache_adv["denom_g"]))
+    min_g_agency = float(np.min(cache_adv["g_agency"]))
+    max_g_agency = float(np.max(cache_adv["g_agency"]))
+    min_alpha_eff = float(np.min(cache_adv["alpha_eff"]))
+    max_alpha_eff = float(np.max(cache_adv["alpha_eff"]))
+    print(f"   Adversarial raw kappa_tpj = -1/Delta^2 : {np.round(kappa_adv, 3)}")
+    print(f"   Effective kappa_eff = softplus(k)+1e-4 : {np.round(cache_adv['kappa_eff'], 6)} > 0  [STRICTLY POSITIVE]")
+    print(f"   Denominator min(1 + kappa_eff*Delta^2) : {min_denom:.6f} >= 1.0  [ZERO SINGULARITY]")
+    print(f"   Agency Gate range G_agency in [0, 1)   : [{min_g_agency:.6f}, {max_g_agency:.6f}]  [VALID PROBABILITY]")
+    print(f"   Corollary Attenuation alpha_eff in(0,1): [{min_alpha_eff:.6f}, {max_alpha_eff:.6f}]  [NO AMPLIFICATION]")
+    assert (
+        np.all(np.isfinite(out_adv))
+        and np.all(np.isfinite(grads_adv["d_kappatpj"]))
+        and min_denom >= 1.0
+        and 0.0 <= min_g_agency <= max_g_agency < 1.0
+        and 0.0 < min_alpha_eff <= max_alpha_eff < 1.0
+    )
+
+    print("\n" + "=" * 94)
+    print("3. Multi-Persona Tulpa Simulation (P=4 Tulpas) & Triton Single-Launch HBM Benchmark")
+    print("=" * 94)
     B_b, L_b, D_b, P_b = 2, 64, 256, 4
     hh_b = rng.standard_normal((B_b, L_b, D_b)) * 0.5
     tt_b = rng.standard_normal((B_b, L_b, D_b, P_b)) * 0.6
@@ -670,7 +845,7 @@ def run_tulpa_neuro_verification_suite() -> None:
         f"(Saved {hbm_stats['hbm_saved_pct']:.1f}% | {hbm_stats['bw_speedup']:.2f}x BW Speedup)"
     )
     assert max_tile_diff < 1e-14
-    print("=" * 92)
+    print("=" * 94)
 
 if not HAS_TORCH:
     class RMSNorm:

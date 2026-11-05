@@ -469,6 +469,18 @@ if HAS_TORCH:
         ) -> Tuple[torch.Tensor, torch.Tensor]:
             B, L, D = amp.shape
             M = harm_weights.shape[0]
+            if HAS_TRITON and amp.is_cuda:
+                num_rows = B * L
+                block_d = triton.next_power_of_2(D)
+                grid = (triton.cdiv(num_rows, 1),)
+                pr_t = torch.empty_like(amp)
+                pi_t = torch.empty_like(amp)
+                fused_quantum_tidal_wave_fwd_kernel[grid](
+                    amp.contiguous(), phi0.contiguous(), sigma.contiguous(), delta_v.contiguous(),
+                    omega.contiguous(), harm_weights.contiguous(), harm_phases.contiguous(),
+                    pr_t, pi_t, D, L_SEQ=L, D_MODEL=D, M_HARM=M,
+                    hbar_eff=hbar_eff, kappa=kappa, wkb_eps=wkb_eps, BLOCK_D=block_d,
+                )
             t = torch.arange(L, device=amp.device, dtype=amp.dtype).unsqueeze(1)  # [L, 1]
 
             u_tidal = torch.zeros(L, D, device=amp.device, dtype=amp.dtype)

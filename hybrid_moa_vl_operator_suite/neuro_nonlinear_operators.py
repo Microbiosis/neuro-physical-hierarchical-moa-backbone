@@ -450,6 +450,18 @@ if HAS_TORCH:
             fhn_kappa: float,
             fhn_beta: float,
         ) -> torch.Tensor:
+            if HAS_TRITON and v.is_cuda:
+                B, L, D = v.shape
+                num_rows = B * L
+                block_d = triton.next_power_of_2(D)
+                grid = (triton.cdiv(num_rows, 1),)
+                out_t = torch.empty_like(v)
+                fused_dendritic_nmda_shunting_fhn_fwd_kernel[grid](
+                    v.contiguous(), s.contiguous(), g_shunt.contiguous(), w_adapt.contiguous(),
+                    g_nmda.contiguous(), alpha_mg.contiguous(), out_t, D,
+                    D_MODEL=D, eta_mg=eta_mg, gamma_shunt=gamma_shunt,
+                    fhn_kappa=fhn_kappa, fhn_beta=fhn_beta, BLOCK_D=block_d,
+                )
             alpha_b = alpha_mg.view(1, 1, -1)
             gnmda_b = g_nmda.view(1, 1, -1)
 

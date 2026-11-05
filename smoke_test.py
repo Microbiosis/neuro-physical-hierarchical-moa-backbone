@@ -260,15 +260,20 @@ def test_numpy_attention_mask():
     mask, stats = k.build_mixture_of_attention_mask(
         seq_len=32, n_heads=6, window_size=4, num_sinks=2, dilation=2)
     mask = np.asarray(mask)
-    assert mask.shape == (1, 6, 32, 32), f"mask shape {mask.shape}"
+    # v8 起返回 [n_heads, L, L]（不再带前导 batch 维）
+    assert mask.shape == (6, 32, 32), f"mask shape {mask.shape}"
     assert mask.dtype == bool, f"mask dtype {mask.dtype}"
     tril = np.tril(np.ones((32, 32), dtype=bool))
     for h in range(6):
-        assert np.all(mask[0, h] <= tril), f"head {h} violates causality"
-    dens = mask[0].reshape(6, -1).mean(axis=1)
-    assert dens[2] > dens[0], f"full-causal head {dens[2]:.3f} not denser than windowed {dens[0]:.3f}"
+        assert np.all(mask[h] <= tril), f"head {h} violates causality"
+    dens = mask.reshape(6, -1).mean(axis=1)
+    full_causal = 32 * 33 / 2 / (32 * 32)
+    assert dens.max() > full_causal - 1e-6, f"没有 full-causal 头（最大 {dens.max():.3f}）"
+    assert dens.min() < 0.2, f"没有稀疏头（最小 {dens.min():.3f}）"
+    assert len(set(np.round(dens, 6))) >= 2, "逐头掩码没有区分度"
     assert "overall_moa_density" in stats, f"stats keys {list(stats)}"
-    return f"per-head densities {[round(float(d), 3) for d in dens]}, overall={stats['overall_moa_density']:.3f}"
+    return (f"per-head densities {[round(float(d), 3) for d in dens]} "
+            f"(full-causal={full_causal:.3f}), overall={stats['overall_moa_density']:.3f}")
 
 
 def test_numpy_router():

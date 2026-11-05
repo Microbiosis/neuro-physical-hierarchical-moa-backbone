@@ -598,6 +598,7 @@ void c_cpu_gpu_bootstrap_backward(
         cc_bin = shutil.which("gcc") or shutil.which("cc") or shutil.which("clang")
 
         if cc_bin is not None:
+          try:
             stage_subdir = os.path.join(build_dir, f"stage_{stage_id}")
             os.makedirs(stage_subdir, exist_ok=True)
             c_path = os.path.join(stage_subdir, "bootstrap_kernel.c")
@@ -802,6 +803,8 @@ void c_cpu_gpu_bootstrap_backward(
                 forward_callable=native_forward,
                 backward_callable=native_backward,
             )
+          except (subprocess.SubprocessError, OSError):
+            pass
 
         ast_fwd = cls.synthesize_and_compile_python_ast_kernel()
         return BootstrapStageArtifact(
@@ -1756,6 +1759,23 @@ if HAS_TORCH:
             eps_roof: float,
             lambda_boot: float,
         ) -> torch.Tensor:
+            if HAS_TRITON and x_x86.is_cuda:
+                B, L, D = x_x86.shape
+                num_rows = B * L
+                block_d = triton.next_power_of_2(D)
+                grid = (triton.cdiv(num_rows, 1),)
+                out_t = torch.empty_like(x_x86)
+                fused_cpu_gpu_bootstrap_fwd_kernel[grid](
+                    x_x86.contiguous(), x_arm.contiguous(), x_rv.contiguous(),
+                    p_gpu.contiguous(), c_ir.contiguous(),
+                    theta_x86.contiguous(), kappa_x86.contiguous(), kappa_arm.contiguous(),
+                    w_isa_logits[0].contiguous(), w_isa_logits[1].contiguous(), w_isa_logits[2].contiguous(),
+                    alpha_roof.contiguous(), beta_simt.contiguous(), eta_boot.contiguous(),
+                    out_t, D, D_MODEL=D,
+                    gamma_flush=gamma_flush, gamma_barrier=gamma_barrier, gamma_rvwmo=gamma_rvwmo,
+                    eps_rvv=eps_rvv, gamma_warp=gamma_warp, eps_roof=eps_roof, lambda_boot=lambda_boot,
+                    BLOCK_D=block_d,
+                )
             th8_b = theta_x86.view(1, 1, -1)
             kap8_b = kappa_x86.view(1, 1, -1)
             kapa_b = kappa_arm.view(1, 1, -1)
@@ -1978,9 +1998,12 @@ if HAS_TORCH:
 
         def __init__(self, config: CPUGPUSelfBootstrappingConfig):
             super().__init__()
+            assert config.d_model % config.n_heads == 0
             self.config = config
             D = config.d_model
             self.d_model = D
+            self.n_heads = config.n_heads
+            self.d_head = D // config.n_heads
             self.num_isa_anchors = config.num_isa_anchors
 
             # Trigger 3-stage multi-ISA compiler self-bootstrapping on init
@@ -2011,21 +2034,25 @@ if HAS_TORCH:
             self.out_norm = RMSNorm(D, eps=config.rms_norm_eps)
 
         def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, float]]:
+            B, L, D = x.shape
+            H, Dh = self.n_heads, self.d_head
             x_x86, x_arm, x_rv, p_gpu = self.in_proj(x).chunk(4, dim=-1)
-            scale = self.d_model ** -0.5
+            scale = Dh ** -0.5
 
-            x_cpu_bus = (x_x86 + x_arm + x_rv) / 3.0
-            joint_bus = 0.5 * (x_cpu_bus + p_gpu)
+            x_cpu_bus = ((x_x86 + x_arm + x_rv) / 3.0).view(B, L, H, Dh)
+            pg_h = p_gpu.view(B, L, H, Dh)
+            anc_h = self.isa_anchors.view(self.num_isa_anchors, H, Dh)
+            joint_bus = 0.5 * (x_cpu_bus + pg_h)
             attn_fetch = F.softmax(
-                torch.einsum("rd,bld->brl", self.isa_anchors, joint_bus) * scale,
+                torch.einsum("rhd,blhd->bhrl", anc_h, joint_bus) * scale,
                 dim=-1,
             )
-            uop_cache = torch.einsum("brl,bld->brd", attn_fetch, p_gpu)
+            uop_cache = torch.einsum("bhrl,blhd->bhrd", attn_fetch, pg_h)
             attn_issue = F.softmax(
-                torch.einsum("bld,brd->blr", x_cpu_bus, uop_cache) * scale,
+                torch.einsum("blhd,bhrd->bhlr", x_cpu_bus, uop_cache) * scale,
                 dim=-1,
             )
-            c_ir = torch.einsum("blr,brd->bld", attn_issue, uop_cache)
+            c_ir = torch.einsum("bhlr,bhrd->blhd", attn_issue, uop_cache).reshape(B, L, D)
 
             fused = FusedCPUGPUSelfBootstrappingFunction.apply(
                 x_x86, x_arm, x_rv, p_gpu, c_ir,

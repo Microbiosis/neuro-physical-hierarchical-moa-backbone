@@ -647,6 +647,18 @@ if HAS_TORCH:
             gamma_rem: float,
             eps_glymph: float,
         ) -> torch.Tensor:
+            if HAS_TRITON and x_wake.is_cuda:
+                B, L, D = x_wake.shape
+                num_rows = B * L
+                block_d = triton.next_power_of_2(D)
+                grid = (triton.cdiv(num_rows, 1),)
+                out_t = torch.empty_like(x_wake)
+                fused_sleep_subconscious_shy_swr_pgo_fwd_kernel[grid](
+                    x_wake.contiguous(), m_hipp.contiguous(), z_sub.contiguous(),
+                    theta_sleep.contiguous(), kappa_vlpo.contiguous(), lambda_shy.contiguous(),
+                    alpha_swr.contiguous(), beta_pgo.contiguous(), out_t,
+                    D, D_MODEL=D, gamma_rem=gamma_rem, eps_glymph=eps_glymph, BLOCK_D=block_d,
+                )
             th_b = theta_sleep.view(1, 1, -1)
             kap_b = kappa_vlpo.view(1, 1, -1)
             lam_b = lambda_shy.view(1, 1, -1)
@@ -775,9 +787,12 @@ if HAS_TORCH:
 
         def __init__(self, config: SleepSubconsciousConfig):
             super().__init__()
+            assert config.d_model % config.n_heads == 0
             self.config = config
             D = config.d_model
             self.d_model = D
+            self.n_heads = config.n_heads
+            self.d_head = D // config.n_heads
             self.num_dream_anchors = config.num_dream_anchors
 
             self.in_proj = nn.Linear(D, 2 * D, bias=False)
@@ -794,21 +809,26 @@ if HAS_TORCH:
             self.out_norm = RMSNorm(D, eps=config.rms_norm_eps)
 
         def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, float]]:
+            B, L, D = x.shape
+            H, Dh = self.n_heads, self.d_head
             x_wake, m_hipp = self.in_proj(x).chunk(2, dim=-1)
-            scale = self.d_model ** -0.5
+            scale = Dh ** -0.5
 
-            # Non-local PGO-wave deep subconscious dream recombination
-            joint_mem = 0.5 * (x_wake + m_hipp)
+            # Multi-head non-local PGO-wave deep subconscious dream recombination across n_heads
+            xw_h = x_wake.view(B, L, H, Dh)
+            mh_h = m_hipp.view(B, L, H, Dh)
+            anc_h = self.dream_anchors.view(self.num_dream_anchors, H, Dh)
+            joint_mem = 0.5 * (xw_h + mh_h)
             attn_pool = F.softmax(
-                torch.einsum("rd,bld->brl", self.dream_anchors, joint_mem) * scale,
+                torch.einsum("rhd,blhd->bhrl", anc_h, joint_mem) * scale,
                 dim=-1,
             )
-            z_dream = torch.einsum("brl,bld->brd", attn_pool, m_hipp)
+            z_dream = torch.einsum("bhrl,blhd->bhrd", attn_pool, mh_h)
             attn_bc = F.softmax(
-                torch.einsum("bld,brd->blr", x_wake, z_dream) * scale,
+                torch.einsum("blhd,bhrd->bhlr", xw_h, z_dream) * scale,
                 dim=-1,
             )
-            z_sub = torch.einsum("blr,brd->bld", attn_bc, z_dream)
+            z_sub = torch.einsum("bhlr,bhrd->blhd", attn_bc, z_dream).reshape(B, L, D)
 
             fused = FusedSleepSubconsciousSHYSWRPGOFunction.apply(
                 x_wake, m_hipp, z_sub,

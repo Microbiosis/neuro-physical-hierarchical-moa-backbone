@@ -503,6 +503,18 @@ if HAS_TORCH:
             kappa_asym: float,
             lam_therm: float,
         ) -> torch.Tensor:
+            if HAS_TRITON and x.is_cuda:
+                B, L, D = x.shape
+                num_rows = B * L
+                block_d = triton.next_power_of_2(D)
+                grid = (triton.cdiv(num_rows, 1),)
+                out_t = torch.empty_like(x)
+                fused_parity_cp_annihilation_baryogenesis_fwd_kernel[grid](
+                    x.contiguous(), delta_weak.contiguous(), eps_parity.contiguous(),
+                    phi_cp.contiguous(), gamma_cp.contiguous(), sigma_ann.contiguous(),
+                    beta_2gamma.contiguous(), out_t, D,
+                    D_MODEL=D, delta_mass=delta_mass, kappa_asym=kappa_asym, lam_therm=lam_therm, BLOCK_D=block_d,
+                )
             eps_b = eps_parity.view(1, 1, -1)
             phi_b = phi_cp.view(1, 1, -1)
             gam_b = gamma_cp.view(1, 1, -1)

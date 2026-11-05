@@ -411,62 +411,91 @@ if HAS_TORCH:
                 )
             )
 
+            # Learnable Inter-Stage Mixing Gates (replacing hardcoded scalar constants)
+            self.stage0a_zpe_gate = nn.Parameter(torch.tensor(0.25))
+            self.stage0b_baryon_gate = nn.Parameter(torch.tensor(0.25))
+            self.stage1a_brane_gate = nn.Parameter(torch.tensor(0.25))
+            self.stage1b_qtf_gate = nn.Parameter(torch.tensor(0.25))
+            self.reflex_bypass_gate = nn.Parameter(torch.tensor(0.30))
+            self.chaotic_bridge_gate = nn.Parameter(torch.tensor(0.35))
+            self.trauma_defense_gate = nn.Parameter(torch.tensor(0.50))
+            self.stage4_silicon_gate = nn.Parameter(torch.tensor(0.35))
+            self.stage5_tulpa_gate = nn.Parameter(torch.tensor(0.40))
+            self.stage6_hipp_trace_gate = nn.Parameter(torch.tensor(0.50))
+
         def forward(
             self, x: torch.Tensor
         ) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, object]]:
             # Stage 0: Quantum Vacuum ZPE (0.A) -> Baryogenesis Matter Genesis (0.B)
             s0_in = self.stage0_norm(x)
             zpe_out, zpe_diag = self.stage0a_vacuum_zpe(s0_in)
-            x_zpe = x + 0.25 * zpe_out
+            x_zpe = x + self.stage0a_zpe_gate * zpe_out
             baryon_out, baryon_diag = self.stage0b_baryogenesis(x_zpe)
-            x_matter = x_zpe + 0.25 * baryon_out
+            x_matter = x_zpe + self.stage0b_baryon_gate * baryon_out
 
             # Stage I: 11D Supermembrane Worldvolume (I.A) -> Quantum Tidal Spacetime (I.B)
             s1_in = self.stage1_norm(x_matter)
             brane_out, brane_diag = self.stage1a_supermembrane(s1_in)
-            x_brane = x_matter + 0.25 * brane_out
+            x_brane = x_matter + self.stage1a_brane_gate * brane_out
             qtf_out, qtf_diag = self.stage1b_quantum_tidal(x_brane)
-            x_spacetime = x_brane + 0.25 * qtf_out
+            x_spacetime = x_brane + self.stage1b_qtf_gate * qtf_out
 
             # Stage II: Spinal Reflex (II.A) -> Corticospinal Chaotic Axis (II.B)
             s2_in = self.stage2_norm(x_spacetime)
             spinal_out, spinal_diag = self.stage2a_spinal_pathway(s2_in)
             chaos_out, chaos_diag = self.stage2b_corticospinal_chaos(s2_in + spinal_out)
-            h_clean = x_spacetime + 0.30 * spinal_out + 0.35 * chaos_out
+            h_clean = (
+                x_spacetime
+                + self.reflex_bypass_gate * spinal_out
+                + self.chaotic_bridge_gate * chaos_out
+            )
 
             # Stage II.C: Orthogonal Allostatic Corticolimbic Trauma Regulator
+            # Keep g_shut_tensor IN the live autograd graph (never detach via float(...)!)
             trauma_out, trauma_diag = self.stage2c_trauma_regulator(s2_in)
-            g_shut = float(trauma_diag["mean_corticolimbic_shutdown_gate"])
+            g_shut_tensor = trauma_diag["g_shut_tensor"]
 
             # Stage III: Neocortical Sparse Attention + 3 Heterogeneous Cortical Columns
+            # Supports multi-step iterative refinement via cfg.num_refinement_steps
             attn_out, attn_density = self.stage3_mo_attention(self.stage3_attn_norm(h_clean))
             h_attn = h_clean + attn_out
-            s3_in = self.stage3_col_norm(h_attn)
+            h_cortex = h_attn
+            total_aux_loss = torch.tensor(0.0, device=x.device, dtype=x.dtype)
+            agg_metrics = {}
+            neuro_diag = {}
+            selfmod_diag = {}
+            for _ in range(max(int(self.cfg.num_refinement_steps), 1)):
+                s3_in = self.stage3_col_norm(h_cortex)
+                c0_vl = self.col0_vl_association(s3_in)
+                c1_neuro, neuro_diag = self.col1_dendritic_nmda(s3_in)
+                c2_selfmod, selfmod_diag = self.col2_synaptic_selfmod(s3_in)
 
-            c0_vl = self.col0_vl_association(s3_in)
-            c1_neuro, neuro_diag = self.col1_dendritic_nmda(s3_in)
-            c2_selfmod, selfmod_diag = self.col2_synaptic_selfmod(s3_in)
-
-            proposals_raw = torch.stack([c0_vl, c1_neuro, c2_selfmod], dim=1)
-            proposals = self.branch_norm_4d(proposals_raw) * self.branch_scale_4d
-            cortical_syn, aux_loss, agg_metrics = self.stage3_aggregator(s3_in, proposals)
-            h_cortex = h_attn + cortical_syn
+                proposals_raw = torch.stack([c0_vl, c1_neuro, c2_selfmod], dim=1)
+                proposals = self.branch_norm_4d(proposals_raw) * self.branch_scale_4d
+                cortical_syn, step_aux, agg_metrics = self.stage3_aggregator(s3_in, proposals)
+                h_cortex = h_attn + cortical_syn
+                total_aux_loss = total_aux_loss + step_aux
+            aux_loss = total_aux_loss / max(int(self.cfg.num_refinement_steps), 1)
 
             # Stage IV: Silicon Tri-ISA CPU (Control from Stage II) + SIMT GPU (Parallel from Stage III)
             boot_out, boot_diag = self.stage4_cpu_gpu_bootstrap(
                 self.stage4_norm(0.50 * h_clean + 0.50 * h_cortex)
             )
-            h_silicon = h_cortex + 0.35 * boot_out
+            h_silicon = h_cortex + self.stage4_silicon_gate * boot_out
 
             # Stage V: Prefrontal/TPJ Volitional Plural Agency (Host-Tulpa Dialogue)
             tulpa_out, tulpa_diag = self.stage5_tulpa_agency(self.stage5_norm(h_silicon))
-            h_wake = h_silicon + 0.40 * tulpa_out
+            h_wake = h_silicon + self.stage5_tulpa_gate * tulpa_out
 
             # Stage VI: Post-Wakeful Sleep Consolidation & Complementary Regime Integration
             consolidated, sleep_diag = self.stage6_sleep_subconscious(
-                h_wake + 0.50 * h_clean
+                h_wake + self.stage6_hipp_trace_gate * h_clean
             )
-            out = h_clean + g_shut * consolidated + (1.0 - g_shut) * (0.50 * trauma_out)
+            out = (
+                h_clean
+                + g_shut_tensor * consolidated
+                + (1.0 - g_shut_tensor) * (self.trauma_defense_gate * trauma_out)
+            )
 
             telemetry: Dict[str, object] = {
                 "stage0a_vacuum_zpe_energy": zpe_diag["mean_vacuum_zpe_energy"],
@@ -626,6 +655,18 @@ class UnifiedArchitectureExecutionEngine:
             "lambda_shy": np.full((D,), 0.45, dtype=np.float64),
             "alpha_swr": np.full((D,), 0.65, dtype=np.float64),
             "beta_pgo": np.full((D,), 0.60, dtype=np.float64),
+            # Learnable Inter-Stage Mixing Gates
+            "stage0a_zpe_gate": np.array(0.25, dtype=np.float64),
+            "stage0b_baryon_gate": np.array(0.25, dtype=np.float64),
+            "stage1a_brane_gate": np.array(0.25, dtype=np.float64),
+            "stage1b_qtf_gate": np.array(0.25, dtype=np.float64),
+            "reflex_bypass_gate": np.array(0.30, dtype=np.float64),
+            "chaotic_bridge_gate": np.array(0.35, dtype=np.float64),
+            "trauma_defense_gate": np.array(0.50, dtype=np.float64),
+            "stage4_silicon_gate": np.array(0.35, dtype=np.float64),
+            "stage5_tulpa_gate": np.array(0.40, dtype=np.float64),
+            "stage6_hipp_trace_gate": np.array(0.50, dtype=np.float64),
+            "stage6_sub_trace_gate": np.array(0.50, dtype=np.float64),
         }
         return params
 
@@ -654,7 +695,7 @@ class UnifiedArchitectureExecutionEngine:
                 params["alpha_cas"], params["beta_zpe"],
             )
         )
-        g0a = 0.0 if ablate_stage_name == "Stage0.A:VacuumZPE_GroundState" else 0.25
+        g0a = 0.0 if ablate_stage_name == "Stage0.A:VacuumZPE_GroundState" else float(params["stage0a_zpe_gate"])
         x_zpe = x_in + g0a * zpe_out
 
         x_bar = x_zpe * 0.80
@@ -666,7 +707,7 @@ class UnifiedArchitectureExecutionEngine:
                 params["sigma_ann"], params["beta_2gamma"],
             )
         )
-        g0b = 0.0 if ablate_stage_name == "Stage0.B:ParityBaryogenesis_MatterGenesis" else 0.25
+        g0b = 0.0 if ablate_stage_name == "Stage0.B:ParityBaryogenesis_MatterGenesis" else float(params["stage0b_baryon_gate"])
         x_matter = x_zpe + g0b * baryon_out
 
         # ======================================================================
@@ -680,7 +721,7 @@ class UnifiedArchitectureExecutionEngine:
                 params["w_kk"], params["kappa_warp"], params["omega_kk"], params["alpha_proj"],
             )
         )
-        g1a = 0.0 if ablate_stage_name == "StageI.A:Supermembrane11D_DBI_RSKK" else 0.25
+        g1a = 0.0 if ablate_stage_name == "StageI.A:Supermembrane11D_DBI_RSKK" else float(params["stage1a_brane_gate"])
         x_brane = x_matter + g1a * brane_out
 
         amp_q = x_brane * 0.70
@@ -694,7 +735,7 @@ class UnifiedArchitectureExecutionEngine:
             params["omega_qtf"], params["harm_weights"], params["harm_phases"],
         )
         qtf_out = 0.50 * (pr_qtf + pi_qtf)
-        g1b = 0.0 if ablate_stage_name == "StageI.B:QuantumTidal_WKB_Spacetime" else 0.25
+        g1b = 0.0 if ablate_stage_name == "StageI.B:QuantumTidal_WKB_Spacetime" else float(params["stage1b_qtf_gate"])
         x_spacetime = x_brane + g1b * qtf_out
 
         # ======================================================================
@@ -720,8 +761,8 @@ class UnifiedArchitectureExecutionEngine:
                 params["gamma_nl"], params["kappa_ctrl"],
             )
         )
-        g2a = 0.0 if ablate_stage_name == "StageII.A:SpinalCord_DorsalReflex_Renshaw" else 0.30
-        g2b = 0.0 if ablate_stage_name == "StageII.B:CorticospinalChaotic_PyragasAxis" else 0.35
+        g2a = 0.0 if ablate_stage_name == "StageII.A:SpinalCord_DorsalReflex_Renshaw" else float(params["reflex_bypass_gate"])
+        g2b = 0.0 if ablate_stage_name == "StageII.B:CorticospinalChaotic_PyragasAxis" else float(params["chaotic_bridge_gate"])
 
         # Clean Non-Traumatogenic Sensorimotor Control Baseline `reflex_bypass` (`H_clean`)
         reflex_bypass = x_spacetime + g2a * spinal_out + g2b * chaotic_bridge_out
@@ -815,13 +856,17 @@ class UnifiedArchitectureExecutionEngine:
                 aux_weight=cfg.aux_loss_weight,
                 z_weight=cfg.z_loss_weight,
             )
-            topk_idx = np.argpartition(router_logits, -cfg.top_k_proposers, axis=-1)[..., -cfg.top_k_proposers:]
-            topk_vals = np.take_along_axis(router_logits, topk_idx, axis=-1)
-            max_tk = np.max(topk_vals, axis=-1, keepdims=True)
-            exp_tk = np.exp(topk_vals - max_tk)
-            topk_w = exp_tk / np.sum(exp_tk, axis=-1, keepdims=True)
-            active_weights = np.zeros_like(router_probs)
-            np.put_along_axis(active_weights, topk_idx, topk_w, axis=-1)
+            N_prop = proposals_scaled.shape[1]
+            k_eff = min(max(int(cfg.top_k_proposers), 1), N_prop)
+            v_thresh = np.partition(router_logits, N_prop - k_eff, axis=-1)[..., N_prop - k_eff : N_prop - k_eff + 1]
+            strict_mask = (router_logits > v_thresh + 1e-12).astype(np.float64)
+            tie_mask = (np.abs(router_logits - v_thresh) <= 1e-12).astype(np.float64)
+            num_strict = np.sum(strict_mask, axis=-1, keepdims=True)
+            num_tie = np.maximum(np.sum(tie_mask, axis=-1, keepdims=True), 1.0)
+            rem_k = np.maximum(float(k_eff) - num_strict, 0.0)
+            sel_mask = strict_mask + tie_mask * (rem_k / num_tie)
+            w_unnorm = sel_mask * exp_r
+            active_weights = w_unnorm / np.maximum(np.sum(w_unnorm, axis=-1, keepdims=True), 1e-12)
 
         mega_syn = np.einsum("bln,bnld->bld", active_weights, proposals_scaled)
         h_cortex = reflex_bypass + mega_syn
@@ -850,7 +895,7 @@ class UnifiedArchitectureExecutionEngine:
                 params["beta_simt"], params["eta_boot"],
             )
         )
-        g4_boot = 0.0 if ablate_stage_name == "StageIV:CPUGPU_TriISA_SelfBootstrap" else 0.35
+        g4_boot = 0.0 if ablate_stage_name == "StageIV:CPUGPU_TriISA_SelfBootstrap" else float(params["stage4_silicon_gate"])
         h_silicon = h_cortex + g4_boot * boot_out
 
         # ======================================================================
@@ -864,7 +909,7 @@ class UnifiedArchitectureExecutionEngine:
                 params["alpha_cd"], params["kappa_tpj"], params["beta_attr"], params["w_dialogue"],
             )
         )
-        g5_tulpa = 0.0 if ablate_stage_name == "StageV:TulpaAgency_PrefrontalTPJ_Dialogue" else 0.40
+        g5_tulpa = 0.0 if ablate_stage_name == "StageV:TulpaAgency_PrefrontalTPJ_Dialogue" else float(params["stage5_tulpa_gate"])
         h_wake = h_silicon + g5_tulpa * tulpa_out
 
         # ======================================================================
@@ -872,8 +917,8 @@ class UnifiedArchitectureExecutionEngine:
         #           Deep Subconscious Consolidation + Complementary Regime Gate
         # ======================================================================
         x_wake_s6 = h_wake
-        m_hipp_s6 = 0.50 * reflex_bypass
-        z_sub_s6 = 0.50 * chaotic_bridge_out
+        m_hipp_s6 = float(params["stage6_hipp_trace_gate"]) * reflex_bypass
+        z_sub_s6 = float(params["stage6_sub_trace_gate"]) * chaotic_bridge_out
         y_consolidated, sleep_cache = (
             SleepSubconsciousAnalyticalKernels.fused_sleep_shy_swr_pgo_forward(
                 x_wake_s6, m_hipp_s6, z_sub_s6,
@@ -888,7 +933,7 @@ class UnifiedArchitectureExecutionEngine:
         y_layer = (
             reflex_bypass
             + g_shut_gate * y_consolidated
-            + (1.0 - g_shut_gate) * (0.50 * trauma_out)
+            + (1.0 - g_shut_gate) * (float(params["trauma_defense_gate"]) * trauma_out)
         )
 
         # Collect all 12 active homeostatic domain representations for CV & rank diagnostics
@@ -1002,23 +1047,33 @@ class UnifiedArchitectureExecutionEngine:
         # ======================================================================
         # 1. Stage VI Backward: Complementary Regime Gate & Sleep Consolidation
         # ======================================================================
+        g_td = float(params["trauma_defense_gate"])
+        g_s6_hipp = float(params["stage6_hipp_trace_gate"])
+        g_s6_sub = float(params["stage6_sub_trace_gate"])
+        g_s5_tul = float(params["stage5_tulpa_gate"])
+        g_s4_sil = float(params["stage4_silicon_gate"])
+        g_s2_ref = float(params["reflex_bypass_gate"])
+        g_s2_cha = float(params["chaotic_bridge_gate"])
+
         d_reflex = grad_y.copy()
         d_cons = grad_y * g_shut_gate
-        d_trauma_total = grad_y * (1.0 - g_shut_gate) * 0.50
-        d_gshut_ext = grad_y * (y_consolidated - 0.50 * trauma_out)
+        d_trauma_total = grad_y * (1.0 - g_shut_gate) * g_td
+        d_trauma_defense_gate = np.sum(grad_y * (1.0 - g_shut_gate) * trauma_out)
+        d_gshut_ext = grad_y * (y_consolidated - g_td * trauma_out)
 
         g_sleep = SleepSubconsciousAnalyticalKernels.fused_sleep_shy_swr_pgo_backward(
             d_cons, ctx["sleep_cache"]  # type: ignore
         )
         d_hwake = g_sleep["d_xwake"]
-        d_reflex += 0.50 * g_sleep["d_mhipp"]
-        d_cbridge_from_upper = 0.50 * g_sleep["d_zsub"]
+        d_reflex += g_s6_hipp * g_sleep["d_mhipp"]
+        d_cbridge_from_upper = g_s6_sub * g_sleep["d_zsub"]
 
         # ======================================================================
         # 2. Stage V Backward: Prefrontal/TPJ Volitional Tulpa Agency
         # ======================================================================
+        d_stage5_tulpa_gate = np.sum(d_hwake * ctx["tulpa_out"])
         g_tulpa = TulpaAnalyticalKernels.fused_tulpa_corollary_agency_dialogue_backward(
-            0.40 * d_hwake, ctx["tulpa_cache"]  # type: ignore
+            g_s5_tul * d_hwake, ctx["tulpa_cache"]  # type: ignore
         )
         d_hsilicon = (
             d_hwake
@@ -1029,8 +1084,9 @@ class UnifiedArchitectureExecutionEngine:
         # ======================================================================
         # 3. Stage IV Backward: Silicon Tri-ISA CPU + SIMT GPU Self-Bootstrapping
         # ======================================================================
-        g_boot = CPUGPUSelfBootstrappingAnalyticalKernels.fused_cpu_gpu_bootstrap_backward(
-            0.35 * d_hsilicon, ctx["boot_cache"]  # type: ignore
+        d_stage4_silicon_gate = np.sum(d_hsilicon * ctx["boot_out"])
+        g_boot = CPUGPUSelfBootapping_bwd = CPUGPUSelfBootstrappingAnalyticalKernels.fused_cpu_gpu_bootstrap_backward(
+            g_s4_sil * d_hsilicon, ctx["boot_cache"]  # type: ignore
         )
         d_hcortex = d_hsilicon + 0.75 * g_boot["d_pgpu"]
         d_reflex += 0.70 * g_boot["d_xx86"]
@@ -1095,12 +1151,14 @@ class UnifiedArchitectureExecutionEngine:
         # 5. Stage II Backward: Corticospinal Chaotic Axis, Spinal Reflex &
         #    Orthogonal Corticolimbic Trauma Regulator
         # ======================================================================
+        d_chaotic_bridge_gate = np.sum(d_reflex * ctx["chaotic_bridge_out"])
+        d_reflex_bypass_gate = np.sum(d_reflex * ctx["spinal_out"])
         g_chaos_bridge = CorticospinalChaoticAnalyticalKernels.fused_corticospinal_chaotic_manifold_backward(
-            0.35 * d_reflex + d_cbridge_from_upper,
+            g_s2_cha * d_reflex + d_cbridge_from_upper,
             ctx["chaos_bridge_cache"],  # type: ignore
         )
         d_spinal_total = (
-            0.30 * d_reflex
+            g_s2_ref * d_reflex
             + 0.75 * g_chaos_bridge["d_wspin"]
             + d_spinal_from_upper
         )
@@ -1186,6 +1244,11 @@ class UnifiedArchitectureExecutionEngine:
         return {
             "d_x_in": d_x_in,
             "d_w_rq": d_w_rq,
+            "d_reflex_bypass_gate": np.array(d_reflex_bypass_gate),
+            "d_chaotic_bridge_gate": np.array(d_chaotic_bridge_gate),
+            "d_stage4_silicon_gate": np.array(d_stage4_silicon_gate),
+            "d_stage5_tulpa_gate": np.array(d_stage5_tulpa_gate),
+            "d_trauma_defense_gate": np.array(d_trauma_defense_gate),
             "Stage0.A_VacuumZPE": g_zpe["d_q"],
             "Stage0.B_Baryogenesis": g_baryon["d_x"],
             "StageI.A_Supermembrane11D": g_brane["d_yextra"],
@@ -1273,6 +1336,19 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     rel_err_wrq = np.linalg.norm(grads_g["d_w_rq"] - dwrq_num) / (
         np.linalg.norm(grads_g["d_w_rq"]) + np.linalg.norm(dwrq_num) + 1e-15
     )
+    for gname in ["reflex_bypass_gate", "chaotic_bridge_gate", "stage4_silicon_gate", "stage5_tulpa_gate", "trauma_defense_gate"]:
+        orig_g = float(params_g[gname])
+        params_g[gname] = np.array(orig_g + eps)
+        yp_g, _ = UnifiedArchitectureExecutionEngine.forward_unified_layer_exact(x_g, params_g, cfg_g, use_smooth_router=True)
+        params_g[gname] = np.array(orig_g - eps)
+        ym_g, _ = UnifiedArchitectureExecutionEngine.forward_unified_layer_exact(x_g, params_g, cfg_g, use_smooth_router=True)
+        params_g[gname] = np.array(orig_g)
+        dg_num = (np.sum(yp_g * grad_y_g) - np.sum(ym_g * grad_y_g)) / (2.0 * eps)
+        dg_ana = float(grads_g["d_" + gname])
+        rel_g = abs(dg_ana - dg_num) / (abs(dg_ana) + abs(dg_num) + 1e-15)
+        print(f"   Learnable Stage Gate Gradcheck dL/d({gname:19s}): {rel_g:.3e}  [PASS < 1e-8]")
+        assert rel_g < 1e-8
+
     print(f"   Full 7-Stage (12-Domain) Input Gradcheck dL/d(x_in): {rel_err_xin:.3e}  [PASS < 1e-8]")
     print(f"   Stage-III Neocortical Router Gradcheck   dL/d(w_rq): {rel_err_wrq:.3e}  [PASS < 1e-8]")
     assert rel_err_xin < 1e-8 and rel_err_wrq < 5e-8

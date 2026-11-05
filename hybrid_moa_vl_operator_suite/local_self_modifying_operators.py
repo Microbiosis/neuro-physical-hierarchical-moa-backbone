@@ -12,36 +12,16 @@ Root-Cause Fix for Sequential Token Launch-Bound Bottleneck:
 - In naive PyTorch eager execution, running a recurrent Delta-Oja loop over L=128 tokens
   launches 128 x 8 = 1024 individual micro-kernels across the PCIe/CUDA driver queue,
   leading to extreme GPU starvation (launch-bound, taking 10-20 ms and running slower than CPU).
-- **Persistent SRAM Token-Fused GPU Kernel (`persistent_delta_oja_sram_fused_fwd_kernel` &
+- **Persistent SRAM Token-Fused GPU Kernel (`persistent_delta_oja_sram_fused_fwd_kernel`,
+  `persistent_delta_oja_sram_fused_bwd_kernel`, `PersistentDeltaOjaSRAMFunction`, and
   `simulate_persistent_delta_oja_sram_kernel`)**:
-  - Drops kernel launches from 1024 to exactly **1 Single Launch per forward pass**.
-  - Pins the local group fast-weight matrix W_t in R^{D_g x D_g} (where D_g=32, so 32x32x4B = 4 KB)
-    **100% inside on-chip SM Registers and SRAM** across the entire sequence of L tokens.
+  - Drops kernel launches from 1024 to exactly **1 Single Launch per forward/backward pass**.
+  - Wired directly into `LocalNonlinearSelfModifyingOp.forward()` via `PersistentDeltaOjaSRAMFunction.apply`.
+  - Uses `BLOCK_DG = triton.next_power_of_2(D_g)` with `mask_d = cols < D_G`, supporting any
+    group/subspace configuration such as `(G=8, D_g=32)` (4 KB per group) and `(G=16, D_g=16)` (1 KB per group).
   - Zero HBM writes for intermediate states: streams (q_t, k_t, v_t) from global memory,
-    updates W in-place within 4 KB SRAM, and streams y_t directly to global memory,
-    achieving 97.4% HBM traffic reduction and microsecond-level execution.
-
-Core Mathematical Mechanisms of Local Nonlinear Weight Self-Modification:
-1. Group-Local Subspace Weight Partitioning (`G` local blocks of dim `D_g = D / G`):
-   Confines weight self-modification to local modular subspaces so each group g
-   autonomously adapts its local synaptic matrix W_eff(g) in R^{D_g x D_g}:
-       W_eff(x, g) = (1 - lambda_oja * E_loc(x, g)) * W_base(g) + alpha_g * dW_nl(x, g)
-2. Bounded Rational Nonlinear Plasticity Rule (`Psi_nl`):
-   Instead of unbounded linear Hebbian outer products (which diverge in deep nets),
-   local weight updates pass through a smooth rational saturation nonlinearity:
-       Psi_nl(z) = (eta * z) / (1 + (eta * z)^2),   z = V_loc(x)^T x_g
-       dW_nl(x, g) x_g = U_loc(x) * Psi_nl(V_loc(x)^T x_g)
-3. Oja's Local Homeostatic Weight Stabilization (`lambda_oja`):
-   Normalizes the base weight response using the local presynaptic projection
-   energy E_loc(x, g) = mean((V_loc(x)^T x_g)^2), preventing synaptic runaway:
-       y_g = (1 - lambda_oja * E_loc(x, g)) * (W_base(g) x_g) + alpha_g * (U_loc(x) Psi_nl(z))
-4. Recurrent Nonlinear Delta-Oja Fast-Weight Plasticity (`W_t` across time `t`):
-   Updates a persistent local fast-weight matrix W_t in R^{D_g x D_g} via a
-   nonlinear prediction-error Delta rule with Oja decay:
-       err_t = tanh(v_t - W_{t-1} k_t)
-       W_t   = gamma_t * W_{t-1} + eta_t * (err_t (x) k_t^T - beta_oja * (W_{t-1} k_t) (x) k_t^T)
-5. Zero-Sibling Standalone Isolation:
-   Has 0 sibling dependencies. Runs identically and independently in any isolated directory.
+    updates W in-place within on-chip SRAM, and streams y_t directly to global memory,
+    achieving 93.4% HBM traffic reduction.
 """
 
 from __future__ import annotations
@@ -104,18 +84,6 @@ if HAS_TRITON:
         G_GROUPS: tl.constexpr,
         BLOCK_DG: tl.constexpr,
     ):
-        """
-        Each program instance handles one local group instance `row_id = (b * L + l) * G + g`.
-        Fuses in SRAM without materializing dW_nl [B, L, G, D_g, D_g] in HBM:
-        1. Rational nonlinear plasticity on rank coordinates:
-               psi_r = (eta_r * z_r) / (1 + (eta_r * z_r)^2)
-        2. Local Oja homeostatic energy:
-               E_loc = mean_r(z_r^2)
-        3. Matrix-free contraction of self-modified weight delta:
-               y_plastic[d] = sum_{r=0..R-1} U[d, r] * psi_r
-        4. Homeostatic combination with base weight output:
-               Out[d] = (1 - lambda_oja * E_loc) * YBase[d] + alpha_mod[d] * y_plastic[d]
-        """
         row_id = tl.program_id(0)
         g_idx = row_id % G_GROUPS
 
@@ -151,25 +119,24 @@ if HAS_TRITON:
 
     @triton.jit
     def fused_local_self_mod_weight_bwd_kernel(
-        GradOut_ptr,    # [B, L, G, D_g] upstream gradient
-        YBase_ptr,      # [B, L, G, D_g]
-        U_ptr,          # [B, L, G, D_g, R]
-        Z_ptr,          # [B, L, G, R]
-        Eta_ptr,        # [G, R]
-        LambdaOja_ptr,  # [G]
-        AlphaMod_ptr,   # [G, D_g]
-        GradYBase_ptr,  # [B, L, G, D_g] output grad
-        GradU_ptr,      # [B, L, G, D_g, R] output grad
-        GradZ_ptr,      # [B, L, G, R] output grad
+        GradOut_ptr,        # [B, L, G, D_g] upstream gradient
+        YBase_ptr,          # [B, L, G, D_g]
+        U_ptr,              # [B, L, G, D_g, R]
+        Z_ptr,              # [B, L, G, R]
+        Eta_ptr,            # [G, R]
+        LambdaOja_ptr,      # [G]
+        AlphaMod_ptr,       # [G, D_g]
+        GradYBase_ptr,      # [B, L, G, D_g] output grad
+        GradU_ptr,          # [B, L, G, D_g, R] output grad
+        GradZ_ptr,          # [B, L, G, R] output grad
+        GradEta_ptr,        # [G, R] atomic-accumulated parameter grad
+        GradLambdaOja_ptr,  # [G] atomic-accumulated parameter grad
+        GradAlphaMod_ptr,   # [G, D_g] atomic-accumulated parameter grad
         D_G: tl.constexpr,
         R_RANK: tl.constexpr,
         G_GROUPS: tl.constexpr,
         BLOCK_DG: tl.constexpr,
     ):
-        """
-        Fused Analytical Backward Kernel for the Local Self-Modifying Weight Operator.
-        Computes dYBase, dU, and dZ in a single SRAM pass per (b, l, g) instance.
-        """
         row_id = tl.program_id(0)
         g_idx = row_id % G_GROUPS
 
@@ -185,6 +152,7 @@ if HAS_TRITON:
         dy_plastic = dout * alpha_mod
         dot_dout_ybase = tl.sum(dout * y_base, axis=0)
 
+        y_plastic = tl.zeros((BLOCK_DG,), dtype=tl.float32)
         z_sq_sum = tl.zeros((1,), dtype=tl.float32)
         for r in range(0, R_RANK):
             z_r = tl.load(Z_ptr + row_id * R_RANK + r).to(tl.float32)
@@ -194,23 +162,30 @@ if HAS_TRITON:
             ez = eta_r * z_r
             denom = 1.0 + ez * ez
             psi_r = ez / denom
-            dpsi_dz = eta_r * (1.0 - ez * ez) / (denom * denom)
+            dpsi_dez = (1.0 - ez * ez) / (denom * denom)
 
             u_ptrs = U_ptr + (row_id * D_G + cols) * R_RANK + r
             u_col = tl.load(u_ptrs, mask=mask_d, other=0.0).to(tl.float32)
+            y_plastic += u_col * psi_r
 
             du_ptrs = GradU_ptr + (row_id * D_G + cols) * R_RANK + r
             tl.store(du_ptrs, dy_plastic * psi_r, mask=mask_d)
 
             d_psi_r = tl.sum(dy_plastic * u_col, axis=0)
+            d_ez_r = d_psi_r * dpsi_dez
+            tl.atomic_add(GradEta_ptr + g_idx * R_RANK + r, d_ez_r * z_r)
+
             dz_oja = (-2.0 * lambda_oja * z_r / R_RANK) * dot_dout_ybase
-            dz_r = d_psi_r * dpsi_dz + dz_oja
+            dz_r = d_ez_r * eta_r + dz_oja
             tl.store(GradZ_ptr + row_id * R_RANK + r, dz_r)
 
         e_loc = z_sq_sum / R_RANK
         oja_scale = 1.0 - lambda_oja * e_loc
         dy_base = dout * oja_scale
         tl.store(GradYBase_ptr + base_offset, dy_base, mask=mask_d)
+
+        tl.atomic_add(GradLambdaOja_ptr + g_idx, -dot_dout_ybase * e_loc)
+        tl.atomic_add(GradAlphaMod_ptr + g_idx * D_G + cols, dout * y_plastic, mask=mask_d)
 
 
     @triton.jit
@@ -222,7 +197,7 @@ if HAS_TRITON:
         GammaForget_ptr,    # [B, L, G] retention gate
         EtaGate_ptr,        # [B, L, G] plasticity rate
         YOut_ptr,           # [B, L, G, D_g] output tensor
-        WFinal_ptr,         # [B, G, D_g, D_g] optional final weight state
+        WFinal_ptr,         # [B, G, D_g, D_g] final weight state
         stride_b_ql, stride_l_ql, stride_g_ql, stride_d_ql,
         stride_w_g, stride_w_i, stride_w_j,
         B_BATCH: tl.constexpr,
@@ -235,17 +210,13 @@ if HAS_TRITON:
         """
         Persistent SRAM Token-Fused Delta-Oja Fast-Weight Kernel (Launch-Bound Killer).
         Grid: (B * G) program instances.
-        Each thread block owns exactly ONE (b, g) sequence instance for all L=128 tokens!
-        The fast weight matrix W in R^{D_g x D_g} (32x32 = 1024 floats = 4 KB) is loaded
-        ONCE into on-chip registers/SRAM, updated in-place across all L tokens without HBM writes,
-        and y_out is written directly to global memory.
-        Total launches: exactly 1 launch instead of 1024 launches.
+        Works for any D_G <= BLOCK_DG (e.g., G=8/D_g=32 or G=16/D_g=16).
+        Uses exact hyperbolic tangent `tanh(x) = 2 * sigmoid(2x) - 1` in SRAM registers.
         """
         pid = tl.program_id(0)
         b_idx = pid // G_GROUPS
         g_idx = pid % G_GROUPS
 
-        # Allocate 2D tile for local group fast-weight W in SRAM/registers
         row_idx = tl.arange(0, BLOCK_DG)[:, None]
         col_idx = tl.arange(0, BLOCK_DG)[None, :]
         mask_w = (row_idx < D_G) & (col_idx < D_G)
@@ -256,7 +227,6 @@ if HAS_TRITON:
         cols = tl.arange(0, BLOCK_DG)
         mask_d = cols < D_G
 
-        # Persistent loop over all L tokens directly inside SRAM!
         for t in range(0, L_SEQ):
             token_off = (
                 b_idx * stride_b_ql
@@ -268,36 +238,29 @@ if HAS_TRITON:
             k_t = tl.load(K_ptr + token_off, mask=mask_d, other=0.0).to(tl.float32)
             v_t = tl.load(V_ptr + token_off, mask=mask_d, other=0.0).to(tl.float32)
 
-            k_norm_sq = tl.sum(k_t * k_t, axis=0) + 1e-12
-            inv_k_norm = tl.math.rsqrt(k_norm_sq)
-            k_norm = k_t * inv_k_norm
+            k_norm = k_t / (tl.sqrt(tl.sum(k_t * k_t, axis=0)) + 1e-6)
 
-            # 1. Readout: y_t = W @ q_t (matrix-vector contraction in SRAM)
+            # 1. Readout in SRAM: y_t = W @ q_t
             y_t = tl.sum(w_state * q_t[None, :], axis=1)
             tl.store(YOut_ptr + token_off, y_t, mask=mask_d)
 
-            # 2. Local associative recall & error
+            # 2. Local associative recall & exact tanh prediction error
             wk_t = tl.sum(w_state * k_norm[None, :], axis=1)
-            # Use rational saturation tanh approximation in SRAM: x / sqrt(1 + x^2)
-            v_hat_t = wk_t * tl.math.rsqrt(1.0 + wk_t * wk_t)
+            v_hat_t = 2.0 * tl.sigmoid(2.0 * wk_t) - 1.0
             err_vec = v_t - v_hat_t
-            err_t = err_vec * tl.math.rsqrt(1.0 + err_vec * err_vec)
+            err_t = 2.0 * tl.sigmoid(2.0 * err_vec) - 1.0
 
-            # 3. Delta-Oja local update: delta = err_t - beta * v_hat_t^2 * wk_t
+            # 3. Delta-Oja local update in SRAM
             oja_term = BETA_OJA * (v_hat_t * v_hat_t) * wk_t
             delta_vec = err_t - oja_term
 
-            # Load scalar gate values for token t
             gate_off = b_idx * (L_SEQ * G_GROUPS) + t * G_GROUPS + g_idx
             gam_t = tl.load(GammaForget_ptr + gate_off).to(tl.float32)
             eta_t = 0.20 * tl.load(EtaGate_ptr + gate_off).to(tl.float32)
 
-            # Rank-1 outer product in-place SRAM weight accumulation:
-            # W = gamma * W + eta * (delta_vec (x) k_norm^T)
             outer_update = delta_vec[:, None] * k_norm[None, :]
-            w_state = gam_t * w_state + eta_t * outer_update
+            w_state = tl.where(mask_w, gam_t * w_state + eta_t * outer_update, 0.0)
 
-        # Optionally store final fast-weight matrix state
         if WFinal_ptr is not None:
             w_final_off = (
                 b_idx * (G_GROUPS * D_G * D_G)
@@ -338,20 +301,17 @@ class LocalSelfModifyingAnalyticalKernels:
         lambda_oja: np.ndarray,
         alpha_mod: np.ndarray,
     ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
-        """
-        Forward pass for the Fused Local Nonlinear Weight Self-Modification Operator.
-        """
         _, _, G, D_g, R = u_basis.shape
-        eta_b = eta[None, None, :, :]          # [1, 1, G, R]
-        lam_b = lambda_oja[None, None, :, None]  # [1, 1, G, 1]
-        alp_b = alpha_mod[None, None, :, :]    # [1, 1, G, D_g]
+        eta_b = eta[None, None, :, :]
+        lam_b = lambda_oja[None, None, :, None]
+        alp_b = alpha_mod[None, None, :, :]
 
-        ez = eta_b * z_proj                    # [B, L, G, R]
-        denom = 1.0 + np.square(ez)            # [B, L, G, R]
-        psi = ez / denom                       # [B, L, G, R]
+        ez = eta_b * z_proj
+        denom = 1.0 + np.square(ez)
+        psi = ez / denom
 
-        y_plastic = np.einsum("blgdr,blgr->blgd", u_basis, psi)  # [B, L, G, D_g]
-        e_loc = np.mean(np.square(z_proj), axis=-1, keepdims=True)  # [B, L, G, 1]
+        y_plastic = np.einsum("blgdr,blgr->blgd", u_basis, psi)
+        e_loc = np.mean(np.square(z_proj), axis=-1, keepdims=True)
         oja_scale = 1.0 - lam_b * e_loc
         out = oja_scale * y_base + alp_b * y_plastic
 
@@ -376,10 +336,6 @@ class LocalSelfModifyingAnalyticalKernels:
         grad_out: np.ndarray,
         cache: Dict[str, np.ndarray],
     ) -> Dict[str, np.ndarray]:
-        """
-        Exact analytical backward pass computing gradients w.r.t. all 6 inputs &
-        plasticity parameters: (d_ybase, d_ubasis, d_zproj, d_eta, d_lambda_oja, d_alpha_mod).
-        """
         y_base = cache["y_base"]
         u_basis = cache["u_basis"]
         z_proj = cache["z_proj"]
@@ -431,10 +387,6 @@ class LocalSelfModifyingAnalyticalKernels:
         gamma_forget: np.ndarray,
         beta_oja: float = 0.10,
     ) -> Tuple[np.ndarray, np.ndarray, Dict[str, float]]:
-        """
-        Recurrent Local Nonlinear Delta-Oja Fast-Weight Self-Modification Operator.
-        Sequential reference implementation (matches persistent SRAM single-launch execution bit-for-bit).
-        """
         B, L, G, D_g = q.shape
         w_curr = np.broadcast_to(w_init[None, ...], (B, G, D_g, D_g)).copy()
         y_out = np.zeros_like(q)
@@ -459,7 +411,7 @@ class LocalSelfModifyingAnalyticalKernels:
 
             outer_update = np.einsum("bgi,bgj->bgij", delta_vec, k_norm)
             gam_t = gamma_forget[:, t, :, None, None]
-            eta_t = (0.2 * eta_gate[:, t, :, None, None])
+            eta_t = 0.2 * eta_gate[:, t, :, None, None]
             w_curr = gam_t * w_curr + eta_t * outer_update
 
         weight_drift = float(np.linalg.norm(w_curr - w_init[None, ...]) / math.sqrt(B * G * D_g * D_g))
@@ -482,7 +434,7 @@ class LocalSelfModifyingAnalyticalKernels:
         """
         Persistent SRAM Single-Launch Kernel Simulator (Launch-Bound Killer).
         Simulates on-chip register-resident execution where each (b, g) program instance
-        holds W in 4 KB SRAM across all L=128 tokens in a single launch.
+        holds W in SRAM across all L tokens in a single launch.
         """
         B, L, G, D_g = q.shape
         y_out = np.zeros_like(q)
@@ -490,7 +442,6 @@ class LocalSelfModifyingAnalyticalKernels:
 
         for b in range(B):
             for g in range(G):
-                # Local fast-weight W pinned in on-chip SRAM/registers (4 KB for 32x32)
                 w_sram = w_init[g].copy()
                 for t in range(L):
                     qt = q[b, t, g]
@@ -498,39 +449,48 @@ class LocalSelfModifyingAnalyticalKernels:
                     vt = v[b, t, g]
                     kn = kt / (np.linalg.norm(kt) + 1e-6)
 
-                    # 1. Readout directly from SRAM
                     y_out[b, t, g] = w_sram @ qt
 
-                    # 2. Local associative recall & error
                     wk = w_sram @ kn
                     vh = np.tanh(wk)
                     err = np.tanh(vt - vh)
                     oja = beta_oja * (vh ** 2) * wk
                     dvec = err - oja
 
-                    # 3. In-place SRAM weight accumulation
                     w_sram = gamma_forget[b, t, g] * w_sram + (0.2 * eta_gate[b, t, g]) * np.outer(dvec, kn)
                 w_final[b, g] = w_sram
 
-        # Bandwidth comparison:
-        # Eager loop writes and reads W [B, G, D_g, D_g] to/from HBM at every step:
-        # Eager HBM = 2 * B * L * G * D_g^2 * 4 bytes + activations.
-        # Persistent SRAM Kernel reads W_init ONCE and writes W_final ONCE:
-        # Persistent HBM = 2 * B * G * D_g^2 * 4 bytes + L * (3 inputs + 1 output) * 4 bytes.
         elem_bytes = 4
         eager_bytes = (2 * B * L * G * D_g * D_g + 4 * B * L * G * D_g) * elem_bytes
         persistent_bytes = (2 * B * G * D_g * D_g + 4 * B * L * G * D_g) * elem_bytes
         hbm_saved = (1.0 - persistent_bytes / max(eager_bytes, 1)) * 100.0
 
         diagnostics = {
-            "kernel_launches_eager": L * 8,      # 1024 launches in naive eager
-            "kernel_launches_persistent": 1,     # Exactly 1 launch in persistent kernel
+            "kernel_launches_eager": L * 8,
+            "kernel_launches_persistent": 1,
             "eager_hbm_kb": eager_bytes / 1024.0,
             "persistent_hbm_kb": persistent_bytes / 1024.0,
             "hbm_saved_pct": hbm_saved,
             "speedup_launch_reduction": (L * 8) / 1.0,
         }
         return y_out, w_final, diagnostics
+
+    simulate_persistent_delta_oja_sram_kernel = persistent_delta_oja_sram_forward_pass
+
+
+def simulate_persistent_delta_oja_sram_kernel(
+    q: np.ndarray,
+    k: np.ndarray,
+    v: np.ndarray,
+    w_init: np.ndarray,
+    eta_gate: np.ndarray,
+    gamma_forget: np.ndarray,
+    beta_oja: float = 0.10,
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, float]]:
+    """Top-level alias for `LocalSelfModifyingAnalyticalKernels.persistent_delta_oja_sram_forward_pass`."""
+    return LocalSelfModifyingAnalyticalKernels.persistent_delta_oja_sram_forward_pass(
+        q, k, v, w_init, eta_gate, gamma_forget, beta_oja
+    )
 
 
 # ==============================================================================
@@ -557,6 +517,7 @@ if HAS_TORCH:
         """
         Custom PyTorch Autograd Function encapsulating the Fused Local Nonlinear
         Weight Self-Modification Operator (Bounded Rational Plasticity + Oja Homeostasis).
+        Dispatches to `fused_local_self_mod_weight_fwd_kernel` / `bwd_kernel` when on CUDA with Triton.
         """
 
         @staticmethod
@@ -569,6 +530,30 @@ if HAS_TORCH:
             lambda_oja: torch.Tensor,
             alpha_mod: torch.Tensor,
         ) -> torch.Tensor:
+            if HAS_TRITON and y_base.is_cuda:
+                B, L, G, D_g, R = u_basis.shape
+                num_rows = B * L * G
+                block_dg = triton.next_power_of_2(D_g)
+                grid = (triton.cdiv(num_rows, 1),)
+                out = torch.empty_like(y_base)
+                fused_local_self_mod_weight_fwd_kernel[grid](
+                    y_base.contiguous(),
+                    u_basis.contiguous(),
+                    z_proj.contiguous(),
+                    eta.contiguous(),
+                    lambda_oja.contiguous(),
+                    alpha_mod.contiguous(),
+                    out,
+                    D_G=D_g,
+                    R_RANK=R,
+                    G_GROUPS=G,
+                    BLOCK_DG=block_dg,
+                )
+                ctx.save_for_backward(y_base, u_basis, z_proj, eta, lambda_oja, alpha_mod)
+                ctx.used_triton = True
+                return out
+
+            ctx.used_triton = False
             eta_b = eta.unsqueeze(0).unsqueeze(0)
             lam_b = lambda_oja.view(1, 1, -1, 1)
             alp_b = alpha_mod.unsqueeze(0).unsqueeze(0)
@@ -590,6 +575,48 @@ if HAS_TORCH:
 
         @staticmethod
         def backward(ctx, grad_out: torch.Tensor):
+            if getattr(ctx, "used_triton", False):
+                y_base, u_basis, z_proj, eta, lambda_oja, alpha_mod = ctx.saved_tensors
+                B, L, G, D_g, R = u_basis.shape
+                num_rows = B * L * G
+                block_dg = triton.next_power_of_2(D_g)
+                grid = (triton.cdiv(num_rows, 1),)
+
+                d_ybase = torch.empty_like(y_base)
+                d_ubasis = torch.empty_like(u_basis)
+                d_zproj = torch.empty_like(z_proj)
+                d_eta = torch.zeros_like(eta, dtype=torch.float32)
+                d_lambda_oja = torch.zeros_like(lambda_oja, dtype=torch.float32)
+                d_alpha_mod = torch.zeros_like(alpha_mod, dtype=torch.float32)
+
+                fused_local_self_mod_weight_bwd_kernel[grid](
+                    grad_out.contiguous(),
+                    y_base.contiguous(),
+                    u_basis.contiguous(),
+                    z_proj.contiguous(),
+                    eta.contiguous(),
+                    lambda_oja.contiguous(),
+                    alpha_mod.contiguous(),
+                    d_ybase,
+                    d_ubasis,
+                    d_zproj,
+                    d_eta,
+                    d_lambda_oja,
+                    d_alpha_mod,
+                    D_G=D_g,
+                    R_RANK=R,
+                    G_GROUPS=G,
+                    BLOCK_DG=block_dg,
+                )
+                return (
+                    d_ybase.to(y_base.dtype),
+                    d_ubasis.to(u_basis.dtype),
+                    d_zproj.to(z_proj.dtype),
+                    d_eta.to(eta.dtype),
+                    d_lambda_oja.to(lambda_oja.dtype),
+                    d_alpha_mod.to(alpha_mod.dtype),
+                )
+
             (
                 y_base, u_basis, z_proj, eta, lambda_oja, alpha_mod,
                 ez, denom, psi, y_plastic, e_loc, oja_scale
@@ -619,12 +646,124 @@ if HAS_TORCH:
             return d_ybase, d_ubasis, d_zproj, d_eta, d_lambda_oja, d_alpha_mod
 
 
+    class PersistentDeltaOjaSRAMFunction(torch.autograd.Function):
+        """
+        Dispatches the Recurrent Delta-Oja sequence update to the single-launch
+        `persistent_delta_oja_sram_fused_fwd_kernel` when on CUDA with Triton
+        (supporting arbitrary group dimensions `D_g` via `BLOCK_DG = triton.next_power_of_2(D_g)`),
+        eliminating the 1024-launch bottleneck.
+        """
+
+        @staticmethod
+        def forward(
+            ctx,
+            q: torch.Tensor,
+            k: torch.Tensor,
+            v: torch.Tensor,
+            w_base: torch.Tensor,
+            eta_gate: torch.Tensor,
+            gamma_forget: torch.Tensor,
+            beta_oja: float,
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
+            B, L, G, D_g = q.shape
+            if HAS_TRITON and q.is_cuda:
+                q_c = q.contiguous()
+                k_c = k.contiguous()
+                v_c = v.contiguous()
+                w_c = w_base.contiguous()
+                gam_c = gamma_forget.contiguous()
+                eta_c = eta_gate.contiguous()
+                y_out = torch.empty_like(q_c)
+                w_final = torch.empty((B, G, D_g, D_g), device=q.device, dtype=q.dtype)
+                block_dg = triton.next_power_of_2(D_g)
+                grid = (triton.cdiv(B * G, 1),)
+                persistent_delta_oja_sram_fused_fwd_kernel[grid](
+                    q_c, k_c, v_c, w_c, gam_c, eta_c, y_out, w_final,
+                    q_c.stride(0), q_c.stride(1), q_c.stride(2), q_c.stride(3),
+                    w_c.stride(0), w_c.stride(1), w_c.stride(2),
+                    B_BATCH=B,
+                    L_SEQ=L,
+                    G_GROUPS=G,
+                    D_G=D_g,
+                    BETA_OJA=beta_oja,
+                    BLOCK_DG=block_dg,
+                )
+                ctx.save_for_backward(q_c, k_c, v_c, w_c, eta_c, gam_c)
+                ctx.beta_oja = beta_oja
+                return y_out, w_final
+
+            w_fast = w_base.unsqueeze(0).expand(B, -1, -1, -1).clone()
+            y_rec_list = []
+            for t in range(L):
+                q_t, k_t, v_t = q[:, t], k[:, t], v[:, t]
+                k_norm = F.normalize(k_t, p=2, dim=-1, eps=1e-6)
+                y_t = torch.einsum("bgij,bgj->bgi", w_fast, q_t)
+                y_rec_list.append(y_t)
+
+                wk_t = torch.einsum("bgij,bgj->bgi", w_fast, k_norm)
+                v_hat_t = torch.tanh(wk_t)
+                err_t = torch.tanh(v_t - v_hat_t)
+                oja_term = beta_oja * v_hat_t.pow(2) * wk_t
+                delta_vec = err_t - oja_term
+
+                outer_update = torch.einsum("bgi,bgj->bgij", delta_vec, k_norm)
+                gam_t = gamma_forget[:, t].view(B, G, 1, 1)
+                eta_t = (0.2 * eta_gate[:, t]).view(B, G, 1, 1)
+                w_fast = gam_t * w_fast + eta_t * outer_update
+
+            y_out = torch.stack(y_rec_list, dim=1)
+            ctx.save_for_backward(q, k, v, w_base, eta_gate, gamma_forget)
+            ctx.beta_oja = beta_oja
+            return y_out, w_fast
+
+        @staticmethod
+        def backward(ctx, grad_y: torch.Tensor, grad_w_final: Optional[torch.Tensor]):
+            q, k, v, w_base, eta_gate, gamma_forget = ctx.saved_tensors
+            beta_oja = ctx.beta_oja
+            B, L, G, D_g = q.shape
+
+            with torch.enable_grad():
+                q_d = q.detach().requires_grad_(True)
+                k_d = k.detach().requires_grad_(True)
+                v_d = v.detach().requires_grad_(True)
+                wb_d = w_base.detach().requires_grad_(True)
+                eg_d = eta_gate.detach().requires_grad_(True)
+                gf_d = gamma_forget.detach().requires_grad_(True)
+
+                w_fast = wb_d.unsqueeze(0).expand(B, -1, -1, -1).clone()
+                y_rec_list = []
+                for t in range(L):
+                    q_t, k_t, v_t = q_d[:, t], k_d[:, t], v_d[:, t]
+                    k_norm = F.normalize(k_t, p=2, dim=-1, eps=1e-6)
+                    y_t = torch.einsum("bgij,bgj->bgi", w_fast, q_t)
+                    y_rec_list.append(y_t)
+                    wk_t = torch.einsum("bgij,bgj->bgi", w_fast, k_norm)
+                    v_hat_t = torch.tanh(wk_t)
+                    err_t = torch.tanh(v_t - v_hat_t)
+                    oja_term = beta_oja * v_hat_t.pow(2) * wk_t
+                    delta_vec = err_t - oja_term
+                    outer_update = torch.einsum("bgi,bgj->bgij", delta_vec, k_norm)
+                    gam_t = gf_d[:, t].view(B, G, 1, 1)
+                    eta_t = (0.2 * eg_d[:, t]).view(B, G, 1, 1)
+                    w_fast = gam_t * w_fast + eta_t * outer_update
+
+                y_rec = torch.stack(y_rec_list, dim=1)
+                dq, dk, dv, dwb, deg, dgf = torch.autograd.grad(
+                    outputs=y_rec,
+                    inputs=(q_d, k_d, v_d, wb_d, eg_d, gf_d),
+                    grad_outputs=grad_y,
+                    allow_unused=True,
+                )
+            return dq, dk, dv, dwb, deg, dgf, None
+
+
     class LocalNonlinearSelfModifyingOp(nn.Module):
         """
         Complete Local Nonlinear Self-Modifying Weight Operator (`nn.Module`).
         Combines:
         1. Instantaneous Subspace-Local Weight Self-Modification (`FusedLocalSelfModWeightFunction`)
         2. Persistent SRAM Token-Fused Recurrent Delta-Oja Fast-Weight Plasticity
+           (`PersistentDeltaOjaSRAMFunction`, dispatching directly to `persistent_delta_oja_sram_fused_fwd_kernel`)
         """
 
         def __init__(self, config: LocalSelfModConfig):
@@ -636,12 +775,9 @@ if HAS_TORCH:
             self.D_g = config.d_model // config.num_local_groups
             self.R = config.local_rank
 
-            # 1. Static local block-diagonal base weights W_base[G, D_g, D_g]
             self.w_base = nn.Parameter(
                 torch.randn(self.G, self.D_g, self.D_g) * (self.D_g ** -0.5)
             )
-
-            # 2. Local Hyper-Generators for U(x) and V(x) within each group g
             self.u_gen_weight = nn.Parameter(
                 torch.randn(self.G, self.D_g, self.D_g * self.R) * (self.D_g ** -0.5)
             )
@@ -649,7 +785,6 @@ if HAS_TORCH:
                 torch.randn(self.G, self.D_g, self.D_g * self.R) * (self.D_g ** -0.5)
             )
 
-            # 3. Plasticity & Oja Homeostatic coefficients
             self.eta = nn.Parameter(
                 torch.full((self.G, self.R), config.eta_plasticity_init)
             )
@@ -660,7 +795,6 @@ if HAS_TORCH:
                 torch.full((self.G, self.D_g), config.alpha_mod_init)
             )
 
-            # 4. Recurrent Delta-Oja Fast-Weight projections (local per group)
             self.qkv_local = nn.Parameter(
                 torch.randn(self.G, self.D_g, 3 * self.D_g) * (self.D_g ** -0.5)
             )
@@ -693,34 +827,20 @@ if HAS_TORCH:
             gates = torch.sigmoid(self.plasticity_gates(x))
             eta_gate, gamma_forget = gates.chunk(2, dim=-1)
 
-            # Launch Persistent SRAM single-launch sequence kernel if on CUDA with Triton,
-            # otherwise execute in-memory persistent scan
-            w_fast = self.w_base.unsqueeze(0).expand(B, -1, -1, -1).clone()
-            y_rec_list = []
-            for t in range(L):
-                q_t, k_t, v_t = q[:, t], k[:, t], v[:, t]
-                k_norm = F.normalize(k_t, p=2, dim=-1, eps=1e-6)
-
-                y_t = torch.einsum("bgij,bgj->bgi", w_fast, q_t)
-                y_rec_list.append(y_t)
-
-                wk_t = torch.einsum("bgij,bgj->bgi", w_fast, k_norm)
-                v_hat_t = torch.tanh(wk_t)
-                err_t = torch.tanh(v_t - v_hat_t)
-                oja_term = self.config.recurrent_beta_oja * v_hat_t.pow(2) * wk_t
-                delta_vec = err_t - oja_term
-
-                outer_update = torch.einsum("bgi,bgj->bgij", delta_vec, k_norm)
-                gam_t = gamma_forget[:, t].view(B, self.G, 1, 1)
-                eta_t = (0.2 * eta_gate[:, t]).view(B, self.G, 1, 1)
-                w_fast = gam_t * w_fast + eta_t * outer_update
-
-            y_rec = torch.stack(y_rec_list, dim=1).reshape(B, L, D)
+            y_rec_4d, w_fast = PersistentDeltaOjaSRAMFunction.apply(
+                q, k, v, self.w_base, eta_gate, gamma_forget, self.config.recurrent_beta_oja
+            )
+            y_rec = y_rec_4d.reshape(B, L, D)
             out = self.out_norm(self.out_proj(torch.cat([y_inst, y_rec], dim=-1)))
 
             with torch.no_grad():
-                drift = float((w_fast - self.w_base.unsqueeze(0)).norm().item() / math.sqrt(B * self.G * self.D_g * self.D_g))
-                mean_oja = float((1.0 - self.lambda_oja.view(1, 1, -1, 1) * z_proj.pow(2).mean(dim=-1, keepdim=True)).mean().item())
+                drift = float(
+                    (w_fast - self.w_base.unsqueeze(0)).norm().item()
+                    / math.sqrt(B * self.G * self.D_g * self.D_g)
+                )
+                mean_oja = float(
+                    (1.0 - self.lambda_oja.view(1, 1, -1, 1) * z_proj.pow(2).mean(dim=-1, keepdim=True)).mean().item()
+                )
             return out, {"rms_fast_weight_drift": drift, "mean_oja_homeostasis_scale": mean_oja}
 
 
@@ -738,11 +858,6 @@ def simulate_triton_local_self_mod_kernel(
     block_dg: int = 32,
     bytes_per_elem: int = 2,
 ) -> Tuple[np.ndarray, Dict[str, float]]:
-    """
-    Simulates `fused_local_self_mod_weight_fwd_kernel` tile-by-tile across
-    `num_rows = B * L * G` in SRAM and measures HBM bandwidth savings vs.
-    materializing the explicit local weight modification matrix dW [B, L, G, D_g, D_g].
-    """
     B, L, G, D_g, R = u_basis.shape
     num_rows = B * L * G
 
@@ -790,11 +905,6 @@ def simulate_triton_local_self_mod_kernel(
 
 
 def run_local_self_modifying_verification_suite() -> None:
-    """
-    Executes central finite-difference gradcheck on all 6 inputs & plasticity
-    parameters, verifies Triton tile simulator parity, and tests Persistent
-    SRAM Single-Launch Delta-Oja execution vs. sequential loop.
-    """
     rng = np.random.default_rng(2026)
     print("=" * 96)
     print("1. Analytical vs. Finite-Difference Gradcheck (FusedLocalSelfModifyingWeightOp)")
@@ -849,67 +959,65 @@ def run_local_self_modifying_verification_suite() -> None:
         assert rel_err < 1e-8, f"Gradcheck failed for {name}: {rel_err}"
 
     print("\n" + "=" * 96)
-    print("2. Persistent SRAM Single-Launch Delta-Oja (Launch-Bound Killer) Parity & HBM Audit (L=128)")
+    print("2. Persistent SRAM Single-Launch Delta-Oja Parity Across Both (G=8, D_g=32) & (G=16, D_g=16)")
     print("=" * 96)
-    B_b, L_b, G_b, Dg_b, R_b = 2, 128, 8, 32, 4
-    yb_b = rng.standard_normal((B_b, L_b, G_b, Dg_b)) * 0.5
-    ub_b = rng.standard_normal((B_b, L_b, G_b, Dg_b, R_b)) * 0.3
-    zp_b = rng.standard_normal((B_b, L_b, G_b, R_b)) * 0.5
-    eta_b = np.full((G_b, R_b), 0.8)
-    lam_b = np.full((G_b,), 0.15)
-    alp_b = np.full((G_b, Dg_b), 0.5)
+    for (G_b, Dg_b) in [(8, 32), (16, 16)]:
+        B_b, L_b, R_b = 2, 128, 4
+        yb_b = rng.standard_normal((B_b, L_b, G_b, Dg_b)) * 0.5
+        ub_b = rng.standard_normal((B_b, L_b, G_b, Dg_b, R_b)) * 0.3
+        zp_b = rng.standard_normal((B_b, L_b, G_b, R_b)) * 0.5
+        eta_b = np.full((G_b, R_b), 0.8)
+        lam_b = np.full((G_b,), 0.15)
+        alp_b = np.full((G_b, Dg_b), 0.5)
 
-    out_ref, cache_b = LocalSelfModifyingAnalyticalKernels.fused_local_self_mod_forward(
-        yb_b, ub_b, zp_b, eta_b, lam_b, alp_b
-    )
-    out_tri, hbm_stats = simulate_triton_local_self_mod_kernel(
-        yb_b, ub_b, zp_b, eta_b, lam_b, alp_b, block_dg=16
-    )
-    max_tile_diff = float(np.max(np.abs(out_ref - out_tri)))
+        out_ref, _ = LocalSelfModifyingAnalyticalKernels.fused_local_self_mod_forward(
+            yb_b, ub_b, zp_b, eta_b, lam_b, alp_b
+        )
+        out_tri, _ = simulate_triton_local_self_mod_kernel(
+            yb_b, ub_b, zp_b, eta_b, lam_b, alp_b, block_dg=16
+        )
+        max_tile_diff = float(np.max(np.abs(out_ref - out_tri)))
 
-    # Test Recurrent Nonlinear Delta-Oja: Sequential vs. Persistent SRAM Single-Launch Execution
-    q_b = rng.standard_normal((B_b, L_b, G_b, Dg_b)) * 0.3
-    k_b = rng.standard_normal((B_b, L_b, G_b, Dg_b)) * 0.3
-    v_b = rng.standard_normal((B_b, L_b, G_b, Dg_b)) * 0.3
-    w_init_b = rng.standard_normal((G_b, Dg_b, Dg_b)) * (Dg_b ** -0.5)
-    eta_gate_b = np.full((B_b, L_b, G_b), 0.15)
-    gam_gate_b = np.full((B_b, L_b, G_b), 0.95)
+        q_b = rng.standard_normal((B_b, L_b, G_b, Dg_b)) * 0.3
+        k_b = rng.standard_normal((B_b, L_b, G_b, Dg_b)) * 0.3
+        v_b = rng.standard_normal((B_b, L_b, G_b, Dg_b)) * 0.3
+        w_init_b = rng.standard_normal((G_b, Dg_b, Dg_b)) * (Dg_b ** -0.5)
+        eta_gate_b = np.full((B_b, L_b, G_b), 0.15)
+        gam_gate_b = np.full((B_b, L_b, G_b), 0.95)
 
-    y_rec_seq, w_final_seq, fw_diag = LocalSelfModifyingAnalyticalKernels.recurrent_nonlinear_delta_oja_fastweight_forward(
-        q_b, k_b, v_b, w_init_b, eta_gate_b, gam_gate_b, beta_oja=0.10
-    )
-    y_rec_sram, w_final_sram, sram_diag = LocalSelfModifyingAnalyticalKernels.persistent_delta_oja_sram_forward_pass(
-        q_b, k_b, v_b, w_init_b, eta_gate_b, gam_gate_b, beta_oja=0.10
-    )
+        y_rec_seq, w_final_seq, _ = LocalSelfModifyingAnalyticalKernels.recurrent_nonlinear_delta_oja_fastweight_forward(
+            q_b, k_b, v_b, w_init_b, eta_gate_b, gam_gate_b, beta_oja=0.10
+        )
+        y_rec_sram, w_final_sram, sram_diag = simulate_persistent_delta_oja_sram_kernel(
+            q_b, k_b, v_b, w_init_b, eta_gate_b, gam_gate_b, beta_oja=0.10
+        )
 
-    diff_seq_sram_out = float(np.max(np.abs(y_rec_seq - y_rec_sram)))
-    diff_seq_sram_w = float(np.max(np.abs(w_final_seq - w_final_sram)))
+        diff_seq_sram_out = float(np.max(np.abs(y_rec_seq - y_rec_sram)))
+        diff_seq_sram_w = float(np.max(np.abs(w_final_seq - w_final_sram)))
 
-    print(f"   Sequence Length L = {L_b}   |   Local Group Subspaces G = {G_b}   |   Dim D_g = {Dg_b}")
-    print(f"   Instantaneous Self-Mod Max Abs Diff  : {max_tile_diff:.2e}  [PASS == 0.00e+00]")
-    print(f"   |Sequential Loop - Persistent SRAM| Y : {diff_seq_sram_out:.2e}  [PASS < 1e-15]")
-    print(f"   |Sequential Loop - Persistent SRAM| W : {diff_seq_sram_w:.2e}  [PASS < 1e-15]")
-    print(f"   GPU Kernel Launches (L=128 tokens)   : Eager Loop = {sram_diag['kernel_launches_eager']} launches  ==>  Persistent Kernel = {sram_diag['kernel_launches_persistent']} SINGLE Launch!")
-    print(
-        f"   Persistent HBM Memory Traffic Savings: Eager = {sram_diag['eager_hbm_kb']:.1f} KB  ==>  "
-        f"Persistent SRAM = {sram_diag['persistent_hbm_kb']:.1f} KB (Saved {sram_diag['hbm_saved_pct']:.1f}% HBM Traffic!)  [PASS]"
-    )
-    assert max_tile_diff < 1e-14 and diff_seq_sram_out < 1e-14 and diff_seq_sram_w < 1e-14
+        print(
+            f"   Config (G={G_b:2d}, D_g={Dg_b:2d}, L={L_b}) | Tile Diff: {max_tile_diff:.2e} | "
+            f"|Y_seq - Y_sram|: {diff_seq_sram_out:.2e} | |W_seq - W_sram|: {diff_seq_sram_w:.2e} | "
+            f"Launches: {sram_diag['kernel_launches_eager']} -> {sram_diag['kernel_launches_persistent']} "
+            f"(HBM Saved {sram_diag['hbm_saved_pct']:.1f}%)  [PASS]"
+        )
+        assert max_tile_diff < 1e-14 and diff_seq_sram_out < 1e-14 and diff_seq_sram_w < 1e-14
     print("=" * 96)
 
 if not HAS_TORCH:
     class RMSNorm:
-        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
         def __init__(self, *args, **kwargs):
             raise ImportError("PyTorch is required to instantiate RMSNorm.")
 
     class FusedLocalSelfModWeightFunction:
-        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
         def __init__(self, *args, **kwargs):
             raise ImportError("PyTorch is required to instantiate FusedLocalSelfModWeightFunction.")
 
+    class PersistentDeltaOjaSRAMFunction:
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required to instantiate PersistentDeltaOjaSRAMFunction.")
+
     class LocalNonlinearSelfModifyingOp:
-        """Fallback stub when PyTorch is not installed; use AnalyticalKernels for NumPy execution."""
         def __init__(self, *args, **kwargs):
             raise ImportError("PyTorch is required to instantiate LocalNonlinearSelfModifyingOp.")
 

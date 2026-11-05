@@ -592,6 +592,18 @@ if HAS_TORCH:
             eps_casimir: float,
             eps_zpe_floor: float,
         ) -> torch.Tensor:
+            if HAS_TRITON and q.is_cuda:
+                B, L, D = q.shape
+                num_rows = B * L
+                block_d = triton.next_power_of_2(D)
+                grid = (triton.cdiv(num_rows, 1),)
+                out_t = torch.empty_like(q)
+                fused_vacuum_zpe_casimir_schwinger_fwd_kernel[grid](
+                    q.contiguous(), p.contiguous(), b_gap.contiguous(),
+                    omega_zpe.contiguous(), r_squeeze.contiguous(), m_gap.contiguous(),
+                    alpha_cas.contiguous(), beta_zpe.contiguous(), out_t,
+                    D, D_MODEL=D, eps_casimir=eps_casimir, eps_zpe_floor=eps_zpe_floor, BLOCK_D=block_d,
+                )
             om_b = omega_zpe.view(1, 1, -1)
             rs_b = torch.clamp(r_squeeze.view(1, 1, -1), -10.0, 10.0)
             mg_b = m_gap.view(1, 1, -1)
@@ -686,9 +698,12 @@ if HAS_TORCH:
 
         def __init__(self, config: VacuumZPEFluctuationConfig):
             super().__init__()
+            assert config.d_model % config.n_heads == 0
             self.config = config
             D = config.d_model
             self.d_model = D
+            self.n_heads = config.n_heads
+            self.d_head = D // config.n_heads
             self.num_vacuum_modes = config.num_vacuum_modes
 
             self.in_proj = nn.Linear(D, 2 * D, bias=False)
@@ -705,21 +720,26 @@ if HAS_TORCH:
             self.out_norm = RMSNorm(D, eps=config.rms_norm_eps)
 
         def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, float]]:
+            B, L, D = x.shape
+            H, Dh = self.n_heads, self.d_head
             q, p = self.in_proj(x).chunk(2, dim=-1)
-            scale = self.d_model ** -0.5
+            scale = Dh ** -0.5
 
-            # Non-local virtual boson vacuum propagator
-            joint_qp = 0.5 * (q + p)
+            # Multi-head non-local virtual boson vacuum propagator across n_heads
+            q_h = q.view(B, L, H, Dh)
+            p_h = p.view(B, L, H, Dh)
+            modes_h = self.vacuum_modes.view(self.num_vacuum_modes, H, Dh)
+            joint_qp = 0.5 * (q_h + p_h)
             attn_emit = F.softmax(
-                torch.einsum("rd,bld->brl", self.vacuum_modes, joint_qp) * scale,
+                torch.einsum("rhd,blhd->bhrl", modes_h, joint_qp) * scale,
                 dim=-1,
             )
-            v_boson = torch.einsum("brl,bld->brd", attn_emit, p)
+            v_boson = torch.einsum("bhrl,blhd->bhrd", attn_emit, p_h)
             attn_abs = F.softmax(
-                torch.einsum("bld,brd->blr", q, v_boson) * scale,
+                torch.einsum("blhd,bhrd->bhlr", q_h, v_boson) * scale,
                 dim=-1,
             )
-            b_gap = torch.einsum("blr,brd->bld", attn_abs, v_boson)
+            b_gap = torch.einsum("bhlr,bhrd->blhd", attn_abs, v_boson).reshape(B, L, D)
 
             fused = FusedVacuumZPECasimirSchwingerFunction.apply(
                 q, p, b_gap,

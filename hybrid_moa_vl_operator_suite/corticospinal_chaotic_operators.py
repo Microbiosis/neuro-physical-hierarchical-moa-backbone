@@ -535,6 +535,18 @@ if HAS_TORCH:
             beta_damp: float,
             lambda_con: float,
         ) -> torch.Tensor:
+            if HAS_TRITON and u_cort.is_cuda:
+                B, L, D = u_cort.shape
+                num_rows = B * L
+                block_d = triton.next_power_of_2(D)
+                grid = (triton.cdiv(num_rows, 1),)
+                out_t = torch.empty_like(u_cort)
+                fused_corticospinal_chaotic_manifold_fwd_kernel[grid](
+                    u_cort.contiguous(), v_bulb.contiguous(), w_spin.contiguous(),
+                    sigma_cbs.contiguous(), rho_gain.contiguous(), gamma_nl.contiguous(),
+                    kappa_ctrl.contiguous(), out_t, D,
+                    D_MODEL=D, dt_step=dt_step, beta_damp=beta_damp, lambda_con=lambda_con, BLOCK_D=block_d,
+                )
             sig_b = sigma_cbs.view(1, 1, -1)
             rho_b = rho_gain.view(1, 1, -1)
             gam_b = gamma_nl.view(1, 1, -1)

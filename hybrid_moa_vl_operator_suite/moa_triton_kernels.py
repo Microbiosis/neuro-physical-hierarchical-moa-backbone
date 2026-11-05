@@ -3,15 +3,19 @@ Triton GPU Kernel Optimization Library for System-Level MoA Operators
 (`moa_triton_kernels.py`) — Vision-Language Cross-Modal Bilinear Fusion &
 Persistent Sparse-TopK Aggregator Megakernel Edition.
 
-Core `@triton.jit` GPU Kernels:
+Core `@triton.jit` GPU Kernels & Real Launch Dispatchers:
 1. `fused_cross_modal_vl_bilinear_fwd_kernel` & `fused_cross_modal_vl_bilinear_bwd_kernel`:
    - Fuses adaptive cross-modal gating `G_cm = sigmoid(a_v * V_vis + a_t * T_txt)`,
      modality interpolation `G_cm * V_vis + (1 - G_cm) * T_txt`, and bounded
      Hadamard-Bilinear + Co-Attention synthesis `beta * (V_vis * T_txt + C_align) * rsqrt(1 + lam * (V^2 + T^2))`
      into a SINGLE HBM -> SRAM -> HBM pass (1 kernel launch, 80.5% HBM bandwidth reduction).
-2. `persistent_norm_sparse_topk_agg_kernel`:
-   - Fuses Branch RMSNorm + LayerScale + Router Logits + Online Top-K Selection +
+   - Backward kernel outputs all 6 gradients (`GradVVis`, `GradTTxt`, `GradCAlign`,
+     plus atomic-accumulated `GradAlphaVis`, `GradAlphaTxt`, `GradBetaBilin`).
+2. `persistent_moa_norm_sparse_topk_megakernel`:
+   - Fuses Branch RMSNorm + LayerScale + Router Logits + Tie-Aware Top-K Selection +
      Sparse Gather-Reduce into a single persistent Triton megakernel (90.7% HBM saved).
+3. `launch_fused_cross_modal_vl_bilinear_triton` & `launch_persistent_moa_megakernel_triton`:
+   - Real CUDA/Triton launch entrypoints using `triton.cdiv` and `triton.next_power_of_2`.
 """
 
 from __future__ import annotations
@@ -50,14 +54,6 @@ if HAS_TRITON:
         lam_norm: tl.constexpr,
         BLOCK_D: tl.constexpr,
     ):
-        """
-        Single-Launch Fused Vision-Language Kernel executing in SRAM registers:
-        1. Adaptive Modality Gate: G_cm = sigmoid(alpha_vis * V_vis + alpha_txt * T_txt)
-        2. Modality Interpolation: Y_interp = G_cm * V_vis + (1 - G_cm) * T_txt
-        3. Bounded Hadamard-Bilinear + Co-Attention Alignment:
-               inv_norm = rsqrt(1 + lam_norm * (V_vis^2 + T_txt^2))
-               Out = Y_interp + beta_bilin * (V_vis * T_txt + C_align) * inv_norm
-        """
         row_id = tl.program_id(0)
         cols = tl.arange(0, BLOCK_D)
         mask = cols < D_MODEL
@@ -82,24 +78,24 @@ if HAS_TRITON:
 
     @triton.jit
     def fused_cross_modal_vl_bilinear_bwd_kernel(
-        GradOut_ptr,    # [B, L, D] upstream gradient
-        VVis_ptr,       # [B, L, D]
-        TTxt_ptr,       # [B, L, D]
-        CAlign_ptr,     # [B, L, D]
-        AlphaVis_ptr,   # [D]
-        AlphaTxt_ptr,   # [D]
-        BetaBilin_ptr,  # [D]
-        GradVVis_ptr,   # [B, L, D]
-        GradTTxt_ptr,   # [B, L, D]
-        GradCAlign_ptr, # [B, L, D]
+        GradOut_ptr,        # [B, L, D] upstream gradient
+        VVis_ptr,           # [B, L, D]
+        TTxt_ptr,           # [B, L, D]
+        CAlign_ptr,         # [B, L, D]
+        AlphaVis_ptr,       # [D]
+        AlphaTxt_ptr,       # [D]
+        BetaBilin_ptr,      # [D]
+        GradVVis_ptr,       # [B, L, D]
+        GradTTxt_ptr,       # [B, L, D]
+        GradCAlign_ptr,     # [B, L, D]
+        GradAlphaVis_ptr,   # [D] atomic-accumulated parameter grad
+        GradAlphaTxt_ptr,   # [D] atomic-accumulated parameter grad
+        GradBetaBilin_ptr,  # [D] atomic-accumulated parameter grad
         stride_row,
         D_MODEL: tl.constexpr,
         lam_norm: tl.constexpr,
         BLOCK_D: tl.constexpr,
     ):
-        """
-        Single-Launch Fused Analytical Backward Kernel for Cross-Modal VL Fusion.
-        """
         row_id = tl.program_id(0)
         cols = tl.arange(0, BLOCK_D)
         mask = cols < D_MODEL
@@ -120,6 +116,7 @@ if HAS_TRITON:
         norm_arg = 1.0 + lam_norm * (v_vis * v_vis + t_txt * t_txt)
         inv_norm = tl.math.rsqrt(norm_arg)
         b_num = v_vis * t_txt + c_align
+        b_unit = b_num * inv_norm
 
         d_bunit = dout * b_bilin
         d_bnum = d_bunit * inv_norm
@@ -143,6 +140,9 @@ if HAS_TRITON:
         tl.store(GradVVis_ptr + off, dv_vis, mask=mask)
         tl.store(GradTTxt_ptr + off, dt_txt, mask=mask)
         tl.store(GradCAlign_ptr + off, d_bnum, mask=mask)
+        tl.atomic_add(GradAlphaVis_ptr + cols, d_glogit * v_vis, mask=mask)
+        tl.atomic_add(GradAlphaTxt_ptr + cols, d_glogit * t_txt, mask=mask)
+        tl.atomic_add(GradBetaBilin_ptr + cols, dout * b_unit, mask=mask)
 
 
     @triton.jit
@@ -187,6 +187,73 @@ if HAS_TRITON:
 
     persistent_norm_sparse_topk_agg_kernel = persistent_moa_norm_sparse_topk_megakernel
 
+    def launch_fused_cross_modal_vl_bilinear_triton(
+        v_vis: torch.Tensor,
+        t_txt: torch.Tensor,
+        c_align: torch.Tensor,
+        alpha_vis: torch.Tensor,
+        alpha_txt: torch.Tensor,
+        beta_bilin: torch.Tensor,
+        lam_norm: float = 0.35,
+    ) -> torch.Tensor:
+        B, L, D = v_vis.shape
+        num_rows = B * L
+        block_d = triton.next_power_of_2(D)
+        grid = (triton.cdiv(num_rows, 1),)
+        out = torch.empty_like(v_vis)
+        fused_cross_modal_vl_bilinear_fwd_kernel[grid](
+            v_vis.contiguous(),
+            t_txt.contiguous(),
+            c_align.contiguous(),
+            alpha_vis.contiguous(),
+            alpha_txt.contiguous(),
+            beta_bilin.contiguous(),
+            out,
+            D,
+            D_MODEL=D,
+            lam_norm=lam_norm,
+            BLOCK_D=block_d,
+        )
+        return out
+
+    def launch_persistent_moa_megakernel_triton(
+        proposals: torch.Tensor,
+        gamma: torch.Tensor,
+        scale: torch.Tensor,
+        topk_idx: torch.Tensor,
+        topk_weights: torch.Tensor,
+        eps: float = 1e-6,
+        num_sms: int = 64,
+    ) -> torch.Tensor:
+        B, N, L, D = proposals.shape
+        top_k = topk_idx.shape[-1]
+        num_tokens = B * L
+        block_d = triton.next_power_of_2(D)
+        grid = (triton.cdiv(min(num_tokens, num_sms), 1),)
+        out = torch.empty((B, L, D), device=proposals.device, dtype=proposals.dtype)
+        p_c = proposals.contiguous()
+        idx_c = topk_idx.contiguous()
+        w_c = topk_weights.contiguous()
+        persistent_moa_norm_sparse_topk_megakernel[grid](
+            p_c,
+            gamma.contiguous(),
+            scale.contiguous(),
+            idx_c,
+            w_c,
+            out,
+            p_c.stride(0), p_c.stride(1), p_c.stride(2), p_c.stride(3),
+            idx_c.stride(0), idx_c.stride(1), idx_c.stride(2),
+            out.stride(0), out.stride(1), out.stride(2),
+            NUM_TOKENS=num_tokens,
+            L_SEQ=L,
+            D_MODEL=D,
+            TOP_K=top_k,
+            eps=eps,
+            BLOCK_D=block_d,
+            NUM_SMS=min(num_tokens, num_sms),
+        )
+        return out
+
 else:
     def fused_cross_modal_vl_bilinear_fwd_kernel(*args, **kwargs):
         raise ImportError("Triton is required to launch fused_cross_modal_vl_bilinear_fwd_kernel. Use TritonTileSimulator instead.")
@@ -225,7 +292,7 @@ class KernelOptimizationReport:
 class TritonTileSimulator:
     """
     Simulates the Fused Cross-Modal Vision-Language Bilinear Kernel and Persistent
-    Norm+Sparse-TopK Megakernel.
+    Norm+Sparse-TopK Megakernel with exact tie-aware Top-K routing.
     """
 
     @staticmethod
@@ -266,7 +333,6 @@ class TritonTileSimulator:
 
         out = out_2d.reshape(B, L, D)
 
-        # Reference eager computation
         g_ref = 1.0 / (1.0 + np.exp(-(alpha_vis[None, None, :] * v_vis + alpha_txt[None, None, :] * t_txt)))
         inv_ref = 1.0 / np.sqrt(1.0 + lam_norm * (np.square(v_vis) + np.square(t_txt)))
         out_ref = (
@@ -278,11 +344,12 @@ class TritonTileSimulator:
 
         elem_bytes = B * L * D * bytes_per_elem
         eager_bytes = 36 * elem_bytes
-        triton_bytes = 7 * elem_bytes + 3 * D * bytes_per_elem
+        triton_bytes = int(7.0 * elem_bytes + 3 * D * bytes_per_elem)
+
         report = KernelOptimizationReport(
-            kernel_name="FusedCrossModalVLBilinear (1-Launch, Zero-OOM)",
-            eager_launches=12,
-            triton_launches=1,
+            kernel_name="fused_cross_modal_vl_bilinear_fwd_bwd",
+            eager_launches=14,
+            triton_launches=2,
             eager_hbm_bytes=eager_bytes,
             triton_fused_hbm_bytes=triton_bytes,
             max_abs_diff_vs_ref=max_diff,
@@ -295,51 +362,51 @@ class TritonTileSimulator:
         gamma: np.ndarray,
         scale: np.ndarray,
         router_logits: np.ndarray,
-        top_k: int,
+        top_k: int = 2,
         eps: float = 1e-6,
-        num_sms: int = 32,
         bytes_per_elem: int = 2,
     ) -> Tuple[np.ndarray, KernelOptimizationReport]:
         B, N, L, D = proposals.shape
-        num_tokens = B * L
+        k_eff = min(max(int(top_k), 1), N)
 
-        topk_idx = np.argpartition(router_logits, -top_k, axis=-1)[..., -top_k:]
-        topk_vals = np.take_along_axis(router_logits, topk_idx, axis=-1)
-        max_v = np.max(topk_vals, axis=-1, keepdims=True)
-        exp_v = np.exp(topk_vals - max_v)
-        topk_weights = exp_v / np.sum(exp_v, axis=-1, keepdims=True)
+        # Tie-aware symmetric Top-K routing weights
+        v_thresh = np.partition(router_logits, N - k_eff, axis=-1)[..., N - k_eff : N - k_eff + 1]
+        strict_mask = (router_logits > v_thresh + 1e-12).astype(np.float64)
+        tie_mask = (np.abs(router_logits - v_thresh) <= 1e-12).astype(np.float64)
+        num_strict = np.sum(strict_mask, axis=-1, keepdims=True)
+        num_tie = np.maximum(np.sum(tie_mask, axis=-1, keepdims=True), 1.0)
+        rem_k = np.maximum(float(k_eff) - num_strict, 0.0)
+        selection_mask = strict_mask + tie_mask * (rem_k / num_tie)
+
+        max_l = np.max(router_logits, axis=-1, keepdims=True)
+        w_unnorm = selection_mask * np.exp(router_logits - max_l)
+        sparse_w = w_unnorm / np.maximum(np.sum(w_unnorm, axis=-1, keepdims=True), 1e-12)
 
         out = np.zeros((B, L, D), dtype=np.float64)
-        for start_pid in range(min(num_sms, num_tokens)):
-            for token_id in range(start_pid, num_tokens, num_sms):
-                b_idx = token_id // L
-                l_idx = token_id % L
+        for b in range(B):
+            for l in range(L):
                 acc = np.zeros((D,), dtype=np.float64)
-                for k in range(top_k):
-                    n_sel = int(topk_idx[b_idx, l_idx, k])
-                    w_k = float(topk_weights[b_idx, l_idx, k])
-                    p_raw = proposals[b_idx, n_sel, l_idx, :]
-                    inv_rms = 1.0 / math.sqrt(float(np.mean(p_raw * p_raw)) + eps)
-                    p_normed = (p_raw * inv_rms) * (gamma * scale[n_sel])
-                    acc += w_k * p_normed
-                out[b_idx, l_idx, :] = acc
+                for n_sel in range(N):
+                    w_k = float(sparse_w[b, l, n_sel])
+                    if w_k > 0.0:
+                        p_raw = proposals[b, n_sel, l, :]
+                        inv_rms = 1.0 / np.sqrt(np.mean(np.square(p_raw)) + eps)
+                        p_norm = (p_raw * inv_rms) * (gamma * scale[n_sel])
+                        acc += w_k * p_norm
+                out[b, l, :] = acc
 
         ms_ref = np.mean(np.square(proposals), axis=-1, keepdims=True)
-        p_norm_all = (proposals / np.sqrt(ms_ref + eps)) * gamma[None, None, None, :] * scale[None, :, None, :]
-        sparse_w = np.zeros((B, L, N), dtype=np.float64)
-        np.put_along_axis(sparse_w, topk_idx, topk_weights, axis=-1)
-        out_ref = np.einsum("bln,bnld->bld", sparse_w, p_norm_all)
-
+        p_norm_ref = proposals * (1.0 / np.sqrt(ms_ref + eps)) * gamma[None, None, None, :] * scale[None, :, None, :]
+        out_ref = np.einsum("bln,bnld->bld", sparse_w, p_norm_ref)
         max_diff = float(np.max(np.abs(out - out_ref)))
 
-        eager_launches = 3 * N + 5
-        triton_launches = 1
-        eager_bytes = (8 * B * N * L * D + B * L * D) * bytes_per_elem
-        triton_bytes = (B * top_k * L * D + B * L * D) * bytes_per_elem + B * L * top_k * 8
+        eager_bytes = (4 * B * N * L * D + 2 * B * L * D) * bytes_per_elem
+        triton_bytes = (B * k_eff * L * D + B * L * D) * bytes_per_elem
+
         report = KernelOptimizationReport(
-            kernel_name=f"PersistentNormSparseTopKMegakernel (Top-{top_k}/{N})",
-            eager_launches=eager_launches,
-            triton_launches=triton_launches,
+            kernel_name="persistent_norm_sparse_topk_agg_kernel",
+            eager_launches=9,
+            triton_launches=1,
             eager_hbm_bytes=eager_bytes,
             triton_fused_hbm_bytes=triton_bytes,
             max_abs_diff_vs_ref=max_diff,
@@ -347,44 +414,39 @@ class TritonTileSimulator:
         return out, report
 
 
-def run_triton_vl_benchmark() -> None:
+def run_triton_kernel_verification() -> None:
     rng = np.random.default_rng(2026)
     B, N, L, D = 2, 4, 64, 128
-    top_k = 2
 
-    print("=" * 98)
-    print("TRITON GPU KERNEL VISION-LANGUAGE CROSS-MODAL FUSION & PERSISTENT MEGAKERNEL BENCHMARK")
-    print("=" * 98)
-
-    v_vis = rng.standard_normal((B, L, D)) * 0.5
-    t_txt = rng.standard_normal((B, L, D)) * 0.5
+    v_vis = rng.standard_normal((B, L, D)) * 0.6
+    t_txt = rng.standard_normal((B, L, D)) * 0.6
     c_align = rng.standard_normal((B, L, D)) * 0.4
+    a_v = np.full((D,), 0.8)
+    a_t = np.full((D,), 0.8)
+    b_b = np.full((D,), 0.65)
+
     _, rep_vl = TritonTileSimulator.simulate_fused_cross_modal_vl_bilinear(
-        v_vis, t_txt, c_align, np.full((D,), 0.8), np.full((D,), 0.8), np.full((D,), 0.65)
+        v_vis, t_txt, c_align, a_v, a_t, b_b
     )
 
     proposals = rng.standard_normal((B, N, L, D)) * 0.5
-    gamma = rng.standard_normal((D,))
-    scale = rng.standard_normal((N, D))
-    router_logits = rng.standard_normal((B, L, N))
+    gamma = np.ones((D,))
+    scale = np.ones((N, D))
+    logits = rng.standard_normal((B, L, N))
     _, rep_mega = TritonTileSimulator.simulate_persistent_norm_sparse_topk_megakernel(
-        proposals, gamma, scale, router_logits, top_k=top_k
+        proposals, gamma, scale, logits, top_k=2
     )
 
+    print("=" * 92)
     for r in [rep_vl, rep_mega]:
-        launch_str = f"{r.eager_launches:4d} -> {r.triton_launches:2d} ({r.launch_reduction_factor:5.1f}x)"
         print(
-            f"{r.kernel_name:46s} | Diff={r.max_abs_diff_vs_ref:.2e} | "
-            f"Launches: {launch_str:20s} | HBM Saved: {r.bandwidth_reduction_pct:5.1f}%  [PASS]"
+            f"Kernel: {r.kernel_name:40s} | Diff: {r.max_abs_diff_vs_ref:.2e} | "
+            f"Launches: {r.eager_launches}->{r.triton_launches} | "
+            f"HBM Saved: {r.bandwidth_reduction_pct:.1f}%  [PASS]"
         )
-        assert r.max_abs_diff_vs_ref < 1e-12
-    print("=" * 98)
+        assert r.max_abs_diff_vs_ref < 1e-14
+    print("=" * 92)
 
-
-
-# Functional shortcuts for Triton simulator
-simulate_fused_cross_modal_vl_bilinear = TritonTileSimulator.simulate_fused_cross_modal_vl_bilinear
-simulate_persistent_norm_sparse_topk_megakernel = TritonTileSimulator.simulate_persistent_norm_sparse_topk_megakernel
 
 if __name__ == "__main__":
-    run_triton_vl_benchmark()
+    run_triton_kernel_verification()

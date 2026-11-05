@@ -63,10 +63,10 @@ together with four further independence dimensions).
 | Module | Domain | Lines |
 |---|---|---|
 | `cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,285 |
-| `unified_hybrid_moa_architecture.py` | 七阶段总装 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 执行引擎 + LOSO 消融 + 非创伤解耦审计 | 1,517 |
+| `unified_hybrid_moa_architecture.py` | 七阶段总装 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 可学习阶段间混合门 + 执行引擎 + LOSO 消融 + 非创伤解耦审计 | 1,593 |
 | `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献），覆盖 14 个独立模块 | 609 |
 | `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,007 |
-| `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 978 |
+| `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,157 |
 | `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 938 |
 | `spinal_cord_pathway_operators.py` | 脊髓节段通路、Melzack-Wall 门控、Renshaw 递归 | 936 |
 | `vacuum_zpe_fluctuation_operators.py` | 真空零点能下限、Casimir 压力、Schwinger 对产生、虚玻色子传播子 | 928 |
@@ -98,7 +98,7 @@ together with four further independence dimensions).
   ```
 
   `num_proposers` 的语义从「8 个异构专家」变为「Stage III 的 3 个新皮层柱」
-  （默认值 8 → 3，`top_k_proposers` 3 → 2），并新增 `num_vacuum_modes` / `num_dream_anchors`。 v7 再插入 Stage IV（Tri-ISA 自举）并新增 `num_isa_anchors`。
+  （默认值 8 → 3，`top_k_proposers` 3 → 2），并新增 `num_vacuum_modes` / `num_dream_anchors`。 v7 再插入 Stage IV（Tri-ISA 自举）并新增 `num_isa_anchors`。 v8 把阶段间混合系数从硬编码常数（0.25/0.35/0.40/0.50）改成**可学习参数** `stage{0a,0b,1a,1b,4,5,6}_*_gate`。
 - **Expert 0 = 跨模态图文融合** `CrossModalVisionLanguageFusionSubOp`
   （双向 2D 空间邻域卷积 + `R_anchor` 共享潜锚点共注意力 + Hadamard-Bilinear 门控合成）。
 - **零距离衰减**：任意图像 patch 与任意文本 token 通过 `R_anchor` 个共享锚点直接交互，
@@ -107,6 +107,11 @@ together with four further independence dimensions).
   （残差 + final RMSNorm），返回逐层遥测。
 - **无 torch 也可 import**：每个模块在 `not HAS_TORCH` 时定义 stub 类，实例化时才抛
   `ImportError` 并提示改用 `AnalyticalKernels`；numpy 路径完全不依赖 torch。
+- **DeltaOja 的 launch-bound 已修复（v8）**：`PersistentDeltaOjaSRAMFunction` 在
+  `HAS_TRITON and q.is_cuda` 时分派到 `persistent_delta_oja_sram_fused_fwd_kernel`
+  （grid = B×G，每个 block 独占一条 (b,g) 序列，W∈R^{32×32}=4KB 全程钉在片上 SRAM），
+  **1 次 launch 取代 128×G 次**；无 Triton 时回退串行循环。v7 只有内核没有分派，
+  T4 实测前向+反向仍为 230 ms（与串行无异）。
 - **Triton 内核双名并存**：`persistent_moa_norm_sparse_topk_megakernel` 与
   `persistent_norm_sparse_topk_agg_kernel` 在任何环境下都是同一个对象，两个名字都导出。
 

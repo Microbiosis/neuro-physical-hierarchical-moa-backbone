@@ -23,8 +23,8 @@ if __package__:
         TritonTileSimulator,
         fused_cross_modal_vl_bilinear_fwd_kernel,
         fused_cross_modal_vl_bilinear_bwd_kernel,
-        simulate_fused_cross_modal_vl_bilinear,
-        simulate_persistent_norm_sparse_topk_megakernel,
+        launch_fused_cross_modal_vl_bilinear_triton,
+        launch_persistent_moa_megakernel_triton,
     )
     from .quantum_tidal_operators import (
         QuantumTidalConfig,
@@ -123,8 +123,8 @@ else:
         TritonTileSimulator,
         fused_cross_modal_vl_bilinear_fwd_kernel,
         fused_cross_modal_vl_bilinear_bwd_kernel,
-        simulate_fused_cross_modal_vl_bilinear,
-        simulate_persistent_norm_sparse_topk_megakernel,
+        launch_fused_cross_modal_vl_bilinear_triton,
+        launch_persistent_moa_megakernel_triton,
     )
     from quantum_tidal_operators import (
         QuantumTidalConfig,
@@ -233,8 +233,8 @@ __all__ = [
     "fused_cross_modal_vl_bilinear_bwd_kernel",
     "persistent_moa_norm_sparse_topk_megakernel",
     "persistent_norm_sparse_topk_agg_kernel",
-    "simulate_fused_cross_modal_vl_bilinear",
-    "simulate_persistent_norm_sparse_topk_megakernel",
+    "launch_fused_cross_modal_vl_bilinear_triton",
+    "launch_persistent_moa_megakernel_triton",
     # 3. Quantum Tidal Gravitational Fluctuation
     "QuantumTidalConfig",
     "QuantumTidalAnalyticalKernels",
