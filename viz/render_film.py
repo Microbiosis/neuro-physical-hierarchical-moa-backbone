@@ -29,42 +29,57 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import FancyBboxPatch, Rectangle
 
 # ---- 注册中文字体（matplotlib 默认不索引这些路径）----
-_FONT_CANDS = [
-    "/workspace/fonts/NotoSansSC-Regular.ttf",
-    "/workspace/fonts/NotoSansSC-Bold.ttf",
-    "/kaggle/working/fonts/NotoSansSC-Regular.otf",
-    "/kaggle/working/fonts/NotoSansSC-Regular.ttf",
-    "/root/.fonts/NotoSansSC-VF.ttf",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-]
-for _p in _FONT_CANDS:
-    if os.path.exists(_p):
-        try:
-            font_manager.fontManager.addfont(_p)
-        except Exception:  # noqa: BLE001
-            pass
-_have_cn = any("Noto Sans SC" == f.name or "Noto Sans CJK SC" == f.name
-               for f in font_manager.fontManager.ttflist)
-if not _have_cn:  # 让 fc-match 兜底
+def _register_cjk_font():
+    """注册一个可用的中文字体，返回其真实族名；找不到返回 None。"""
+    cands = [
+        "/workspace/fonts/NotoSansSC-Regular.ttf",
+        "/workspace/fonts/NotoSansSC-Bold.ttf",
+        "/kaggle/working/fonts/NotoSansSC-Regular.otf",
+        "/kaggle/working/fonts/NotoSansSC-Regular.ttf",
+        "/root/.fonts/NotoSansSC-VF.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    ]
+    for p in cands:
+        if os.path.exists(p):
+            try:
+                font_manager.fontManager.addfont(p)
+            except Exception:  # noqa: BLE001
+                pass
+    # fc-match 兜底：系统里有 CJK 字体但族名不确定时，按它报的文件+族名注册
     try:
         import subprocess as _sp
 
-        out = _sp.run(["fc-match", "-f", "%{file}", "sans-serif:lang=zh"],
-                      capture_output=True, text=True, timeout=20).stdout.strip()
-        if out and os.path.exists(out):
-            font_manager.fontManager.addfont(out)
-            _have_cn = True
+        r = _sp.run(["fc-match", "-f", "%{file}|%{family}", "sans-serif:lang=zh"],
+                    capture_output=True, text=True, timeout=25).stdout.strip()
+        if "|" in r:
+            f, fam = r.split("|", 1)
+            if os.path.exists(f):
+                font_manager.fontManager.addfont(f)
     except Exception:  # noqa: BLE001
         pass
-if not _have_cn:
+    names = [f.name for f in font_manager.fontManager.ttflist]
+    for want in ("Noto Sans SC", "Noto Sans CJK SC", "Noto Sans CJK JP",
+                 "Noto Sans CJK TC", "Source Han Sans SC", "WenQuanYi Zen Hei"):
+        if want in names:
+            return want
+    for n in names:  # 任何带 CJK/Han/WenQuanYi 的族
+        if any(k in n for k in ("CJK", "Han", "WenQuanYi", "Heiti", "Song")):
+            return n
+    return None
+
+
+_CN_FAM = _register_cjk_font()
+if _CN_FAM is None:
     raise RuntimeError(
         "找不到中文字体：请把 NotoSansSC-Regular.ttf 放到 /workspace/fonts/ 或 "
-        "/kaggle/working/fonts/，或先 `apt-get install fonts-noto-cjk`")
+        "/kaggle/working/fonts/，或先安装 fonts-noto-cjk")
 plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Noto Sans SC", "Noto Sans CJK SC", "DejaVu Sans"]
+plt.rcParams["font.sans-serif"] = [_CN_FAM, "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
+CN = _CN_FAM  # 全文统一用真实可用的中文字体族
+print(f"[viz] 中文字体: {_CN_FAM}", flush=True)
 
 # ------------------------------------------------------------------ 风格 ------
 BG = "#0a0c10"
