@@ -80,6 +80,18 @@ if __package__:
         FusedSpinalDorsalReflexRenshawFunction,
         SpinalCordPathwayOp,
     )
+    from .sleep_subconscious_neuro_operators import (
+        SleepSubconsciousConfig,
+        SleepSubconsciousAnalyticalKernels,
+        FusedSleepSubconsciousSHYSWRPGOFunction,
+        SleepSubconsciousNeuroOp,
+    )
+    from .vacuum_zpe_fluctuation_operators import (
+        VacuumZPEFluctuationConfig,
+        VacuumZPEAnalyticalKernels,
+        FusedVacuumZPECasimirSchwingerFunction,
+        VacuumZPEFluctuationOp,
+    )
     from .unified_hybrid_moa_architecture import (
         UnifiedHybridArchitectureConfig,
         UnifiedArchitectureExecutionEngine,
@@ -159,6 +171,18 @@ else:
         SpinalCordAnalyticalKernels,
         FusedSpinalDorsalReflexRenshawFunction,
         SpinalCordPathwayOp,
+    )
+    from sleep_subconscious_neuro_operators import (
+        SleepSubconsciousConfig,
+        SleepSubconsciousAnalyticalKernels,
+        FusedSleepSubconsciousSHYSWRPGOFunction,
+        SleepSubconsciousNeuroOp,
+    )
+    from vacuum_zpe_fluctuation_operators import (
+        VacuumZPEFluctuationConfig,
+        VacuumZPEAnalyticalKernels,
+        FusedVacuumZPECasimirSchwingerFunction,
+        VacuumZPEFluctuationOp,
     )
     from unified_hybrid_moa_architecture import (
         UnifiedHybridArchitectureConfig,
@@ -240,7 +264,17 @@ __all__ = [
     "SpinalCordAnalyticalKernels",
     "FusedSpinalDorsalReflexRenshawFunction",
     "SpinalCordPathwayOp",
-    # 12. Unified 9-Domain Assembly Architecture
+    # 12. Human Sleep Physiology & Deep Subconscious Neuroscience
+    "SleepSubconsciousConfig",
+    "SleepSubconsciousAnalyticalKernels",
+    "FusedSleepSubconsciousSHYSWRPGOFunction",
+    "SleepSubconsciousNeuroOp",
+    # 13. Quantum Fluctuation & Vacuum Zero-Point Energy (ZPE)
+    "VacuumZPEFluctuationConfig",
+    "VacuumZPEAnalyticalKernels",
+    "FusedVacuumZPECasimirSchwingerFunction",
+    "VacuumZPEFluctuationOp",
+    # 14. Unified Assembly Architecture
     "UnifiedHybridArchitectureConfig",
     "UnifiedArchitectureExecutionEngine",
     "UnifiedInterdisciplinaryMoALayer",

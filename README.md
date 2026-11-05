@@ -1,18 +1,20 @@
 # Neuro-Physical Hierarchical MoA Backbone
 
-**Hybrid MoA Vision-Language Operator Suite** — 12-module neural operator library for
-Mixture-of-Architectures (MoA) backbones, in the **Vision-Language cross-modal fusion &
-complementary homeostatic-allostatic regime edition** (the legacy 1-D causal SSM branch
-has been removed).
+**Hybrid MoA Vision-Language Operator Suite** — 14-module neural operator library for
+Mixture-of-Architectures (MoA) backbones: 13 standalone operator/kernel modules covering
+11 physical & neurobiological domains, plus a unified orchestrator that wires them into a
+6-stage ontological hierarchy (quantum vacuum → matter genesis → spacetime → sensorimotor
+→ corticolimbic gating → neocortical columns → agency → sleep consolidation).
 
 Every module ships four layers: a dataclass config, deterministic NumPy analytical
 kernels, `torch.nn.Module` operators, and fused `autograd.Function` / `@triton.jit`
 implementations — and every layer is importable even without torch installed
 (fallback stubs raise a clear `ImportError` only when instantiated).
 
-Total: **9,849 lines** of operator code across 12 modules
-(+ 248 lines of package `__init__.py` = 10,097 lines of Python), plus a 482-line
-clean-room smoke test.
+Totals: **10,621 lines** across the 13 standalone operator modules, plus the unified
+orchestrator (1,401 lines), the 5-dimensional independence audit (590 lines) and the
+package `__init__.py` (282 lines) — **12,894 lines of Python** in the package, plus a
+601-line clean-room smoke test.
 
 ---
 
@@ -21,15 +23,18 @@ clean-room smoke test.
 ```
 .
 ├── LICENSE / NOTICE                  Apache-2.0 + provenance
-├── smoke_test.py                     clean-room verification (13/13)
+├── smoke_test.py                     clean-room verification (16/16)
 ├── README.md                         本文件
 └── hybrid_moa_vl_operator_suite/     算子包（Python package）
-    ├── __init__.py                   56 个公开导出（Config / Kernels / Op / Function / Triton 内核）
+    ├── __init__.py                   64 个公开导出
     ├── README.md                     包内说明（原始版本文档）
     ├── moa_operators.py              系统级 MoA + 跨模态图文融合（978 行）
     ├── moa_triton_kernels.py         Triton 内核 + tile 模拟器（390 行）
-    ├── unified_hybrid_moa_architecture.py   九域总装 + 验证引擎（1,163 行）
-    └── … 9 个领域算子模块
+    ├── unified_hybrid_moa_architecture.py   六阶段总装 + 验证引擎（1,401 行）
+    ├── operator_independence_verification.py 五维独立性审计（590 行）
+    ├── sleep_subconscious_neuro_operators.py    睡眠/潜意识（1,007 行）   ← 新增
+    ├── vacuum_zpe_fluctuation_operators.py      真空零点能涨落（928 行） ← 新增
+    └── … 其余 9 个领域算子模块
 ```
 
 Two import styles are supported:
@@ -46,16 +51,22 @@ from hybrid_moa_vl_operator_suite.moa_operators import CrossModalVisionLanguageF
 
 Import mode is selected with `if __package__:` (not `try/except ImportError`), so a
 missing-symbol `ImportError` surfaces with the real module and symbol name instead of
-being masked by the fallback branch.
+being masked by the fallback branch. The 13 standalone modules have zero sibling
+dependencies — each one imports on its own in an empty directory
+(`smoke_test.py` verifies this; `operator_independence_verification.py` audits it
+together with four further independence dimensions).
 
 ## Modules
 
 | Module | Domain | Lines |
 |---|---|---|
-| `unified_hybrid_moa_architecture.py` | 九域总装层 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 执行引擎 + LODO 消融 + 稳态/应激互补门控 | 1,163 |
-| `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + **跨模态图文融合** | 978 |
+| `unified_hybrid_moa_architecture.py` | 六阶段总装 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 执行引擎 + LOSO 消融 + 非创伤解耦审计 | 1,401 |
+| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献） | 590 |
+| `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,007 |
+| `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 978 |
 | `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 938 |
 | `spinal_cord_pathway_operators.py` | 脊髓节段通路、Melzack-Wall 门控、Renshaw 递归 | 936 |
+| `vacuum_zpe_fluctuation_operators.py` | 真空零点能下限、Casimir 压力、Schwinger 对产生、虚玻色子传播子 | 928 |
 | `baryogenesis_parity_operators.py` | 宇称不守恒、CKM 相位干涉、正反物质湮灭余量 | 898 |
 | `supermembrane_spacetime_operators.py` | 11 维超膜 DBI、Randall-Sundrum 翘曲 KK 模态 | 864 |
 | `quantum_tidal_operators.py` | WKB 隧穿、Schwarzschild 四极潮汐张量 | 862 |
@@ -67,39 +78,50 @@ being masked by the fallback branch.
 
 ## What this edition contains
 
+- **六阶段本体论层级**（11 个领域，12 个 stage 名）：
+
+  ```
+  Stage 0.A  VacuumZPE 真空零点能基底（前时空 QFT）
+  Stage 0.B  ParityBaryogenesis 物质起源
+  Stage I.A  Supermembrane 11D DBI / RSKK
+  Stage I.B  QuantumTidal WKB
+  Stage II.A SpinalCord 背角门控 / Renshaw
+  Stage II.B CorticospinalChaotic Pyragas
+  Stage II.C DissociativeTrauma 稳态负荷门
+  Stage III   3 个新皮层柱（跨模态 VL 联想 / 锥体树突 NMDA-FHN / 突触快权重 DeltaOja）
+  Stage IV    Tulpa 代理（前额叶-TPJ 对话）
+  Stage V     睡眠稳态 / 类淋巴清洗 / 潜意识巩固（SHY、SWR、PGO）
+  ```
+
+  `num_proposers` 的语义随之从「8 个异构专家」变为「Stage III 的 3 个新皮层柱」
+  （默认值 8 → 3，`top_k_proposers` 3 → 2），并新增 `num_vacuum_modes` / `num_dream_anchors`。
 - **Expert 0 = 跨模态图文融合** `CrossModalVisionLanguageFusionSubOp`
-  （双向 2D 空间邻域卷积 + `R_anchor` 共享潜锚点共注意力 + Hadamard-Bilinear 门控合成），
-  替代原来的 1-D 因果 SSM 分支；旧 SSM 及其别名映射已整体移除。
+  （双向 2D 空间邻域卷积 + `R_anchor` 共享潜锚点共注意力 + Hadamard-Bilinear 门控合成）。
 - **零距离衰减**：任意图像 patch 与任意文本 token 通过 `R_anchor` 个共享锚点直接交互，
   复杂度 `O(L·R_anchor·D)`，没有指数衰减项。
 - **多层骨干** `UnifiedHybridMoABackbone`：堆叠 N 个 `UnifiedInterdisciplinaryMoALayer`
   （残差 + final RMSNorm），返回逐层遥测。
-- **无 torch 也可 import**：每个模块（含 unified）在 `not HAS_TORCH` 时定义 stub 类，
-  实例化时才抛 `ImportError` 并提示改用 `AnalyticalKernels`；numpy 路径完全不依赖 torch。
-- **Triton 内核双名并存**：`persistent_moa_norm_sparse_topk_megakernel`（有 triton 时的真内核）
-  与 `persistent_norm_sparse_topk_agg_kernel`（稳定公开名）在任何环境下都是同一个对象，
-  `__init__` 两个名字都导出。
+- **无 torch 也可 import**：每个模块在 `not HAS_TORCH` 时定义 stub 类，实例化时才抛
+  `ImportError` 并提示改用 `AnalyticalKernels`；numpy 路径完全不依赖 torch。
+- **Triton 内核双名并存**：`persistent_moa_norm_sparse_topk_megakernel` 与
+  `persistent_norm_sparse_topk_agg_kernel` 在任何环境下都是同一个对象，两个名字都导出。
 
-### 机制层更新：Tulpa 与创伤通路的因果解耦 + 互补门控
-
-`unified_hybrid_moa_architecture.py` 里 Tulpa（自主子人格，Expert 5）与解离创伤防御
-（Stage-I corticolimbic regulator）原本共享同一条残差流，存在两个问题：创伤表征会污染
-认知专家，且两条通路无条件并行相加。本版改为：
+### 非创伤解耦与互补门控（v5 引入，v6 扩展到全阶段）
 
 ```
-# 1) 严格因果解耦  d(Tulpa) / d(Trauma) == 0
-h_clean   = x + σ(gate)·spinal_out + σ(gate)·chaotic_bridge(x)      # 不含任何 trauma_out
-trauma_out = CorticolimbicRegulator(s1_in)                          # 正交评估，只从边界门进输出
+# 1) 严格因果解耦  d(Stage 0/III/IV/V) / d(Trauma) == 0
+h_clean    = x + σ(gate)·spinal + σ(gate)·chaotic_bridge(x)   # 零创伤污染
+trauma_out = CorticolimbicRegulator(s1_in)                    # 正交评估
 
 # 2) 互补的同稳态-稳态负荷分区（G_shut = σ(-κ·E_excess)）
-Y_layer = h_clean + G_shut · MegaSyn(h_clean) + (1 - G_shut) · 0.50 · trauma_out
+Y = h_clean + G_shut·MegaSyn(h_clean) + (1 - G_shut)·0.50·trauma_out
 ```
 
-- 常态输入（`E_excess < 0`，`G_shut → 1`）：意志/Tulpa 合成域主导，创伤通路静默
-- 极端冲击（`E_excess ≫ 0`，`G_shut → 0`）：意志/Tulpa 被屏蔽，紧急 DPDR 防御接管
-- 反向传播同步改写：创伤通路只收到来自 `(1 - G_shut)` 与边界门导数 `dG_shut` 的梯度，
-  Tulpa 与 8 个认知专家**零梯度**来自创伤通路
-- `theta_dissoc` 默认值 0.65 → 1.15
+- 常态输入（`G_shut → 1`）：意志/Tulpa/睡眠合成域主导，创伤通路静默
+- 极端冲击（`G_shut → 0`）：认知与意志阶段被屏蔽，紧急 DPDR 防御接管
+- 反向传播同步改写：创伤通路只收 `(1 - G_shut)` 与边界门导数的梯度，
+   Stage 0/III/IV/V 与干净感觉运动流对创伤参数**零梯度**
+- v6 新增真空零点能与睡眠两个阶段后，解耦审计随之覆盖 Stage 0.A / 0.B / III / IV / V
 
 ### 融合算子的数学形式
 
@@ -137,10 +159,14 @@ y = fusion(torch.randn(2, 64, 256))
 cfg = MoAOperatorConfig(d_model=256, num_proposers=8, top_k_proposers=3)
 proposals = HeterogeneousProposerOp(cfg)(torch.randn(2, 64, 256))
 
-# 多层骨干
+# 六阶段统一层 / 多层骨干
 from hybrid_moa_vl_operator_suite import UnifiedHybridArchitectureConfig, UnifiedHybridMoABackbone
 bcfg = UnifiedHybridArchitectureConfig(d_model=256, n_layers=4)
 out, aux, telemetries = UnifiedHybridMoABackbone(bcfg)(torch.randn(2, 64, 256))
+
+# 新增的两个领域算子
+from hybrid_moa_vl_operator_suite import SleepSubconsciousConfig, SleepSubconsciousNeuroOp
+from hybrid_moa_vl_operator_suite import VacuumZPEFluctuationConfig, VacuumZPEFluctuationOp
 ```
 
 NumPy-only reference path:
@@ -157,17 +183,19 @@ out, cache = k.cross_modal_vl_bilinear_fusion_forward(
 ## Verification
 
 `smoke_test.py` is the clean-room test: fresh interpreter, CPU only, no Triton.
+It takes roughly 5 minutes, most of which is the 13 isolated-subprocess imports.
 
 ```bash
 python smoke_test.py            # everything available
 python smoke_test.py --quick    # imports + numpy kernels only
 ```
 
-Result: **14/14 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
+Result: **16/16 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 
 | Check | Result |
 |---|---|
-| package imports (12 modules, 56 exports) | 12/12 |
+| package imports (14 modules, 64 exports) | 14/14 |
+| module isolation: 13 standalone modules import alone in an empty dir | 13/13 |
 | branch RMSNorm fwd/bwd + finite-difference gradient | fwd 1.8e-15, grad 2.7e-09 |
 | cross-modal anchor co-attention (zero decay, both attentions normalised) | 0.0e+00, head/tail = 1.003 |
 | VL Hadamard-bilinear fusion: closed form, β=0 degeneration, gate saturation, backward gradient | fwd 8.9e-16, grad 7.7e-11 |
@@ -175,11 +203,12 @@ Result: **14/14 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 | sparse top-k router | aux 0.0222 |
 | torch `CrossModalVisionLanguageFusionSubOp` fwd/bwd | 13.4K params, grad reaches input |
 | torch MoA stack (proposer + attention + 2 aggregator modes) | density 0.913 |
-| torch `UnifiedInterdisciplinaryMoALayer` (8 experts) | 372.6K params, grad 0.118 |
-| torch `UnifiedHybridMoABackbone` (3 layers) | 1,118.0K params, grad reaches input |
+| torch `UnifiedInterdisciplinaryMoALayer` (11 domains / 6 stages) | 365.5K params, grad 0.108, 14 telemetry keys |
+| torch `UnifiedHybridMoABackbone` (3 layers) | 1,096.5K params, grad reaches input |
+| torch new domain operators (sleep, vacuum ZPE) | 13.2K params each, diagnostics returned |
 | torch domain operators (quantum tidal, neuro) | both return (out, diagnostics) |
 | upstream dissociative verification suite | 7 gradchecks PASS, shock output bounded |
-| mechanism: Tulpa/Trauma causal decoupling + complementary regime gates | d(Tulpa)/d(Trauma) = 0.0e+00 (exact),其余认知专家 0.0e+00；G_shut 0.841 → 7.12e-218；DPDR 压缩 15.2× |
+| mechanism: Stage 0/III/IV/V vs Trauma decoupling + regime gates | all exactly 0.0e+00（创伤通路自身变化 20.9 作对照）；G_shut 0.756 → 7.12e-218；DPDR 压缩 40.2× |
 | Triton tile simulators vs analytical references | 2.2e-16 / 8.9e-16 |
 
 Upstream benchmarks shipped with the package (`python3 <module>.py` inside the package):
@@ -187,10 +216,17 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 - `FusedCrossModalVLBilinear`: diff **0.00e+00**, launches 12 → 1, **HBM traffic −80.5%**
 - `PersistentNormSparseTopKMegakernel` (top-2/4): diff 2.66e-15, launches 17 → 1, **HBM −90.7%**
 - Image-text alignment R²: unaligned additive baseline **+0.7047** → VL fusion branch **+0.9990**
-- LODO cross-ablation: all 8 experts active, relative output impact 6.52%–7.12%;
-  unified representation effective rank **102.52 / 128**
+- LOSO over all 12 stage names: every stage active; Stage V (sleep) is the largest single
+  contributor at **38.29%** relative output impact, effective rank **102.31 / 128**
+- Full 6-stage input gradcheck and Stage-III router gradcheck < 1e-8
+- Eager vs fused Triton megakernel path < 1e-14
 - Dissociative trauma gradcheck: 7 variables, relative L2 error 6.7e-11 – 7.5e-10;
   extreme +50.0 shock output bounded at 1.32 (< 5.0), PAG shutdown gate 7.1e-218
+- `operator_independence_verification.py` audits five further dimensions (file/runtime
+  isolation, forward-representation linear independence & VIF, input-gradient subspace
+  independence, a 12×12 parameter cross-sensitivity Jacobian, and leave-one-operator-out
+  unique variance in 5-fold CV). It is much slower than `smoke_test.py` — Dimension I
+  alone spawns one fresh interpreter per module.
 
 ## Notes
 
