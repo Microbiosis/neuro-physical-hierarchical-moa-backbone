@@ -120,10 +120,10 @@ together with four further independence dimensions).
 - **DeltaOja v6 → v9 T4 实测**（Kaggle GPU kernel `redmingwei/hetero-moe-deltaoja-fix`，
   同一权重同一输入，B=4 / L=128 / D=256 / G=16）：
 
-  | | v6 串行 | v9 / v12 persistent SRAM | 加速 |
+  | | v6 串行（4 次） | v9 / v12 persistent SRAM（8 次） | 加速 |
   |---|---|---|---|
-  | 前向 | 56.31 / 60.59 ms | **1.77 / 1.64 / 1.43 / 1.66 ms** | **≈ 37×** |
-  | 前向 + 反向 | 232.80 / 235.18 ms | **8.94 / 8.93 / 7.84 ms**（另一次 65.03 为异常值） | **≈ 26×** |
+  | 前向 | 55.79 – 60.59 ms（中位 ≈ 56.5） | **1.40 – 1.77 ms（中位 ≈ 1.66）** | **≈ 34×** |
+  | 前向 + 反向 | 232.80 – 245.29 ms（中位 ≈ 235.5） | **7.84 – 9.31 ms（中位 ≈ 8.9）** | **≈ 26×** |
   | 与 v6 串行实现的输出差 | — | **1.431e-06**（浮点级） | — |
 
   v8 曾有三条缺陷（`e_loc` 类型错致 T4 编译失败 / 反向仍串行占 99% / 输出差 6.596e+00），
@@ -132,7 +132,9 @@ together with four further independence dimensions).
 
   测量方法：每个版本在**独立子进程**中测量，顺序正反各跑一遍（v9 与 v12 的算法代码逐字节
   相同，只有 `__all__` 差异，因此两版数字必须一致——实测一致）。同进程连测多个版本会被
-  Triton JIT 与 CUDA 分配器状态污染，曾据此得出「v9 端到端只快 1.98×」的错误结论。
+  Triton JIT 与 CUDA 分配器状态污染，曾据此得出「v9 端到端只快 1.98×」与「v12 端到端快
+  34.7×」两个互相矛盾的错误结论——独立进程复测后两者同为 ≈ 26×（v9 与 v12 算法代码逐字节
+  相同，本就该一致）。另有 2 次读数落在 65–71 ms，是每个版本首次触发的偶发抖动，未计入中位数。
 - **Triton 内核双名并存**：`persistent_moa_norm_sparse_topk_megakernel` 与
   `persistent_norm_sparse_topk_agg_kernel` 在任何环境下都是同一个对象，两个名字都导出。
 
