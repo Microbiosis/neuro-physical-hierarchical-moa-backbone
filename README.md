@@ -222,11 +222,28 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 - Eager vs fused Triton megakernel path < 1e-14
 - Dissociative trauma gradcheck: 7 variables, relative L2 error 6.7e-11 – 7.5e-10;
   extreme +50.0 shock output bounded at 1.32 (< 5.0), PAG shutdown gate 7.1e-218
-- `operator_independence_verification.py` audits five further dimensions (file/runtime
-  isolation, forward-representation linear independence & VIF, input-gradient subspace
-  independence, a 12×12 parameter cross-sensitivity Jacobian, and leave-one-operator-out
-  unique variance in 5-fold CV). It is much slower than `smoke_test.py` — Dimension I
-  alone spawns one fresh interpreter per module.
+- **Five-dimensional operator independence audit — PASSED**
+  (Kaggle CPU kernel `redmingwei/hetero-moe-operator-independence`, 59.9 s;
+  full log archived in `docs/operator_independence_audit.log`):
+
+  | Dimension | Result |
+  |---|---|
+  | I · file & runtime isolation | 13/13 modules: zero sibling imports, standalone run PASS |
+  | II · forward-representation independence | joint subspace rank **12/12 full**; mean off-diag \|cos\| 0.0844; max VIF 1.72 (< 2.0) |
+  | III · input-gradient subspace independence | gradient matrix rank **12/12**; mean \|cos(Gi,Gj)\| 0.0934 (max 0.5803 < 0.80); max gradient VIF 1.90 (< 5.0) |
+  | IV · parameter cross-sensitivity Jacobian | off-diagonal cross-talk **exactly 0.00e+00**; min diagonal self-sensitivity 8.16e-02 > 0 (all 12 active) |
+  | V · leave-one-operator-out (CV) | full-ensemble CV R² **0.9997**; every operator irreplaceable, unique ΔR² **+0.0306 … +0.0509** |
+
+  Note: the script's header says "5-Fold CV" while its result line prints "4-Fold CV R²";
+  the fold count is the author's, not something changed here.
+
+  Reproduce it on Kaggle CPU with
+  <https://www.kaggle.com/code/redmingwei/hetero-moe-operator-independence>
+  (private kernel; it downloads this package at a pinned commit SHA and runs
+  `operator_independence_verification.py`, archiving the log into the kernel output).
+  Locally it is also runnable — `python3 hybrid_moa_vl_operator_suite/operator_independence_verification.py`
+  — but on a constrained sandbox CPU Dimension I alone (13 fresh interpreters) can take
+  much longer than the 60 s it needs on a normal machine.
 
 ## Notes
 
