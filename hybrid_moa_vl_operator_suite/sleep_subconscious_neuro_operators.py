@@ -652,7 +652,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                out_t = torch.empty_like(x_wake)
+                out_t = torch.empty_like(x_wake, memory_format=torch.contiguous_format)
                 fused_sleep_subconscious_shy_swr_pgo_fwd_kernel[grid](
                     x_wake.contiguous(), m_hipp.contiguous(), z_sub.contiguous(),
                     theta_sleep.contiguous(), kappa_vlpo.contiguous(), lambda_shy.contiguous(),

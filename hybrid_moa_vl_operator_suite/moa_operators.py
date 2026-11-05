@@ -488,7 +488,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                out = torch.empty_like(v_vis)
+                out = torch.empty_like(v_vis, memory_format=torch.contiguous_format)
                 _moa_vl_bilinear_fwd_kernel[grid](
                     v_vis.contiguous(),
                     t_txt.contiguous(),
@@ -536,9 +536,9 @@ if HAS_TORCH:
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
 
-                d_vvis = torch.empty_like(v_vis)
-                d_ttxt = torch.empty_like(t_txt)
-                d_calign = torch.empty_like(c_align)
+                d_vvis = torch.empty_like(v_vis, memory_format=torch.contiguous_format)
+                d_ttxt = torch.empty_like(t_txt, memory_format=torch.contiguous_format)
+                d_calign = torch.empty_like(c_align, memory_format=torch.contiguous_format)
                 d_alphavis = torch.zeros_like(alpha_vis, dtype=torch.float32)
                 d_alphatxt = torch.zeros_like(alpha_txt, dtype=torch.float32)
                 d_betabilin = torch.zeros_like(beta_bilin, dtype=torch.float32)

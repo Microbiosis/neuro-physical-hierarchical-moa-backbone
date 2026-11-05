@@ -540,7 +540,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                out_t = torch.empty_like(u_cort)
+                out_t = torch.empty_like(u_cort, memory_format=torch.contiguous_format)
                 fused_corticospinal_chaotic_manifold_fwd_kernel[grid](
                     u_cort.contiguous(), v_bulb.contiguous(), w_spin.contiguous(),
                     sigma_cbs.contiguous(), rho_gain.contiguous(), gamma_nl.contiguous(),

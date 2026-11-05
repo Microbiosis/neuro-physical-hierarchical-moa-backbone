@@ -457,7 +457,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                out = torch.empty_like(h_host)
+                out = torch.empty_like(h_host, memory_format=torch.contiguous_format)
                 fused_tulpa_corollary_agency_dialogue_fwd_kernel[grid](
                     h_host.contiguous(),
                     t_tulpa.contiguous(),
@@ -519,8 +519,8 @@ if HAS_TORCH:
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
 
-                d_hhost = torch.empty_like(h_host)
-                d_ttulpa = torch.empty_like(t_tulpa)
+                d_hhost = torch.empty_like(h_host, memory_format=torch.contiguous_format)
+                d_ttulpa = torch.empty_like(t_tulpa, memory_format=torch.contiguous_format)
                 d_attra = torch.zeros_like(attr_a, dtype=torch.float32)
                 d_alphacd = torch.zeros_like(alpha_cd, dtype=torch.float32)
                 d_kappatpj = torch.zeros_like(kappa_tpj, dtype=torch.float32)

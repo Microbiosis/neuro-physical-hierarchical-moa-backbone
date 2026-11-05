@@ -508,7 +508,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                out_t = torch.empty_like(x)
+                out_t = torch.empty_like(x, memory_format=torch.contiguous_format)
                 fused_parity_cp_annihilation_baryogenesis_fwd_kernel[grid](
                     x.contiguous(), delta_weak.contiguous(), eps_parity.contiguous(),
                     phi_cp.contiguous(), gamma_cp.contiguous(), sigma_ann.contiguous(),

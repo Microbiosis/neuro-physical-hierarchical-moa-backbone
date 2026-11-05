@@ -200,7 +200,7 @@ if HAS_TRITON:
         num_rows = B * L
         block_d = triton.next_power_of_2(D)
         grid = (triton.cdiv(num_rows, 1),)
-        out = torch.empty_like(v_vis)
+        out = torch.empty_like(v_vis, memory_format=torch.contiguous_format)
         fused_cross_modal_vl_bilinear_fwd_kernel[grid](
             v_vis.contiguous(),
             t_txt.contiguous(),

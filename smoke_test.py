@@ -56,6 +56,7 @@ MODULES = [
     "sleep_subconscious_neuro_operators",
     "vacuum_zpe_fluctuation_operators",
     "cpu_gpu_self_bootstrapping_operators",
+    "quantum_resource_phasing_operators",
 ]
 # 独立算子模块（不含统一编排层，它按设计 import 全部兄弟模块）
 STANDALONE = [m for m in MODULES if m != "unified_hybrid_moa_architecture"]
@@ -349,6 +350,7 @@ def test_new_domain_ops():
     sl = importlib.import_module(f"{PKG}.sleep_subconscious_neuro_operators")
     vz = importlib.import_module(f"{PKG}.vacuum_zpe_fluctuation_operators")
     cg = importlib.import_module(f"{PKG}.cpu_gpu_self_bootstrapping_operators")
+    qz = importlib.import_module(f"{PKG}.quantum_resource_phasing_operators")
     torch.manual_seed(6)
     x = torch.randn(2, 10, 64)
     specs = [
@@ -358,6 +360,8 @@ def test_new_domain_ops():
          dict(d_model=64, n_heads=4, num_vacuum_modes=8)),
         ("cpu_gpu_bootstrap", cg.CPUGPUSelfBootstrappingConfig,
          cg.CPUGPUSelfBootstrappingOp, dict(d_model=64, n_heads=4, num_isa_anchors=8)),
+        ("quantum_resource_phasing", qz.QuantumResourcePhasingConfig,
+         qz.QuantumResourcePhasingOp, dict(d_model=64, n_heads=4)),
     ]
     for name, cfg_cls, op_cls, kw in specs:
         op = op_cls(cfg_cls(**kw))
@@ -369,7 +373,7 @@ def test_new_domain_ops():
         assert isinstance(diag, dict) and diag, f"{name} 无诊断"
         n = sum(p.numel() for p in op.parameters())
         print(f"        · {name}: {n / 1e3:.1f}K params, diag keys={sorted(diag)[:4]}")
-    return "sleep + vacuum_zpe + cpu_gpu_bootstrap 前向/反向/诊断 ok"
+    return "sleep + vacuum_zpe + cpu_gpu_bootstrap + quantum_resource 前向/反向/诊断 ok"
 
 def test_torch_unified_layer():
     import torch
@@ -575,8 +579,8 @@ def main() -> int:
           + (", torch available" if torch_ok else ", torch MISSING (torch checks skipped)"))
     print("-" * 74)
 
-    check("package imports (15 modules + package exports)", test_imports)
-    check("module isolation: 14 个独立模块单独可 import", test_module_isolation)
+    check("package imports (16 modules + package exports)", test_imports)
+    check("module isolation: 15 个独立模块单独可 import", test_module_isolation)
     check("numpy branch RMSNorm fwd/bwd + FD gradient", test_numpy_rmsnorm)
     check("numpy cross-modal anchor co-attention (zero decay)", test_numpy_cross_modal_anchor_co_attention)
     check("numpy VL Hadamard-bilinear fusion + gradient", test_numpy_vl_bilinear_fusion)
@@ -588,7 +592,7 @@ def main() -> int:
         check("torch MoA stack (proposer + attention + 2 aggregators)", test_torch_moa_stack)
         check("torch UnifiedInterdisciplinaryMoALayer (12 domains / 7 stages)", test_torch_unified_layer)
         check("torch UnifiedHybridMoABackbone (3 layers)", test_torch_unified_backbone)
-        check("torch new domain operators (sleep, vacuum ZPE, CPU-GPU bootstrap)", test_new_domain_ops)
+        check("torch new domain operators (sleep, vacuum ZPE, CPU-GPU, quantum resource)", test_new_domain_ops)
         check("torch domain operators (quantum tidal, neuro)", test_domain_ops)
         check("upstream dissociative verification suite", test_upstream_dissociative_suite)
         check("mechanism: Stage 0/III/IV/V/VI vs Trauma decoupling + regime gates",

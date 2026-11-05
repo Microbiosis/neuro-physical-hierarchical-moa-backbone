@@ -1764,7 +1764,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                out_t = torch.empty_like(x_x86)
+                out_t = torch.empty_like(x_x86, memory_format=torch.contiguous_format)
                 fused_cpu_gpu_bootstrap_fwd_kernel[grid](
                     x_x86.contiguous(), x_arm.contiguous(), x_rv.contiguous(),
                     p_gpu.contiguous(), c_ir.contiguous(),

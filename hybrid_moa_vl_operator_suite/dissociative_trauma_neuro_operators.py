@@ -349,7 +349,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                out = torch.empty_like(x_sens)
+                out = torch.empty_like(x_sens, memory_format=torch.contiguous_format)
                 fused_corticolimbic_dissociative_dpdr_fwd_kernel[grid](
                     x_sens.contiguous(),
                     s_amyg.contiguous(),
@@ -410,9 +410,9 @@ if HAS_TORCH:
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
 
-                d_xsens = torch.empty_like(x_sens)
-                d_samyg = torch.empty_like(s_amyg)
-                d_cvmpfc = torch.empty_like(c_vmpfc)
+                d_xsens = torch.empty_like(x_sens, memory_format=torch.contiguous_format)
+                d_samyg = torch.empty_like(s_amyg, memory_format=torch.contiguous_format)
+                d_cvmpfc = torch.empty_like(c_vmpfc, memory_format=torch.contiguous_format)
                 d_theta = torch.zeros_like(theta_dissoc, dtype=torch.float32)
                 d_kappa = torch.zeros_like(kappa_dissoc, dtype=torch.float32)
                 d_alphahyper = torch.zeros_like(alpha_hyper, dtype=torch.float32)

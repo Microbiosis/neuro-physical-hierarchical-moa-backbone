@@ -12,10 +12,10 @@ kernels, `torch.nn.Module` operators, and fused `autograd.Function` / `@triton.j
 implementations — and every layer is importable even without torch installed
 (fallback stubs raise a clear `ImportError` only when instantiated).
 
-Totals: **13,027 lines** across the 14 standalone operator modules, plus the unified
-orchestrator (1,517 lines), the 5-dimensional independence audit (609 lines) and the
-package `__init__.py` (305 lines) — **15,458 lines of Python** in the package, plus a
-640-line clean-room smoke test.
+Totals: **15,333 lines** across the 15 standalone operator modules, plus the unified
+orchestrator (1,593 lines), the 5-dimensional independence audit (609 lines) and the
+package `__init__.py` (305 lines) — **17,840 lines of Python** in the package, plus a
+660-line clean-room smoke test.
 
 ---
 
@@ -29,7 +29,8 @@ package `__init__.py` (305 lines) — **15,458 lines of Python** in the package,
 └── hybrid_moa_vl_operator_suite/     算子包（Python package）
     ├── __init__.py                   70 个公开导出
     ├── README.md                     包内说明（原始版本文档）
-    ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（2,285 行）← 新增
+    ├── quantum_resource_phasing_operators.py   量子资源相位（1,065 行）← 新增
+    ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（2,285 行）
     ├── unified_hybrid_moa_architecture.py   七阶段总装 + 验证引擎（1,517 行）
     ├── moa_operators.py              系统级 MoA + 跨模态图文融合（978 行）
     ├── sleep_subconscious_neuro_operators.py    睡眠/潜意识（1,007 行）
@@ -63,6 +64,7 @@ together with four further independence dimensions).
 | Module | Domain | Lines |
 |---|---|---|
 | `cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,285 |
+| `quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门（独立算子，尚未接入统一层） | 1,065 |
 | `unified_hybrid_moa_architecture.py` | 七阶段总装 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 可学习阶段间混合门 + 执行引擎 + LOSO 消融 + 非创伤解耦审计 | 1,593 |
 | `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献），覆盖 14 个独立模块 | 609 |
 | `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,007 |
@@ -74,7 +76,7 @@ together with four further independence dimensions).
 | `supermembrane_spacetime_operators.py` | 11 维超膜 DBI、Randall-Sundrum 翘曲 KK 模态 | 864 |
 | `quantum_tidal_operators.py` | WKB 隧穿、Schwarzschild 四极潮汐张量 | 862 |
 | `neuro_nonlinear_operators.py` | 树突 NMDA 镁门控、FitzHugh-Nagumo、Kuramoto 相位耦合 | 793 |
-| `local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 + 自举编译接口 | 917 |
+| `local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 + 自举编译接口 + **persistent SRAM 单次 launch 前反向** | 1,419 |
 | `tulpa_neuro_operators.py` | 多子人格吸引子、精度加权自由能路由、Agency 比较器 | 692 |
 | `dissociative_trauma_neuro_operators.py` | Stage-I 前门控：杏仁核超唤醒、PAG 过载关断、ANP/EP 隔离 + 独立验证套件 | 539 |
 | `moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 390 |
@@ -107,11 +109,14 @@ together with four further independence dimensions).
   （残差 + final RMSNorm），返回逐层遥测。
 - **无 torch 也可 import**：每个模块在 `not HAS_TORCH` 时定义 stub 类，实例化时才抛
   `ImportError` 并提示改用 `AnalyticalKernels`；numpy 路径完全不依赖 torch。
-- **DeltaOja 的 launch-bound 已修复（v8）**：`PersistentDeltaOjaSRAMFunction` 在
-  `HAS_TRITON and q.is_cuda` 时分派到 `persistent_delta_oja_sram_fused_fwd_kernel`
-  （grid = B×G，每个 block 独占一条 (b,g) 序列，W∈R^{32×32}=4KB 全程钉在片上 SRAM），
-  **1 次 launch 取代 128×G 次**；无 Triton 时回退串行循环。v7 只有内核没有分派，
-  T4 实测前向+反向仍为 230 ms（与串行无异）。
+- **DeltaOja 的 launch-bound 修复（v8 → v9）**：v8 接上了前向分派
+  （`PersistentDeltaOjaSRAMFunction` → `persistent_delta_oja_sram_fused_fwd_kernel`，
+  grid = B×G，W∈R^{32×32}=4KB 全程钉在片上 SRAM，1 次 launch 取代 128×G 次），
+  但**反向仍在 `torch.enable_grad()` 里重跑串行循环**（占 99% 时间），且 v8 的
+  `e_loc = z_sq_sum / R_RANK` 让 1 元素张量被当成指针传给 `tl.atomic_add` → **T4 上编译失败**。
+  v9 三处一起修：`e_loc` 标量化、新增 `persistent_delta_oja_sram_fused_bwd_kernel`
+  （反向时间单次 launch、零 atomic，前向额外存 W_t 轨迹）、以及所有领域模块
+  `torch.empty_like(..., memory_format=torch.contiguous_format)`（非连续输出缓冲区修正）。
 - **Triton 内核双名并存**：`persistent_moa_norm_sparse_topk_megakernel` 与
   `persistent_norm_sparse_topk_agg_kernel` 在任何环境下都是同一个对象，两个名字都导出。
 
@@ -214,7 +219,7 @@ Result: **16/16 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 | torch MoA stack (proposer + attention + 2 aggregator modes) | density 0.913 |
 | torch `UnifiedInterdisciplinaryMoALayer` (12 domains / 7 stages) | 387.2K params, grad 0.105, 19 telemetry keys |
 | torch `UnifiedHybridMoABackbone` (3 layers) | 1,096.5K params, grad reaches input |
-| torch new domain operators (sleep, vacuum ZPE, Tri-ISA CPU-GPU bootstrap) | 13.2K / 13.2K / 21.6K params；自举算子诊断含 `bootstrap_fixed_point_verified` 与三ISA 分发权重 |
+| torch new domain operators (sleep, vacuum ZPE, Tri-ISA CPU-GPU, quantum resource) | 13.2K / 13.2K / 21.6K / 45.4K params；诊断含 `bootstrap_fixed_point_verified`、三 ISA 分发权重、`mean_dqi_reliability` 等 |
 | torch domain operators (quantum tidal, neuro) | both return (out, diagnostics) |
 | upstream dissociative verification suite | 7 gradchecks PASS, shock output bounded |
 | mechanism: Stage 0/III/IV/V/VI vs Trauma decoupling + regime gates | 七组全部精确 0.0e+00（含新增 Stage IV Tri-ISA；创伤通路自身变化 20.9 作对照）；G_shut 0.756 → 7.12e-218；DPDR 压缩 40.2× |

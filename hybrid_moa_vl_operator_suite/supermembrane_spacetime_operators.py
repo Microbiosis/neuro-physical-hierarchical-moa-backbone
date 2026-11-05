@@ -489,7 +489,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                out_t = torch.empty_like(x_base)
+                out_t = torch.empty_like(x_base, memory_format=torch.contiguous_format)
                 fused_supermembrane_dbi_warped_fwd_kernel[grid](
                     x_base.contiguous(), y_extra.contiguous(), flux_f.contiguous(),
                     w_kk.contiguous(), kappa_warp.contiguous(), omega_kk.contiguous(),

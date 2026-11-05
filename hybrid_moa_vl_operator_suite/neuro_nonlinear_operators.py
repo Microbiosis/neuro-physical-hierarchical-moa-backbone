@@ -455,7 +455,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                out_t = torch.empty_like(v)
+                out_t = torch.empty_like(v, memory_format=torch.contiguous_format)
                 fused_dendritic_nmda_shunting_fhn_fwd_kernel[grid](
                     v.contiguous(), s.contiguous(), g_shunt.contiguous(), w_adapt.contiguous(),
                     g_nmda.contiguous(), alpha_mg.contiguous(), out_t, D,

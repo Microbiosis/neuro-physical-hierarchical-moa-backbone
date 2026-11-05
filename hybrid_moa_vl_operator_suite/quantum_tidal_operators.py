@@ -473,8 +473,8 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                pr_t = torch.empty_like(amp)
-                pi_t = torch.empty_like(amp)
+                pr_t = torch.empty_like(amp, memory_format=torch.contiguous_format)
+                pi_t = torch.empty_like(amp, memory_format=torch.contiguous_format)
                 fused_quantum_tidal_wave_fwd_kernel[grid](
                     amp.contiguous(), phi0.contiguous(), sigma.contiguous(), delta_v.contiguous(),
                     omega.contiguous(), harm_weights.contiguous(), harm_phases.contiguous(),

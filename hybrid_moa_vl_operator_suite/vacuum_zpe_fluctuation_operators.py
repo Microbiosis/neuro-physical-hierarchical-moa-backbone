@@ -597,7 +597,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
-                out_t = torch.empty_like(q)
+                out_t = torch.empty_like(q, memory_format=torch.contiguous_format)
                 fused_vacuum_zpe_casimir_schwinger_fwd_kernel[grid](
                     q.contiguous(), p.contiguous(), b_gap.contiguous(),
                     omega_zpe.contiguous(), r_squeeze.contiguous(), m_gap.contiguous(),

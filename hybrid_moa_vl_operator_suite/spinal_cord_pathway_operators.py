@@ -533,7 +533,7 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_dh = triton.next_power_of_2(D_half)
                 grid = (triton.cdiv(num_rows, 1),)
-                out_t = torch.empty_like(x_abeta)
+                out_t = torch.empty_like(x_abeta, memory_format=torch.contiguous_format)
                 fused_spinal_dorsal_reflex_renshaw_fwd_kernel[grid](
                     x_abeta.contiguous(), x_cfiber.contiguous(), x_desc.contiguous(),
                     kappa_pad.contiguous(), gamma_ia.contiguous(), lambda_rc.contiguous(),
