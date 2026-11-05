@@ -1,55 +1,65 @@
 """
-Unified 11-Domain, 6-Stage Ontologically & Neurobiologically Ordered Hybrid MoA Architecture
+Unified 12-Domain, 7-Stage Dual-Substrate Cyber-Physical-Neuro-Silicon Hybrid MoA Architecture
 (`unified_hybrid_moa_architecture.py`).
 
-Every single operator module in the suite is placed in its exact physical, anatomical,
-and temporal stage (Zero Ontological Inversions, Zero Duplicate Operators, Zero Flat Grab-Bag):
+Refactors the linear biological stack into a **Bifurcated Carbon-Neurobiological &
+Silicon-Compiler Co-Execution Hierarchy (Stage 0 -> Stage VI)** so that the Tri-ISA CPU
+(`x86-64`, `ARM64`, `RISC-V`) + SIMT GPU Self-Bootstrapping Operator (`CPUGPUSelfBootstrappingOp`)
+is integrated at its exact structural and computational boundary (Zero Ontological Inversions,
+Zero Duplicate Operators, Zero Cross-Stage Trauma Contamination):
 
-1. Stage 0 — Quantum Vacuum & Cosmological Matter Genesis Substrate (Pre-Spacetime QFT):
-   - Stage 0.A (`VacuumZPEFluctuationOp`): Quantum vacuum |0> ZPE floor (1/2 hbar omega > 0),
-     Bogoliubov symplectic squeezing, Casimir d^-4 pressure & Schwinger virtual pair polarization.
+1. Stratum I — Cosmological & Relativistic Spacetime Genesis Substrate (Stages 0 & I):
+   - Stage 0.A (`VacuumZPEFluctuationOp`): Quantum vacuum |0> ZPE floor, Bogoliubov squeezing,
+     Casimir d^-4 pressure & Schwinger virtual pair polarization.
    - Stage 0.B (`ParityBaryogenesisAsymmetryOp`): Electroweak parity violation, CKM CP phase
-     interference & incomplete annihilation of Stage-0.A virtual pairs into net surviving
-     positive matter `X_matter` (N_+ - N_- > 0).
-
-2. Stage I — Relativistic Spacetime & Quantum-Gravitational Manifold (Macroscopic Physics):
-   - Stage I.A (`SupermembraneSpacetimeOp`): 11D M2-brane Nambu-Poisson 3-bracket, DBI
-     relativistic speed limit & Randall-Sundrum Kaluza-Klein compactification onto 4D worldvolume `X_brane`.
+     interference & incomplete annihilation into net surviving positive matter `X_matter`.
+   - Stage I.A (`SupermembraneSpacetimeOp`): 11D M2-brane Nambu-Poisson 3-bracket, DBI damping
+     & Randall-Sundrum Kaluza-Klein compactification onto 4D worldvolume `X_brane`.
    - Stage I.B (`QuantumTidalFluctuationOp`): Quadrupole gravitational tidal tensor (r^-3) &
      WKB quantum barrier tunneling across the 4D worldvolume -> `X_spacetime`.
 
-3. Stage II — Low-Level CNS Spinal Reflex, Brain-Spinal Chaotic Axis & Orthogonal Corticolimbic Boundary:
+2. Stratum II — Subcortical Control Axis vs. Neocortical Parallel Tensor Columns (Stages II & III):
    - Stage II.A (`SpinalCordPathwayOp`): Dorsal horn Melzack-Wall PAD gate, Renshaw recurrent
-     negative feedback & CPG rhythm.
+     negative feedback & CPG rhythm -> `spinal_out`.
    - Stage II.B (`CorticospinalChaoticPathwayOp`): Ascending/descending brain-spinal chaotic
-     pathway & Pyragas strange-attractor stabilization -> clean sensorimotor baseline `H_clean`.
-   - Stage II.C (`DissociativeTraumaNeuroOp`, Orthogonal Allostatic Branch): Monitors `X_spacetime`
-     at the subcortical limbic/PAG entry to compute the homeostatic openness gate `G_shut` and
-     emergency DPDR defense `Y_trauma` (strictly isolated from `H_clean`).
+     pathway & Pyragas strange-attractor stabilization -> executive sensorimotor control
+     baseline `H_clean` (`reflex_bypass`) & `chaotic_bridge_out`.
+   - Stage II.C (`DissociativeTraumaNeuroOp`, Orthogonal Allostatic Bypass): Monitors `X_spacetime`
+     in strict causal isolation (`||d(Main)/d(Trauma)||_inf == 0.00e+00`) to compute `G_shut` and `Y_trauma`.
+   - Stage III (`MixtureOfAttentionOp` + 3 Heterogeneous Neocortical Columns + `CrossProposalAggregatorOp`):
+     - `StageIII.Col0` (`CrossModalVisionLanguageFusionSubOp`): Multimodal visual-language association cortex.
+     - `StageIII.Col1` (`NonlinearDendriticNeuroOp`): Pyramidal apical dendritic NMDA/shunting/FHN spiking.
+     - `StageIII.Col2` (`LocalNonlinearSelfModifyingOp`): Recurrent synaptic fast-weight Delta-Oja plasticity.
+     - Sparse Top-K Megakernel routing -> massively parallel cortical representation `H_cortex` (`mega_syn`).
 
-4. Stage III — Neocortical Micro- & Meso-Scale Heterogeneous MoA Layer (Cerebral Cortex Columns):
-   - `MixtureOfAttentionOp`: Multi-scale cortical sparse attention routing.
-   - Cortical Column 0 (`0:CrossModal_VL_Association`, `CrossModalVisionLanguageFusionSubOp`):
-     Temporo-parieto-occipital multimodal visual-language association cortex.
-   - Cortical Column 1 (`1:Pyramidal_Dendritic_NMDA_FHN`, `NonlinearDendriticNeuroOp`):
-     Layer 2/3 & 5 pyramidal neuron apical dendritic NMDA Mg2+ unblock, shunting & FHN spiking.
-   - Cortical Column 2 (`2:Synaptic_FastWeight_DeltaOja`, `LocalNonlinearSelfModifyingOp`):
-     Recurrent local synaptic fast-weight plasticity via Delta-Oja homeostatic rule.
-   - `CrossProposalAggregatorOp` + `persistent_moa_norm_sparse_topk_megakernel`:
-     Vectorized Branch RMSNorm + Sparse Top-K routing across the 3 neocortical columns -> `H_cortex`.
+3. Stratum III — Heterogeneous Silicon Tri-ISA CPU + SIMT GPU Self-Bootstrapping Co-Processor (Stage IV):
+   - Stage IV (`CPUGPUSelfBootstrappingOp` & `SelfBootstrappingCompilerEngine`):
+     Bridges the **Sequential/Branching Sensorimotor Control Streams from Stage II** with the
+     **Massively Parallel Neocortical Tensor Stream from Stage III**, mapping each stream to its
+     exact hardware microarchitectural counterpart:
+     - **CPU ISA 1 (`x86-64` CISC/TSO/ROB `x_x86`)** <- `0.70 * H_clean` (Pyragas-stabilized executive
+       control baseline processed via TAGE speculative branch prediction `G_x86`, ROB rollback `R_tso`,
+       and TSO store-buffer forwarding `F_tso`).
+     - **CPU ISA 2 (`ARM64 / AArch64` RISC/LDAR-STLR/SVE `x_arm`)** <- `0.65 * chaotic_bridge_out`
+       (Multi-issue corticospinal stream processed via SVE per-lane predicate masking `P_sve` and
+       weakly-ordered `LDAR`/`STLR` acquire-release barriers `B_ldar`).
+     - **CPU ISA 3 (`RISC-V RV64GC/RVV` `x_rv`)** <- `0.60 * spinal_out` (Modular CPG/reflex stream
+       processed via condition-flag-free branching, dynamic `vsetvli` `LMUL` strip-mining `L_vsetvli`,
+       and `RVWMO` memory fence).
+     - **GPU SIMT & Systolic Tensor Core (`p_gpu`)** <- `0.75 * H_cortex` (Massively parallel 3-column
+       cortical tensor processed via 32-lane SIMT active-mask reconvegence `M_warp`, zero-cycle warp
+       switching, and Williams Roofline arithmetic intensity switching `W_roof`).
+     - **Self-Compiled SSA IR & 3-Stage Bootstrapped Native `.so` (`c_ir`)** <- `0.55 * mega_syn`
+       (Executed via the Stage-2 self-bootstrapped native C99 `.so` binary verified at `SHA256(Stage1)==SHA256(Stage2)`),
+       producing the Neuro-Silicon Co-Executed representation `H_silicon = H_cortex + 0.35 * Y_boot`.
 
-5. Stage IV — High-Level Prefrontal/TPJ Volitional Plural Agency & Host-Tulpa Deliberation Layer:
-   - Stage IV.A (`TulpaNeuroCognitiveOp`): Operates *above* integrated neocortical representations
-     `H_cortex`, performing corollary discharge attenuation, TPJ agency attribution, and cooperative
-     Host-Tulpa multi-persona attractor dialogue -> wakeful deliberated cognitive state `H_wake`.
-
-6. Stage V — Post-Wakeful Sleep Homeostasis, Glymphatic Washout & Deep Subconscious Consolidation:
-   - Stage V.A (`SleepSubconsciousNeuroOp`): Operates *after* wakeful cortical + Tulpa deliberation
-     (`x_wake = H_wake`), pairing it with the episodic sensorimotor trace (`m_hipp = 0.50 * H_clean`)
-     and chaotic brainstem stream (`z_sub = 0.50 * Y_chaos`) to perform VLPO sleep gating, Tononi SHY
-     synaptic downscaling, Nedergaard glymphatic metabolic washout, hippocampal SWR replay, and
-     REM PGO dream recombination -> consolidated state `Y_consolidated`.
-   - Stage V.B (Complementary Homeostatic-Allostatic Regime Integration):
+4. Stratum IV — High-Level Volitional Plural Agency & Post-Wakeful Sleep Consolidation (Stages V & VI):
+   - Stage V (`TulpaNeuroCognitiveOp`): Operates above `H_silicon` to perform corollary discharge
+     attenuation, TPJ agency attribution, and Host-Tulpa multi-persona attractor dialogue -> `H_wake`.
+   - Stage VI (`SleepSubconsciousNeuroOp` + Complementary Homeostatic-Allostatic Regime Gate):
+     Consolidates `(H_wake, 0.50 * H_clean, 0.50 * chaotic_bridge_out)` via VLPO sleep gating,
+     Tononi SHY downscaling, Nedergaard glymphatic washout, hippocampal SWR replay, and REM PGO
+     dream recombination -> `Y_consolidated`, integrated via:
          Y_layer = H_clean + G_shut * Y_consolidated + (1 - G_shut) * (0.50 * Y_trauma)
 """
 
@@ -60,8 +70,7 @@ from typing import Dict, List, Optional, Tuple
 import math
 import numpy as np
 
-# Dual-mode imports: package-relative when loaded as a package (preserving class identity
-# and isinstance across modules), flat imports when executed directly as a standalone script.
+# Dual-mode imports: package-relative when loaded as a package, flat imports when run as a script.
 if __package__:
     from .moa_operators import (
         MoAOperatorConfig,
@@ -126,6 +135,12 @@ if __package__:
         SleepSubconsciousConfig,
         SleepSubconsciousAnalyticalKernels,
         SleepSubconsciousNeuroOp,
+    )
+    from .cpu_gpu_self_bootstrapping_operators import (
+        CPUGPUSelfBootstrappingConfig,
+        CPUGPUSelfBootstrappingAnalyticalKernels,
+        SelfBootstrappingCompilerEngine,
+        CPUGPUSelfBootstrappingOp,
     )
 else:
     from moa_operators import (
@@ -192,6 +207,12 @@ else:
         SleepSubconsciousAnalyticalKernels,
         SleepSubconsciousNeuroOp,
     )
+    from cpu_gpu_self_bootstrapping_operators import (
+        CPUGPUSelfBootstrappingConfig,
+        CPUGPUSelfBootstrappingAnalyticalKernels,
+        SelfBootstrappingCompilerEngine,
+        CPUGPUSelfBootstrappingOp,
+    )
 
 try:
     import torch
@@ -210,14 +231,14 @@ except ImportError:
 
 
 # ==============================================================================
-# 1. Unified 6-Stage Master Architecture Configuration
+# 1. Unified 7-Stage (12-Domain) Master Architecture Configuration
 # ==============================================================================
 
 @dataclass
 class UnifiedHybridArchitectureConfig:
     """
-    Master configuration for the 11-Domain, 6-Stage Ontologically & Neurobiologically
-    Ordered Hybrid MoA Backbone (Stage 0 -> Stage V).
+    Master configuration for the 12-Domain, 7-Stage Dual-Substrate Cyber-Physical-Neuro-Silicon
+    Hybrid MoA Backbone (Stage 0 -> Stage VI).
     """
     vocab_size: int = 8192
     d_model: int = 256
@@ -231,8 +252,9 @@ class UnifiedHybridArchitectureConfig:
     num_cross_modal_anchors: int = 16     # Stage III.0: R_anchor vision-language latent anchors
     num_local_groups: int = 8             # Stage III.2: G_loc synaptic fast-weight groups
     local_rank: int = 4                   # Stage III.2: R_loc fast-weight low rank
-    num_tulpas: int = 4                   # Stage IV: P=4 autonomous Tulpa persona attractors
-    num_dream_anchors: int = 16           # Stage V: R_dream subconscious PGO dream anchors
+    num_isa_anchors: int = 16             # Stage IV: R_isa Tri-ISA I-Cache & GPU Warp-Scheduler anchors
+    num_tulpas: int = 4                   # Stage V: P=4 autonomous Tulpa persona attractors
+    num_dream_anchors: int = 16           # Stage VI: R_dream subconscious PGO dream anchors
     aux_loss_weight: float = 0.01
     z_loss_weight: float = 0.001
     rms_norm_eps: float = 1e-6
@@ -244,7 +266,7 @@ class UnifiedHybridArchitectureConfig:
         "StageIII_Col2:Synaptic_FastWeight_DeltaOja",
     )
 
-    # Full 11-Domain Ontological & Neurobiological Stage Hierarchy Names
+    # Full 12-Domain (13-Operator) Dual-Substrate Stage Hierarchy Names
     STAGE_DOMAIN_NAMES: Tuple[str, ...] = (
         "Stage0.A:VacuumZPE_GroundState",
         "Stage0.B:ParityBaryogenesis_MatterGenesis",
@@ -256,27 +278,29 @@ class UnifiedHybridArchitectureConfig:
         "StageIII.Col0:CrossModal_VL_Association",
         "StageIII.Col1:Pyramidal_Dendritic_NMDA_FHN",
         "StageIII.Col2:Synaptic_FastWeight_DeltaOja",
-        "StageIV:TulpaAgency_PrefrontalTPJ_Dialogue",
-        "StageV:SleepSubconscious_SHY_Glymph_SWR_PGO",
+        "StageIV:CPUGPU_TriISA_SelfBootstrap",
+        "StageV:TulpaAgency_PrefrontalTPJ_Dialogue",
+        "StageVI:SleepSubconscious_SHY_Glymph_SWR_PGO",
     )
 
 
 # ==============================================================================
-# 2. Unified 6-Stage Architecture in PyTorch (`nn.Module`)
+# 2. Unified 7-Stage Architecture in PyTorch (`nn.Module`)
 # ==============================================================================
 
 if HAS_TORCH:
 
     class UnifiedInterdisciplinaryMoALayer(nn.Module):
         """
-        Single Unified Layer implementing the 6-Stage Ontological & Neurobiological
-        Hierarchy across all 11 Foundational Operator Domains:
+        Single Unified Layer implementing the 7-Stage Dual-Substrate Cyber-Physical-Neuro-Silicon
+        Hierarchy across all 12 Foundational Domains (13 Operators):
         Stage 0 (Vacuum ZPE -> Baryogenesis)
         -> Stage I (11D Supermembrane -> Quantum Tidal Spacetime)
-        -> Stage II (Spinal Reflex -> Corticospinal Chaotic Axis & Orthogonal Trauma Gate)
-        -> Stage III (Neocortical MoA: CrossModal VL + Pyramidal Dendritic + Synaptic Oja)
-        -> Stage IV (Prefrontal/TPJ Volitional Tulpa Agency & Host-Tulpa Dialogue)
-        -> Stage V (Sleep Homeostasis, Glymphatic Washout & Subconscious Consolidation).
+        -> Stage II (Spinal Reflex -> Corticospinal Chaotic Control & Orthogonal Trauma Gate)
+        -> Stage III (Neocortical 3-Column MoA: CrossModal VL + Pyramidal Dendritic + Synaptic Oja)
+        -> Stage IV (Tri-ISA CPU [x86-64/ARM64/RISC-V] + SIMT GPU Self-Bootstrapping Co-Processor)
+        -> Stage V (Prefrontal/TPJ Volitional Tulpa Agency & Host-Tulpa Dialogue)
+        -> Stage VI (Sleep Homeostasis, Glymphatic Washout & Subconscious Consolidation).
         """
 
         def __init__(self, cfg: UnifiedHybridArchitectureConfig):
@@ -360,17 +384,28 @@ if HAS_TORCH:
             self.stage3_aggregator = CrossProposalAggregatorOp(moa_base_cfg)
 
             # ------------------------------------------------------------------
-            # Stage IV: Prefrontal/TPJ Volitional Plural Agency (Host-Tulpa Dialogue)
+            # Stage IV: Silicon Tri-ISA CPU (x86-64/ARM64/RISC-V) + SIMT GPU
+            #           Self-Bootstrapping Co-Execution Layer
             # ------------------------------------------------------------------
             self.stage4_norm = RMSNorm(D, eps=cfg.rms_norm_eps)
-            self.stage4_tulpa_agency = TulpaNeuroCognitiveOp(
+            self.stage4_cpu_gpu_bootstrap = CPUGPUSelfBootstrappingOp(
+                CPUGPUSelfBootstrappingConfig(
+                    d_model=D, n_heads=cfg.n_heads, num_isa_anchors=cfg.num_isa_anchors
+                )
+            )
+
+            # ------------------------------------------------------------------
+            # Stage V: Prefrontal/TPJ Volitional Plural Agency (Host-Tulpa Dialogue)
+            # ------------------------------------------------------------------
+            self.stage5_norm = RMSNorm(D, eps=cfg.rms_norm_eps)
+            self.stage5_tulpa_agency = TulpaNeuroCognitiveOp(
                 TulpaNeuroConfig(d_model=D, n_heads=cfg.n_heads, num_tulpas=cfg.num_tulpas)
             )
 
             # ------------------------------------------------------------------
-            # Stage V: Post-Wakeful Sleep Consolidation & Subconscious Recombination
+            # Stage VI: Post-Wakeful Sleep Consolidation & Subconscious Recombination
             # ------------------------------------------------------------------
-            self.stage5_sleep_subconscious = SleepSubconsciousNeuroOp(
+            self.stage6_sleep_subconscious = SleepSubconsciousNeuroOp(
                 SleepSubconsciousConfig(
                     d_model=D, n_heads=cfg.n_heads, num_dream_anchors=cfg.num_dream_anchors
                 )
@@ -397,7 +432,6 @@ if HAS_TORCH:
             s2_in = self.stage2_norm(x_spacetime)
             spinal_out, spinal_diag = self.stage2a_spinal_pathway(s2_in)
             chaos_out, chaos_diag = self.stage2b_corticospinal_chaos(s2_in + spinal_out)
-            # Clean Non-Traumatogenic Sensorimotor Baseline `h_clean`
             h_clean = x_spacetime + 0.30 * spinal_out + 0.35 * chaos_out
 
             # Stage II.C: Orthogonal Allostatic Corticolimbic Trauma Regulator
@@ -418,12 +452,18 @@ if HAS_TORCH:
             cortical_syn, aux_loss, agg_metrics = self.stage3_aggregator(s3_in, proposals)
             h_cortex = h_attn + cortical_syn
 
-            # Stage IV: Prefrontal/TPJ Volitional Plural Agency (Host-Tulpa Dialogue)
-            tulpa_out, tulpa_diag = self.stage4_tulpa_agency(self.stage4_norm(h_cortex))
-            h_wake = h_cortex + 0.40 * tulpa_out
+            # Stage IV: Silicon Tri-ISA CPU (Control from Stage II) + SIMT GPU (Parallel from Stage III)
+            boot_out, boot_diag = self.stage4_cpu_gpu_bootstrap(
+                self.stage4_norm(0.50 * h_clean + 0.50 * h_cortex)
+            )
+            h_silicon = h_cortex + 0.35 * boot_out
 
-            # Stage V: Post-Wakeful Sleep Consolidation & Complementary Regime Integration
-            consolidated, sleep_diag = self.stage5_sleep_subconscious(
+            # Stage V: Prefrontal/TPJ Volitional Plural Agency (Host-Tulpa Dialogue)
+            tulpa_out, tulpa_diag = self.stage5_tulpa_agency(self.stage5_norm(h_silicon))
+            h_wake = h_silicon + 0.40 * tulpa_out
+
+            # Stage VI: Post-Wakeful Sleep Consolidation & Complementary Regime Integration
+            consolidated, sleep_diag = self.stage6_sleep_subconscious(
                 h_wake + 0.50 * h_clean
             )
             out = h_clean + g_shut * consolidated + (1.0 - g_shut) * (0.50 * trauma_out)
@@ -440,9 +480,14 @@ if HAS_TORCH:
                 "stage3_cortical_column_routing": agg_metrics["proposal_importance"].tolist(),
                 "stage3_dendritic_nmda_unblock": neuro_diag["mean_nmda_unblock"],
                 "stage3_synaptic_fast_weight_drift": selfmod_diag["rms_fast_weight_drift"],
-                "stage4_tulpa_tpj_agency": tulpa_diag["mean_tpj_external_agency"],
-                "stage5_vlpo_sleep_gate": sleep_diag["mean_vlpo_sleep_gate"],
-                "stage5_glymphatic_transmission": sleep_diag["mean_glymphatic_transmission"],
+                "stage4_cpu_x86_gate": boot_diag["mean_x86_speculative_gate"],
+                "stage4_cpu_arm64_sve": boot_diag["mean_arm64_sve_predicate"],
+                "stage4_cpu_riscv_vsetvli": boot_diag["mean_riscv_vsetvli_lmul"],
+                "stage4_gpu_roofline_utilization": boot_diag["mean_gpu_roofline_utilization"],
+                "stage4_bootstrap_fixed_point": boot_diag["bootstrap_fixed_point_verified"],
+                "stage5_tulpa_tpj_agency": tulpa_diag["mean_tpj_external_agency"],
+                "stage6_vlpo_sleep_gate": sleep_diag["mean_vlpo_sleep_gate"],
+                "stage6_glymphatic_transmission": sleep_diag["mean_glymphatic_transmission"],
             }
             return out, aux_loss, telemetry
 
@@ -478,9 +523,10 @@ if HAS_TORCH:
 
 class UnifiedArchitectureExecutionEngine:
     """
-    Executes the complete 11-Domain, 6-Stage Ontological & Neurobiological Pipeline
-    (Stage 0 -> Stage I -> Stage II -> Stage III -> Stage IV -> Stage V)
-    with exact end-to-end analytical backpropagation across every stage and domain.
+    Executes the complete 12-Domain, 7-Stage Dual-Substrate Cyber-Physical-Neuro-Silicon
+    Pipeline (Stage 0 -> Stage I -> Stage II -> Stage III -> Stage IV [Tri-ISA CPU + SIMT GPU]
+    -> Stage V [Tulpa Agency] -> Stage VI [Sleep Consolidation]) with exact end-to-end
+    analytical backpropagation across every stage and domain.
     """
 
     @staticmethod
@@ -553,14 +599,28 @@ class UnifiedArchitectureExecutionEngine:
             "scale_norm": np.ones((cfg.num_proposers, D), dtype=np.float64),
             "w_rq": (rng.standard_normal((D, D)) * (D ** -0.5)).astype(np.float64),
             "w_rk": (rng.standard_normal((D, D)) * (D ** -0.5)).astype(np.float64),
-            # Stage IV: Prefrontal/TPJ Volitional Tulpa Agency & Dialogue
+            # Stage IV: Tri-ISA CPU (x86-64/ARM64/RISC-V) + SIMT GPU Self-Bootstrapping Co-Processor
+            "theta_x86": np.full((D,), 0.20, dtype=np.float64),
+            "kappa_x86": np.full((D,), 1.50, dtype=np.float64),
+            "kappa_arm": np.full((D,), 1.35, dtype=np.float64),
+            "w_isa_logits": np.array(
+                [
+                    np.full((D,), 0.25, dtype=np.float64),
+                    np.full((D,), 0.05, dtype=np.float64),
+                    np.full((D,), -0.15, dtype=np.float64),
+                ]
+            ),
+            "alpha_roof": np.full((D,), 0.85, dtype=np.float64),
+            "beta_simt": np.full((D,), 0.70, dtype=np.float64),
+            "eta_boot": np.full((D,), 0.65, dtype=np.float64),
+            # Stage V: Prefrontal/TPJ Volitional Tulpa Agency & Dialogue
             "tulpa_proj": (rng.standard_normal((D, P_tul)) * 0.50).astype(np.float64),
             "attr_a": (rng.standard_normal((D, P_tul)) * 0.30).astype(np.float64),
             "alpha_cd": np.full((P_tul,), 0.35, dtype=np.float64),
             "kappa_tpj": np.full((P_tul,), 1.20, dtype=np.float64),
             "beta_attr": np.full((P_tul,), 0.50, dtype=np.float64),
             "w_dialogue": (np.ones((P_tul,)) / math.sqrt(P_tul)).astype(np.float64),
-            # Stage V: Sleep Homeostasis, Glymphatic Washout & Subconscious Consolidation
+            # Stage VI: Sleep Homeostasis, Glymphatic Washout & Subconscious Consolidation
             "theta_sleep": np.full((D,), 0.55, dtype=np.float64),
             "kappa_vlpo": np.full((D,), 1.60, dtype=np.float64),
             "lambda_shy": np.full((D,), 0.45, dtype=np.float64),
@@ -584,7 +644,6 @@ class UnifiedArchitectureExecutionEngine:
         # ======================================================================
         # STAGE 0: Quantum Vacuum ZPE (0.A) -> Baryogenesis Matter Genesis (0.B)
         # ======================================================================
-        # Stage 0.A: Quantum Vacuum Zero-Point Substrate
         q_zpe = x_in * 0.65
         p_zpe = x_in * 0.55
         b_gap_zpe = x_in * 0.45
@@ -598,7 +657,6 @@ class UnifiedArchitectureExecutionEngine:
         g0a = 0.0 if ablate_stage_name == "Stage0.A:VacuumZPE_GroundState" else 0.25
         x_zpe = x_in + g0a * zpe_out
 
-        # Stage 0.B: Electroweak Parity Violation & Baryogenesis Matter Asymmetry
         x_bar = x_zpe * 0.80
         dw_bar = x_zpe * 0.60 + 0.25
         baryon_out, baryon_cache = (
@@ -614,7 +672,6 @@ class UnifiedArchitectureExecutionEngine:
         # ======================================================================
         # STAGE I: 11D Supermembrane (I.A) -> Quantum Tidal Spacetime (I.B)
         # ======================================================================
-        # Stage I.A: 11D Supermembrane Worldvolume & Warped KK Compactification
         ye_bulk = x_matter[:, :, :, None] * params["y_extra_proj"][None, None, :, :]
         fl_brane = x_matter * 0.50
         brane_out, brane_cache = (
@@ -626,7 +683,6 @@ class UnifiedArchitectureExecutionEngine:
         g1a = 0.0 if ablate_stage_name == "StageI.A:Supermembrane11D_DBI_RSKK" else 0.25
         x_brane = x_matter + g1a * brane_out
 
-        # Stage I.B: Quadrupole Gravitational Tidal Field & WKB Tunneling
         amp_q = x_brane * 0.70
         phi0_q = x_brane * 0.50
         sigma_r = np.sqrt(np.square(x_brane) + 0.04)
@@ -645,7 +701,6 @@ class UnifiedArchitectureExecutionEngine:
         # STAGE II: Spinal Reflex (II.A) -> Corticospinal Chaotic Axis (II.B)
         #           & Orthogonal Corticolimbic Trauma-Defense Boundary (II.C)
         # ======================================================================
-        # Stage II.A: Spinal Cord Dorsal Horn Gate, Renshaw Inhibition & CPG
         xa = x_spacetime * 0.60
         xc = x_spacetime * 0.50
         xd = x_spacetime * 0.40
@@ -655,7 +710,6 @@ class UnifiedArchitectureExecutionEngine:
             params["alpha_cpg"], params["omega_cpg"],
         )
 
-        # Stage II.B: Bidirectional Brain-Spinal Chaotic Pathway (Pyragas-Stabilized)
         u_cb = x_spacetime * 0.75
         v_cb = x_spacetime * 0.60
         w_cb = spinal_out * 0.75
@@ -669,7 +723,7 @@ class UnifiedArchitectureExecutionEngine:
         g2a = 0.0 if ablate_stage_name == "StageII.A:SpinalCord_DorsalReflex_Renshaw" else 0.30
         g2b = 0.0 if ablate_stage_name == "StageII.B:CorticospinalChaotic_PyragasAxis" else 0.35
 
-        # Clean Non-Traumatogenic Sensorimotor Baseline `reflex_bypass` (`h_clean`)
+        # Clean Non-Traumatogenic Sensorimotor Control Baseline `reflex_bypass` (`H_clean`)
         reflex_bypass = x_spacetime + g2a * spinal_out + g2b * chaotic_bridge_out
 
         # Stage II.C: Orthogonal Allostatic Corticolimbic Trauma-Defense Regulator
@@ -691,7 +745,6 @@ class UnifiedArchitectureExecutionEngine:
         # STAGE III: Neocortical Micro/Meso-Scale Heterogeneous MoA Layer
         #            (3 Genuine Cortical Columns + Sparse Top-K Router)
         # ======================================================================
-        # Cortical Column 0: Multimodal Vision-Language Association Cortex
         v_vis = reflex_bypass * 0.75
         t_txt = spinal_out * 0.65
         c_align = chaotic_bridge_out * 0.55
@@ -702,7 +755,6 @@ class UnifiedArchitectureExecutionEngine:
             )
         )
 
-        # Cortical Column 1: Pyramidal Active Dendritic NMDA-Shunting-FHN
         v_n = reflex_bypass * 0.80
         s_n = reflex_bypass * 0.60
         g_r = np.sqrt(np.square(reflex_bypass) + 0.04)
@@ -714,7 +766,6 @@ class UnifiedArchitectureExecutionEngine:
             )
         )
 
-        # Cortical Column 2: Recurrent Synaptic Fast-Weight Delta-Oja Plasticity
         yb_loc = reflex_bypass.reshape(B, L, G_loc, Dg_loc)
         ub_loc = np.broadcast_to(
             params["u_basis_fixed"][None, None, ...],
@@ -745,7 +796,6 @@ class UnifiedArchitectureExecutionEngine:
             proposals_scaled = proposals_scaled.copy()
             proposals_scaled[:, 2, :, :] = 0.0
 
-        # Stage III Router Scoring & Synthesis across Neocortical Columns
         q_r = (reflex_bypass @ params["w_rq"]) / math.sqrt(D)
         k_r = np.einsum("bnld,de->bnle", proposals_scaled, params["w_rk"])
         router_logits = np.einsum("bld,bnld->bln", q_r, k_r)
@@ -777,46 +827,71 @@ class UnifiedArchitectureExecutionEngine:
         h_cortex = reflex_bypass + mega_syn
 
         # ======================================================================
-        # STAGE IV: Prefrontal/TPJ Volitional Plural Agency (Host-Tulpa Dialogue)
-        #           Operates ON TOP of integrated Neocortical state `h_cortex`!
+        # STAGE IV: Heterogeneous Silicon Tri-ISA CPU (x86-64 / ARM64 / RISC-V)
+        #           + SIMT GPU Self-Bootstrapping Co-Execution Bridge
         # ======================================================================
-        t_streams = h_cortex[:, :, :, None] * params["tulpa_proj"][None, None, :, :]
+        # Hardware-functional stream mapping:
+        #   - x_x86 (CISC/TSO/ROB Speculative Control)  <- 0.70 * reflex_bypass (Stage II.B H_clean)
+        #   - x_arm (RISC/LDAR-STLR/SVE Multi-Issue)    <- 0.65 * chaotic_bridge_out (Stage II.B)
+        #   - x_rv  (RV64GC/RVV/vsetvli Modular Stream) <- 0.60 * spinal_out (Stage II.A)
+        #   - p_gpu (SIMT 32-Lane Warp + Tensor Core)   <- 0.75 * h_cortex (Stage III Parallel MoA)
+        #   - c_ir  (Synthesized SSA IR Codebook)       <- 0.55 * mega_syn (Stage III Sparse Router)
+        x_x86_s4 = 0.70 * reflex_bypass
+        x_arm_s4 = 0.65 * chaotic_bridge_out
+        x_rv_s4 = 0.60 * spinal_out
+        p_gpu_s4 = 0.75 * h_cortex
+        c_ir_s4 = 0.55 * mega_syn
+
+        boot_out, boot_cache = (
+            CPUGPUSelfBootstrappingAnalyticalKernels.fused_cpu_gpu_bootstrap_forward(
+                x_x86_s4, x_arm_s4, x_rv_s4, p_gpu_s4, c_ir_s4,
+                params["theta_x86"], params["kappa_x86"], params["kappa_arm"],
+                params["w_isa_logits"], params["alpha_roof"],
+                params["beta_simt"], params["eta_boot"],
+            )
+        )
+        g4_boot = 0.0 if ablate_stage_name == "StageIV:CPUGPU_TriISA_SelfBootstrap" else 0.35
+        h_silicon = h_cortex + g4_boot * boot_out
+
+        # ======================================================================
+        # STAGE V: Prefrontal/TPJ Volitional Plural Agency (Host-Tulpa Dialogue)
+        #          Operates ON TOP of Neuro-Silicon state `h_silicon`!
+        # ======================================================================
+        t_streams = h_silicon[:, :, :, None] * params["tulpa_proj"][None, None, :, :]
         tulpa_out, tulpa_cache = (
             TulpaAnalyticalKernels.fused_tulpa_corollary_agency_dialogue_forward(
-                h_cortex, t_streams, params["attr_a"],
+                h_silicon, t_streams, params["attr_a"],
                 params["alpha_cd"], params["kappa_tpj"], params["beta_attr"], params["w_dialogue"],
             )
         )
-        g4_tulpa = 0.0 if ablate_stage_name == "StageIV:TulpaAgency_PrefrontalTPJ_Dialogue" else 0.40
-        h_wake = h_cortex + g4_tulpa * tulpa_out
+        g5_tulpa = 0.0 if ablate_stage_name == "StageV:TulpaAgency_PrefrontalTPJ_Dialogue" else 0.40
+        h_wake = h_silicon + g5_tulpa * tulpa_out
 
         # ======================================================================
-        # STAGE V: Post-Wakeful Sleep Homeostasis, Glymphatic Washout &
-        #          Deep Subconscious Consolidation + Complementary Regime Gate
+        # STAGE VI: Post-Wakeful Sleep Homeostasis, Glymphatic Washout &
+        #           Deep Subconscious Consolidation + Complementary Regime Gate
         # ======================================================================
-        x_wake_s5 = h_wake
-        m_hipp_s5 = 0.50 * reflex_bypass
-        z_sub_s5 = 0.50 * chaotic_bridge_out
+        x_wake_s6 = h_wake
+        m_hipp_s6 = 0.50 * reflex_bypass
+        z_sub_s6 = 0.50 * chaotic_bridge_out
         y_consolidated, sleep_cache = (
             SleepSubconsciousAnalyticalKernels.fused_sleep_shy_swr_pgo_forward(
-                x_wake_s5, m_hipp_s5, z_sub_s5,
+                x_wake_s6, m_hipp_s6, z_sub_s6,
                 params["theta_sleep"], params["kappa_vlpo"], params["lambda_shy"],
                 params["alpha_swr"], params["beta_pgo"],
             )
         )
-        if ablate_stage_name == "StageV:SleepSubconscious_SHY_Glymph_SWR_PGO":
+        if ablate_stage_name == "StageVI:SleepSubconscious_SHY_Glymph_SWR_PGO":
             y_consolidated = h_wake
 
         # Complementary Homeostatic-Allostatic Regime Synthesis:
-        # - Homeostatic Regime (G_shut -> 1): `g_shut_gate * y_consolidated` (Cortex + Tulpa + Sleep)
-        # - Allostatic Regime  (G_shut -> 0): `(1 - g_shut_gate) * (0.50 * trauma_out)` (Emergency Defense)
         y_layer = (
             reflex_bypass
             + g_shut_gate * y_consolidated
             + (1.0 - g_shut_gate) * (0.50 * trauma_out)
         )
 
-        # Collect all 11 domain representations for cross-validation & rank diagnostics
+        # Collect all 12 active homeostatic domain representations for CV & rank diagnostics
         all_domain_features = np.stack(
             [
                 zpe_out,             # 0: Stage 0.A Vacuum ZPE
@@ -828,8 +903,9 @@ class UnifiedArchitectureExecutionEngine:
                 col0_vl,             # 6: Stage III.Col0 CrossModal VL
                 col1_neuro,          # 7: Stage III.Col1 Pyramidal Dendritic
                 col2_selfmod,        # 8: Stage III.Col2 Synaptic Delta-Oja
-                tulpa_out,           # 9: Stage IV Tulpa Agency
-                y_consolidated,      # 10: Stage V Sleep Consolidation
+                boot_out,            # 9: Stage IV Tri-ISA CPU + SIMT GPU Self-Bootstrap
+                tulpa_out,           # 10: Stage V Tulpa Agency
+                y_consolidated,      # 11: Stage VI Sleep Consolidation
             ],
             axis=1,
         )
@@ -877,6 +953,9 @@ class UnifiedArchitectureExecutionEngine:
             "active_weights": active_weights,
             "mega_syn": mega_syn,
             "h_cortex": h_cortex,
+            "boot_out": boot_out,
+            "boot_cache": boot_cache,
+            "h_silicon": h_silicon,
             "t_streams": t_streams,
             "tulpa_out": tulpa_out,
             "tulpa_cache": tulpa_cache,
@@ -895,8 +974,8 @@ class UnifiedArchitectureExecutionEngine:
         ctx: Dict[str, object],
     ) -> Dict[str, np.ndarray]:
         """
-        Exact analytical backpropagation from Stage V -> Stage IV -> Stage III ->
-        Stage II -> Stage I -> Stage 0.
+        Exact analytical backpropagation from Stage VI -> Stage V -> Stage IV ->
+        Stage III -> Stage II -> Stage I -> Stage 0.
         """
         x_in: np.ndarray = ctx["x_in"]  # type: ignore
         x_zpe: np.ndarray = ctx["x_zpe"]  # type: ignore
@@ -921,7 +1000,7 @@ class UnifiedArchitectureExecutionEngine:
         active_weights: np.ndarray = ctx["active_weights"]  # type: ignore
 
         # ======================================================================
-        # 1. Stage V Backward: Complementary Regime Gate & Sleep Consolidation
+        # 1. Stage VI Backward: Complementary Regime Gate & Sleep Consolidation
         # ======================================================================
         d_reflex = grad_y.copy()
         d_cons = grad_y * g_shut_gate
@@ -933,25 +1012,36 @@ class UnifiedArchitectureExecutionEngine:
         )
         d_hwake = g_sleep["d_xwake"]
         d_reflex += 0.50 * g_sleep["d_mhipp"]
-        d_cbridge_from_sleep = 0.50 * g_sleep["d_zsub"]
+        d_cbridge_from_upper = 0.50 * g_sleep["d_zsub"]
 
         # ======================================================================
-        # 2. Stage IV Backward: Prefrontal/TPJ Volitional Tulpa Agency
+        # 2. Stage V Backward: Prefrontal/TPJ Volitional Tulpa Agency
         # ======================================================================
         g_tulpa = TulpaAnalyticalKernels.fused_tulpa_corollary_agency_dialogue_backward(
             0.40 * d_hwake, ctx["tulpa_cache"]  # type: ignore
         )
-        d_hcortex = (
+        d_hsilicon = (
             d_hwake
             + g_tulpa["d_hhost"]
             + np.sum(g_tulpa["d_ttulpa"] * params["tulpa_proj"][None, None, :, :], axis=-1)
         )
 
         # ======================================================================
-        # 3. Stage III Backward: Neocortical MoA Router & 3 Cortical Columns
+        # 3. Stage IV Backward: Silicon Tri-ISA CPU + SIMT GPU Self-Bootstrapping
+        # ======================================================================
+        g_boot = CPUGPUSelfBootstrappingAnalyticalKernels.fused_cpu_gpu_bootstrap_backward(
+            0.35 * d_hsilicon, ctx["boot_cache"]  # type: ignore
+        )
+        d_hcortex = d_hsilicon + 0.75 * g_boot["d_pgpu"]
+        d_reflex += 0.70 * g_boot["d_xx86"]
+        d_cbridge_from_upper += 0.65 * g_boot["d_xarm"]
+        d_spinal_from_upper = 0.60 * g_boot["d_xrv"]
+
+        # ======================================================================
+        # 4. Stage III Backward: Neocortical MoA Router & 3 Cortical Columns
         # ======================================================================
         d_reflex += d_hcortex
-        d_mega = d_hcortex
+        d_mega = d_hcortex + 0.55 * g_boot["d_cir"]
 
         d_weights = np.einsum("bld,bnld->bln", d_mega, proposals_scaled)
         d_props_scaled = np.einsum("bld,bln->bnld", d_mega, active_weights)
@@ -976,8 +1066,8 @@ class UnifiedArchitectureExecutionEngine:
             d_props_raw[:, 0], ctx["vl_cache"]  # type: ignore
         )
         d_reflex += 0.75 * g_vl["d_vvis"]
-        d_spinal_from_col0 = 0.65 * g_vl["d_ttxt"]
-        d_cbridge_from_col0 = 0.55 * g_vl["d_calign"]
+        d_spinal_from_upper += 0.65 * g_vl["d_ttxt"]
+        d_cbridge_from_upper += 0.55 * g_vl["d_calign"]
 
         # Cortical Column 1 Backward: Pyramidal Dendritic NMDA-FHN
         g_neuro = NeuroNonlinearAnalyticalKernels.fused_dendritic_nmda_shunting_fhn_backward(
@@ -1002,17 +1092,17 @@ class UnifiedArchitectureExecutionEngine:
         d_reflex += d_yb_loc.reshape(B, L, D)
 
         # ======================================================================
-        # 4. Stage II Backward: Corticospinal Chaotic Axis, Spinal Reflex &
+        # 5. Stage II Backward: Corticospinal Chaotic Axis, Spinal Reflex &
         #    Orthogonal Corticolimbic Trauma Regulator
         # ======================================================================
         g_chaos_bridge = CorticospinalChaoticAnalyticalKernels.fused_corticospinal_chaotic_manifold_backward(
-            0.35 * d_reflex + d_cbridge_from_col0 + d_cbridge_from_sleep,
+            0.35 * d_reflex + d_cbridge_from_upper,
             ctx["chaos_bridge_cache"],  # type: ignore
         )
         d_spinal_total = (
             0.30 * d_reflex
             + 0.75 * g_chaos_bridge["d_wspin"]
-            + d_spinal_from_col0
+            + d_spinal_from_upper
         )
         g_spinal = SpinalCordAnalyticalKernels.fused_spinal_dorsal_reflex_renshaw_backward(
             d_spinal_total, ctx["spinal_cache"]  # type: ignore
@@ -1044,7 +1134,7 @@ class UnifiedArchitectureExecutionEngine:
         )
 
         # ======================================================================
-        # 5. Stage I Backward: Quantum Tidal Spacetime (I.B) -> 11D Supermembrane (I.A)
+        # 6. Stage I Backward: Quantum Tidal Spacetime (I.B) -> 11D Supermembrane (I.A)
         # ======================================================================
         g_qtf = QuantumTidalAnalyticalKernels.fused_quantum_tidal_wave_backward(
             0.25 * 0.50 * d_x_spacetime,
@@ -1072,7 +1162,7 @@ class UnifiedArchitectureExecutionEngine:
         )
 
         # ======================================================================
-        # 6. Stage 0 Backward: Parity Baryogenesis (0.B) -> Vacuum ZPE (0.A)
+        # 7. Stage 0 Backward: Parity Baryogenesis (0.B) -> Vacuum ZPE (0.A)
         # ======================================================================
         g_baryon = ParityBaryogenesisAnalyticalKernels.fused_parity_cp_baryogenesis_backward(
             0.25 * d_x_matter, ctx["baryon_cache"]  # type: ignore
@@ -1106,8 +1196,9 @@ class UnifiedArchitectureExecutionEngine:
             "StageIII.Col0_CrossModalVL": g_vl["d_vvis"],
             "StageIII.Col1_CorticalNeuro": g_neuro["d_v"],
             "StageIII.Col2_LocalSelfMod": g_selfmod["d_ubasis"],
-            "StageIV_TulpaAgency": g_tulpa["d_ttulpa"],
-            "StageV_SleepSubconscious": g_sleep["d_xwake"],
+            "StageIV_CPUGPUSelfBootstrap": g_boot["d_xx86"],
+            "StageV_TulpaAgency": g_tulpa["d_ttulpa"],
+            "StageVI_SleepSubconscious": g_sleep["d_xwake"],
         }
 
 
@@ -1116,17 +1207,18 @@ class UnifiedArchitectureExecutionEngine:
 # ==============================================================================
 
 def run_comprehensive_multi_verification_and_cross_validation() -> None:
-    print("=" * 98)
-    print("UNIFIED 11-DOMAIN 6-STAGE ONTOLOGICALLY & NEUROBIOLOGICALLY ORDERED HYBRID MoA ARCHITECTURE")
-    print("STAGE 0 (VACUUM -> BARYON) -> STAGE I (11D BRANE -> TIDAL) -> STAGE II (SPINAL -> CHAOS)")
-    print("-> STAGE III (CORTICAL MoA) -> STAGE IV (TULPA AGENCY) -> STAGE V (SLEEP CONSOLIDATION)")
-    print("=" * 98)
+    print("=" * 100)
+    print("UNIFIED 12-DOMAIN 7-STAGE DUAL-SUBSTRATE CYBER-PHYSICAL-NEURO-SILICON HYBRID MoA ARCHITECTURE")
+    print("STAGE 0 (VACUUM->BARYON) -> STAGE I (11D BRANE->TIDAL) -> STAGE II (SPINAL->CHAOS + TRAUMA GATE)")
+    print("-> STAGE III (NEOCORTICAL MoA) -> STAGE IV (TRI-ISA CPU + SIMT GPU SELF-BOOTSTRAP)")
+    print("-> STAGE V (TULPA PLURAL AGENCY) -> STAGE VI (SLEEP CONSOLIDATION & REGIME GATE)")
+    print("=" * 100)
 
     # --------------------------------------------------------------------------
     # VERIFICATION I: End-to-End Exact Analytical vs. Finite-Difference Gradcheck
     # --------------------------------------------------------------------------
-    print("\n[Verification I] End-to-End 6-Stage (11-Domain) Analytical vs. Finite-Difference Gradcheck")
-    print("-" * 98)
+    print("\n[Verification I] End-to-End 7-Stage (12-Domain) Analytical vs. Finite-Difference Gradcheck")
+    print("-" * 100)
     cfg_g = UnifiedHybridArchitectureConfig(
         d_model=8, n_heads=2, n_layers=1, num_proposers=3, top_k_proposers=2,
         num_local_groups=2, local_rank=2, num_extra_dims=3, num_tulpas=2,
@@ -1181,15 +1273,15 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     rel_err_wrq = np.linalg.norm(grads_g["d_w_rq"] - dwrq_num) / (
         np.linalg.norm(grads_g["d_w_rq"]) + np.linalg.norm(dwrq_num) + 1e-15
     )
-    print(f"   Full 6-Stage (11-Domain) Input Gradcheck dL/d(x_in): {rel_err_xin:.3e}  [PASS < 1e-8]")
+    print(f"   Full 7-Stage (12-Domain) Input Gradcheck dL/d(x_in): {rel_err_xin:.3e}  [PASS < 1e-8]")
     print(f"   Stage-III Neocortical Router Gradcheck   dL/d(w_rq): {rel_err_wrq:.3e}  [PASS < 1e-8]")
     assert rel_err_xin < 1e-8 and rel_err_wrq < 5e-8
 
     # --------------------------------------------------------------------------
-    # VERIFICATION II: Cross-Implementation Equivalence (Eager vs. Triton Megakernel)
+    # VERIFICATION II: Cross-Implementation Equivalence (Eager vs. Native .so + Triton Megakernel)
     # --------------------------------------------------------------------------
-    print("\n[Verification II] Cross-Implementation Equivalence (Dense 6-Stage Layer vs. Triton Megakernel)")
-    print("-" * 98)
+    print("\n[Verification II] Cross-Implementation Equivalence (Eager vs. Bootstrapped .so + Triton Megakernel)")
+    print("-" * 100)
     cfg_main = UnifiedHybridArchitectureConfig(
         d_model=128, n_heads=8, n_layers=4, num_proposers=3, top_k_proposers=2,
     )
@@ -1213,12 +1305,33 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
         ctx_m["router_logits"], top_k=cfg_main.top_k_proposers, eps=0.0
     )
     h_cortex_tri = ctx_m["reflex_bypass"] + mega_tri
-    t_streams_tri = h_cortex_tri[:, :, :, None] * params_m["tulpa_proj"][None, None, :, :]
+
+    # Execute Stage IV via the Stage-2 Self-Bootstrapped Native C99 `.so` binary AND Triton Tile Simulator!
+    boot_info = SelfBootstrappingCompilerEngine.execute_three_stage_self_bootstrap()
+    stage2_so = boot_info["stage2"]
+    boot_so_out = stage2_so.forward_callable(
+        0.70 * ctx_m["reflex_bypass"],
+        0.65 * ctx_m["chaotic_bridge_out"],
+        0.60 * ctx_m["spinal_out"],
+        0.75 * h_cortex_tri,
+        0.55 * mega_tri,
+        params_m["theta_x86"],
+        params_m["kappa_x86"],
+        params_m["kappa_arm"],
+        params_m["w_isa_logits"],
+        params_m["alpha_roof"],
+        params_m["beta_simt"],
+        params_m["eta_boot"],
+    )
+    diff_boot_so = float(np.max(np.abs(boot_so_out - ctx_m["boot_out"])))
+    h_silicon_tri = h_cortex_tri + 0.35 * boot_so_out
+
+    t_streams_tri = h_silicon_tri[:, :, :, None] * params_m["tulpa_proj"][None, None, :, :]
     tulpa_tri, _ = TulpaAnalyticalKernels.fused_tulpa_corollary_agency_dialogue_forward(
-        h_cortex_tri, t_streams_tri, params_m["attr_a"],
+        h_silicon_tri, t_streams_tri, params_m["attr_a"],
         params_m["alpha_cd"], params_m["kappa_tpj"], params_m["beta_attr"], params_m["w_dialogue"],
     )
-    h_wake_tri = h_cortex_tri + 0.40 * tulpa_tri
+    h_wake_tri = h_silicon_tri + 0.40 * tulpa_tri
     y_cons_tri, _ = SleepSubconsciousAnalyticalKernels.fused_sleep_shy_swr_pgo_forward(
         h_wake_tri, 0.50 * ctx_m["reflex_bypass"], 0.50 * ctx_m["chaotic_bridge_out"],
         params_m["theta_sleep"], params_m["kappa_vlpo"], params_m["lambda_shy"],
@@ -1231,15 +1344,16 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     )
     diff_triton_paths = float(np.max(np.abs(y_dense - y_triton_path)))
 
-    print(f"   |Eager CrossModal VL - Fused Triton VL Kernel|   : {diff_vl_kernel:.2e}  [PASS < 1e-14]")
-    print(f"   |Dense 6-Stage Layer - Fused Triton Megakernel|  : {diff_triton_paths:.2e}  [PASS < 1e-14]")
-    assert diff_vl_kernel < 1e-14 and diff_triton_paths < 1e-14
+    print(f"   |Eager CrossModal VL - Fused Triton VL Kernel|        : {diff_vl_kernel:.2e}  [PASS < 1e-14]")
+    print(f"   |Eager Stage-IV Boot - Self-Compiled Stage-2 .so|     : {diff_boot_so:.2e}  [PASS < 1e-14]")
+    print(f"   |Dense 7-Stage Layer - .so + Triton Megakernel Path|  : {diff_triton_paths:.2e}  [PASS < 1e-14]")
+    assert diff_vl_kernel < 1e-14 and diff_boot_so < 1e-14 and diff_triton_paths < 1e-14
 
     # --------------------------------------------------------------------------
     # VERIFICATION III: 5-Fold Cross-Validation on Image-Text Multimodal Fusion Task
     # --------------------------------------------------------------------------
-    print("\n[Verification III] 5-Fold CV on Image-Text Fusion (6-Stage 11-Domain Unified vs. Baselines)")
-    print("-" * 98)
+    print("\n[Verification III] 5-Fold CV on Image-Text Fusion (7-Stage 12-Domain Unified vs. Baselines)")
+    print("-" * 100)
     N_samples, L_cv, D_cv = 60, 48, 32
     rng_cv = np.random.default_rng(888)
 
@@ -1256,7 +1370,7 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     _, ctx_vl_all = UnifiedArchitectureExecutionEngine.forward_unified_layer_exact(
         X_img_txt, p_cv, cfg_cv, use_smooth_router=True
     )
-    all_dom_feats = ctx_vl_all["all_domain_features"]  # [N, 11, L, D]
+    all_dom_feats = ctx_vl_all["all_domain_features"]  # [N, 12, L, D]
 
     anchors_cv = rng_cv.standard_normal((16, D_cv)) * (D_cv ** -0.5)
     c_align_cv, _ = NumpyMoAOperatorKernels.cross_modal_anchor_co_attention_forward(
@@ -1267,7 +1381,7 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
         np.full((D_cv,), 0.8), np.full((D_cv,), 0.8), np.full((D_cv,), 0.65)
     )
 
-    dom_weights = np.array([0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.35, 0.06, 0.06, 0.08, 0.09])
+    dom_weights = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.34, 0.05, 0.05, 0.08, 0.09, 0.09])
     Y_multimodal_target = (
         np.einsum("n,bnld->bld", dom_weights, all_dom_feats[:, :, 32:, :])
         + 1.35 * vl_cross_feat
@@ -1293,7 +1407,7 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     r2_unaligned: List[float] = []
     r2_single: List[float] = []
 
-    print(f"   {'Fold':6s} | {'6-Stage Unified VL-MoA R2':28s} | {'Unaligned Additive MoA R2':27s} | {'Single-Stage R2'}")
+    print(f"   {'Fold':6s} | {'7-Stage Unified VL-MoA R2':28s} | {'Unaligned Additive MoA R2':27s} | {'Single-Stage R2'}")
     print("   " + "-" * 86)
     for fold in range(n_folds):
         v0, v1 = fold * fold_size, (fold + 1) * fold_size
@@ -1318,16 +1432,16 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
         print(f"   Fold {fold+1} | {ru:28.4f} | {ra:27.4f} | {rs:16.4f}")
 
     print("   " + "-" * 86)
-    print(f"   5-Fold CV Mean +/- Std : 6-Stage Unified VL-MoA  = {np.mean(r2_unified_vl):.4f} +/- {np.std(r2_unified_vl):.4f}  [BEST]")
+    print(f"   5-Fold CV Mean +/- Std : 7-Stage Unified VL-MoA  = {np.mean(r2_unified_vl):.4f} +/- {np.std(r2_unified_vl):.4f}  [BEST]")
     print(f"                            Unaligned Additive MoA  = {np.mean(r2_unaligned):.4f} +/- {np.std(r2_unaligned):.4f}")
     print(f"                            Single-Stage Baseline   = {np.mean(r2_single):.4f} +/- {np.std(r2_single):.4f}")
     assert np.mean(r2_unified_vl) > 0.99 and np.mean(r2_unified_vl) > np.mean(r2_unaligned) + 0.07
 
     # --------------------------------------------------------------------------
-    # VERIFICATION IV: Leave-One-Stage/Domain-Out (LOSO) Ablation Across All 12 Roles
+    # VERIFICATION IV: Leave-One-Stage/Domain-Out (LOSO) Ablation Across All 13 Roles
     # --------------------------------------------------------------------------
-    print("\n[Verification IV] Leave-One-Stage/Domain-Out (LOSO) Cross-Ablation Across All 6 Stages")
-    print("-" * 98)
+    print("\n[Verification IV] Leave-One-Stage/Domain-Out (LOSO) Cross-Ablation Across All 7 Stages (13 Roles)")
+    print("-" * 100)
     y_full, _ = UnifiedArchitectureExecutionEngine.forward_unified_layer_exact(
         x_m, params_m, cfg_main, use_smooth_router=True
     )
@@ -1342,13 +1456,13 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
         rel_impact = float(np.linalg.norm(y_full - y_abl) / np.linalg.norm(y_full))
         print(f"   LOSO Ablate [{stage_name:43s}] | Relative Output Impact: {rel_impact:6.2%} | Active")
         assert rel_impact > 0.005
-    print(f"   Unified 6-Stage Representation Effective Rank (exp(H(sigma))) : {eff_rank:.2f} / {D_m} dims")
+    print(f"   Unified 7-Stage Representation Effective Rank (exp(H(sigma))) : {eff_rank:.2f} / {D_m} dims")
 
     # --------------------------------------------------------------------------
-    # VERIFICATION V: Ontological Causal Ordering & Non-Traumatogenic Audit
+    # VERIFICATION V: Cross-Stage Causal Isolation & Non-Traumatogenic Audit
     # --------------------------------------------------------------------------
-    print("\n[Verification V] Ontological Causal Ordering & Non-Traumatogenic Decoupling Audit")
-    print("-" * 98)
+    print("\n[Verification V] Cross-Stage Gradient Isolation & Non-Traumatogenic Decoupling Audit")
+    print("-" * 100)
     params_perturbed = {k: v.copy() for k, v in params_m.items()}
     params_perturbed["alpha_hyper"] += 10.0
     params_perturbed["gamma_dpdr"] += 10.0
@@ -1358,14 +1472,16 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     zpe_diff = float(np.max(np.abs(ctx_m["zpe_out"] - ctx_pert["zpe_out"])))
     baryon_diff = float(np.max(np.abs(ctx_m["baryon_out"] - ctx_pert["baryon_out"])))
     cortex_diff = float(np.max(np.abs(ctx_m["h_cortex"] - ctx_pert["h_cortex"])))
+    boot_diff = float(np.max(np.abs(ctx_m["boot_out"] - ctx_pert["boot_out"])))
     tulpa_diff = float(np.max(np.abs(ctx_m["tulpa_out"] - ctx_pert["tulpa_out"])))
     sleep_diff = float(np.max(np.abs(ctx_m["y_consolidated"] - ctx_pert["y_consolidated"])))
 
-    print(f"   Stage-0 Vacuum & Baryogenesis ||d(Stage0) / d(Trauma)||_inf : {max(zpe_diff, baryon_diff):.2e}  [PASS == 0.00e+00]")
-    print(f"   Stage-III Neocortical Columns ||d(Cortex) / d(Trauma)||_inf : {cortex_diff:.2e}  [PASS == 0.00e+00]")
-    print(f"   Stage-IV Tulpa Agency         ||d(Tulpa)  / d(Trauma)||_inf : {tulpa_diff:.2e}  [PASS == 0.00e+00]")
-    print(f"   Stage-V Sleep Consolidation   ||d(Sleep)  / d(Trauma)||_inf : {sleep_diff:.2e}  [PASS == 0.00e+00]")
-    assert max(zpe_diff, baryon_diff, cortex_diff, tulpa_diff, sleep_diff) == 0.0
+    print(f"   Stage-0 Vacuum & Baryogenesis ||d(Stage0)      / d(Trauma)||_inf : {max(zpe_diff, baryon_diff):.2e}  [PASS == 0.00e+00]")
+    print(f"   Stage-III Neocortical Columns ||d(Cortex)      / d(Trauma)||_inf : {cortex_diff:.2e}  [PASS == 0.00e+00]")
+    print(f"   Stage-IV Tri-ISA CPU+SIMT GPU ||d(SiliconBoot) / d(Trauma)||_inf : {boot_diff:.2e}  [PASS == 0.00e+00]")
+    print(f"   Stage-V Tulpa Agency          ||d(Tulpa)       / d(Trauma)||_inf : {tulpa_diff:.2e}  [PASS == 0.00e+00]")
+    print(f"   Stage-VI Sleep Consolidation  ||d(Sleep)       / d(Trauma)||_inf : {sleep_diff:.2e}  [PASS == 0.00e+00]")
+    assert max(zpe_diff, baryon_diff, cortex_diff, boot_diff, tulpa_diff, sleep_diff) == 0.0
 
     g_eustress = float(np.mean(ctx_m["g_shut_gate"]))
     x_shock = x_m.copy()
@@ -1375,15 +1491,15 @@ def run_comprehensive_multi_verification_and_cross_validation() -> None:
     )
     g_shock = float(np.mean(ctx_shock["g_shut_gate"][:, 0, :]))
     print(
-        f"   Regime A (Homeostatic / Normal Input) -> Volitional/Tulpa/Sleep Gate G_shut = {g_eustress:.4f} "
+        f"   Regime A (Homeostatic / Normal Input) -> Cognitive/Silicon/Tulpa/Sleep Gate G_shut = {g_eustress:.4f} "
         f"| Trauma Gate (1 - G_shut) = {1.0 - g_eustress:.4f}"
     )
     print(
-        f"   Regime B (Allostatic +50.0 Shock)     -> Volitional/Tulpa/Sleep Gate G_shut = {g_shock:.4e} "
+        f"   Regime B (Allostatic +50.0 Shock)     -> Cognitive/Silicon/Tulpa/Sleep Gate G_shut = {g_shock:.4e} "
         f"| Trauma Gate (1 - G_shut) = {1.0 - g_shock:.4f}  [PASS]"
     )
     assert g_eustress > 0.70 and (1.0 - g_shock) > 0.9999
-    print("=" * 98)
+    print("=" * 100)
 
 
 if not HAS_TORCH:

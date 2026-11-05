@@ -1,20 +1,21 @@
 # Neuro-Physical Hierarchical MoA Backbone
 
-**Hybrid MoA Vision-Language Operator Suite** — 14-module neural operator library for
-Mixture-of-Architectures (MoA) backbones: 13 standalone operator/kernel modules covering
-11 physical & neurobiological domains, plus a unified orchestrator that wires them into a
-6-stage ontological hierarchy (quantum vacuum → matter genesis → spacetime → sensorimotor
-→ corticolimbic gating → neocortical columns → agency → sleep consolidation).
+**Hybrid MoA Vision-Language & Tri-ISA Self-Bootstrapping Operator Suite** — 16-module
+neural operator library for Mixture-of-Architectures (MoA) backbones: 14 standalone
+operator/kernel modules covering 12 physical, neurobiological & computer-architecture
+domains, plus a unified orchestrator that wires them into a 7-stage ontological hierarchy
+(quantum vacuum → matter genesis → spacetime → sensorimotor → corticolimbic gating →
+neocortical columns → Tri-ISA CPU/SIMT-GPU self-bootstrapping → agency → sleep).
 
 Every module ships four layers: a dataclass config, deterministic NumPy analytical
 kernels, `torch.nn.Module` operators, and fused `autograd.Function` / `@triton.jit`
 implementations — and every layer is importable even without torch installed
 (fallback stubs raise a clear `ImportError` only when instantiated).
 
-Totals: **10,621 lines** across the 13 standalone operator modules, plus the unified
-orchestrator (1,401 lines), the 5-dimensional independence audit (590 lines) and the
-package `__init__.py` (282 lines) — **12,894 lines of Python** in the package, plus a
-601-line clean-room smoke test.
+Totals: **13,027 lines** across the 14 standalone operator modules, plus the unified
+orchestrator (1,517 lines), the 5-dimensional independence audit (609 lines) and the
+package `__init__.py` (305 lines) — **15,458 lines of Python** in the package, plus a
+640-line clean-room smoke test.
 
 ---
 
@@ -26,15 +27,16 @@ package `__init__.py` (282 lines) — **12,894 lines of Python** in the package,
 ├── smoke_test.py                     clean-room verification (16/16)
 ├── README.md                         本文件
 └── hybrid_moa_vl_operator_suite/     算子包（Python package）
-    ├── __init__.py                   64 个公开导出
+    ├── __init__.py                   70 个公开导出
     ├── README.md                     包内说明（原始版本文档）
+    ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（2,285 行）← 新增
+    ├── unified_hybrid_moa_architecture.py   七阶段总装 + 验证引擎（1,517 行）
     ├── moa_operators.py              系统级 MoA + 跨模态图文融合（978 行）
+    ├── sleep_subconscious_neuro_operators.py    睡眠/潜意识（1,007 行）
+    ├── operator_independence_verification.py    五维独立性审计（609 行）
     ├── moa_triton_kernels.py         Triton 内核 + tile 模拟器（390 行）
-    ├── unified_hybrid_moa_architecture.py   六阶段总装 + 验证引擎（1,401 行）
-    ├── operator_independence_verification.py 五维独立性审计（590 行）
-    ├── sleep_subconscious_neuro_operators.py    睡眠/潜意识（1,007 行）   ← 新增
-    ├── vacuum_zpe_fluctuation_operators.py      真空零点能涨落（928 行） ← 新增
-    └── … 其余 9 个领域算子模块
+    ├── vacuum_zpe_fluctuation_operators.py      真空零点能涨落（928 行）
+    └── … 其余 10 个领域算子模块
 ```
 
 Two import styles are supported:
@@ -60,8 +62,9 @@ together with four further independence dimensions).
 
 | Module | Domain | Lines |
 |---|---|---|
-| `unified_hybrid_moa_architecture.py` | 六阶段总装 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 执行引擎 + LOSO 消融 + 非创伤解耦审计 | 1,401 |
-| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献） | 590 |
+| `cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,285 |
+| `unified_hybrid_moa_architecture.py` | 七阶段总装 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 执行引擎 + LOSO 消融 + 非创伤解耦审计 | 1,517 |
+| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献），覆盖 14 个独立模块 | 609 |
 | `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,007 |
 | `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 978 |
 | `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 938 |
@@ -71,7 +74,7 @@ together with four further independence dimensions).
 | `supermembrane_spacetime_operators.py` | 11 维超膜 DBI、Randall-Sundrum 翘曲 KK 模态 | 864 |
 | `quantum_tidal_operators.py` | WKB 隧穿、Schwarzschild 四极潮汐张量 | 862 |
 | `neuro_nonlinear_operators.py` | 树突 NMDA 镁门控、FitzHugh-Nagumo、Kuramoto 相位耦合 | 793 |
-| `local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 | 796 |
+| `local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 + 自举编译接口 | 917 |
 | `tulpa_neuro_operators.py` | 多子人格吸引子、精度加权自由能路由、Agency 比较器 | 692 |
 | `dissociative_trauma_neuro_operators.py` | Stage-I 前门控：杏仁核超唤醒、PAG 过载关断、ANP/EP 隔离 + 独立验证套件 | 539 |
 | `moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 390 |
@@ -89,12 +92,13 @@ together with four further independence dimensions).
   Stage II.B CorticospinalChaotic Pyragas
   Stage II.C DissociativeTrauma 稳态负荷门
   Stage III   3 个新皮层柱（跨模态 VL 联想 / 锥体树突 NMDA-FHN / 突触快权重 DeltaOja）
-  Stage IV    Tulpa 代理（前额叶-TPJ 对话）
-  Stage V     睡眠稳态 / 类淋巴清洗 / 潜意识巩固（SHY、SWR、PGO）
+  Stage IV    Tri-ISA CPU + SIMT GPU 自举（x86-64 / ARM64 / RISC-V 三种 ISA 仲裁 + warp 调度）
+  Stage V     Tulpa 代理（前额叶-TPJ 对话）
+  Stage VI    睡眠稳态 / 类淋巴清洗 / 潜意识巩固（SHY、SWR、PGO）
   ```
 
-  `num_proposers` 的语义随之从「8 个异构专家」变为「Stage III 的 3 个新皮层柱」
-  （默认值 8 → 3，`top_k_proposers` 3 → 2），并新增 `num_vacuum_modes` / `num_dream_anchors`。
+  `num_proposers` 的语义从「8 个异构专家」变为「Stage III 的 3 个新皮层柱」
+  （默认值 8 → 3，`top_k_proposers` 3 → 2），并新增 `num_vacuum_modes` / `num_dream_anchors`。 v7 再插入 Stage IV（Tri-ISA 自举）并新增 `num_isa_anchors`。
 - **Expert 0 = 跨模态图文融合** `CrossModalVisionLanguageFusionSubOp`
   （双向 2D 空间邻域卷积 + `R_anchor` 共享潜锚点共注意力 + Hadamard-Bilinear 门控合成）。
 - **零距离衰减**：任意图像 patch 与任意文本 token 通过 `R_anchor` 个共享锚点直接交互，
@@ -203,12 +207,12 @@ Result: **16/16 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 | sparse top-k router | aux 0.0222 |
 | torch `CrossModalVisionLanguageFusionSubOp` fwd/bwd | 13.4K params, grad reaches input |
 | torch MoA stack (proposer + attention + 2 aggregator modes) | density 0.913 |
-| torch `UnifiedInterdisciplinaryMoALayer` (11 domains / 6 stages) | 365.5K params, grad 0.108, 14 telemetry keys |
+| torch `UnifiedInterdisciplinaryMoALayer` (12 domains / 7 stages) | 387.2K params, grad 0.105, 19 telemetry keys |
 | torch `UnifiedHybridMoABackbone` (3 layers) | 1,096.5K params, grad reaches input |
-| torch new domain operators (sleep, vacuum ZPE) | 13.2K params each, diagnostics returned |
+| torch new domain operators (sleep, vacuum ZPE, Tri-ISA CPU-GPU bootstrap) | 13.2K / 13.2K / 21.6K params；自举算子诊断含 `bootstrap_fixed_point_verified` 与三ISA 分发权重 |
 | torch domain operators (quantum tidal, neuro) | both return (out, diagnostics) |
 | upstream dissociative verification suite | 7 gradchecks PASS, shock output bounded |
-| mechanism: Stage 0/III/IV/V vs Trauma decoupling + regime gates | all exactly 0.0e+00（创伤通路自身变化 20.9 作对照）；G_shut 0.756 → 7.12e-218；DPDR 压缩 40.2× |
+| mechanism: Stage 0/III/IV/V/VI vs Trauma decoupling + regime gates | 七组全部精确 0.0e+00（含新增 Stage IV Tri-ISA；创伤通路自身变化 20.9 作对照）；G_shut 0.756 → 7.12e-218；DPDR 压缩 40.2× |
 | Triton tile simulators vs analytical references | 2.2e-16 / 8.9e-16 |
 
 Upstream benchmarks shipped with the package (`python3 <module>.py` inside the package):
@@ -222,13 +226,22 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 - Eager vs fused Triton megakernel path < 1e-14
 - Dissociative trauma gradcheck: 7 variables, relative L2 error 6.7e-11 – 7.5e-10;
   extreme +50.0 shock output bounded at 1.32 (< 5.0), PAG shutdown gate 7.1e-218
+- **Tri-ISA CPU-GPU self-bootstrapping** (`cpu_gpu_self_bootstrapping_operators.py`):
+  I-cache gradcheck 8.7e-10; quad-backend equivalence (numpy / AST / native `.so` /
+  Triton tile) **4.44e-16**; 4-sub-architecture subspace rank **4/4 full**;
+  per-ISA gates x86-64 G=0.4427 / R_tso=0.7279, ARM64 P_sve=0.4980 / B_ldar=0.8827,
+  RISC-V L_vsetvli=0.3744, GPU SIMT M_warp=0.8601 / W_roof=0.3228;
+  HBM traffic 1792 KB → 194.2 KB (**−89.2%**, 9.23× bandwidth)
+- LOSO over all 13 stage names: every stage active; Stage VI (sleep) remains the largest
+  single contributor at **46.92%**, new Stage IV (Tri-ISA bootstrap) **1.31%**,
+  effective rank **102.29 / 128**
 - **Five-dimensional operator independence audit — PASSED**
   (Kaggle CPU kernel `redmingwei/hetero-moe-operator-independence`, 59.9 s;
   full log archived in `docs/operator_independence_audit.log`):
 
   | Dimension | Result |
   |---|---|
-  | I · file & runtime isolation | 13/13 modules: zero sibling imports, standalone run PASS |
+  | I · file & runtime isolation | 14/14 modules: zero sibling imports, standalone run PASS |
   | II · forward-representation independence | joint subspace rank **12/12 full**; mean off-diag \|cos\| 0.0844; max VIF 1.72 (< 2.0) |
   | III · input-gradient subspace independence | gradient matrix rank **12/12**; mean \|cos(Gi,Gj)\| 0.0934 (max 0.5803 < 0.80); max gradient VIF 1.90 (< 5.0) |
   | IV · parameter cross-sensitivity Jacobian | off-diagonal cross-talk **exactly 0.00e+00**; min diagonal self-sensitivity 8.16e-02 > 0 (all 12 active) |

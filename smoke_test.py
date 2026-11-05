@@ -55,6 +55,7 @@ MODULES = [
     "baryogenesis_parity_operators",
     "sleep_subconscious_neuro_operators",
     "vacuum_zpe_fluctuation_operators",
+    "cpu_gpu_self_bootstrapping_operators",
 ]
 # 独立算子模块（不含统一编排层，它按设计 import 全部兄弟模块）
 STANDALONE = [m for m in MODULES if m != "unified_hybrid_moa_architecture"]
@@ -337,20 +338,24 @@ def test_torch_moa_stack():
 
 
 def test_new_domain_ops():
-    """v6 新增的两个领域算子：睡眠/潜意识 与 真空零点能涨落。"""
+    """v6/v7 新增的领域算子：睡眠/潜意识、真空零点能、Tri-ISA CPU-GPU 自举。"""
     import torch
 
     sl = importlib.import_module(f"{PKG}.sleep_subconscious_neuro_operators")
     vz = importlib.import_module(f"{PKG}.vacuum_zpe_fluctuation_operators")
+    cg = importlib.import_module(f"{PKG}.cpu_gpu_self_bootstrapping_operators")
     torch.manual_seed(6)
     x = torch.randn(2, 10, 64)
-    for name, mod, cfg_cls, op_cls in [
-        ("sleep", sl, sl.SleepSubconsciousConfig, sl.SleepSubconsciousNeuroOp),
-        ("vacuum_zpe", vz, vz.VacuumZPEFluctuationConfig, vz.VacuumZPEFluctuationOp),
-    ]:
-        cfg = cfg_cls(d_model=64, n_heads=4, num_dream_anchors=8) if name == "sleep" \
-            else cfg_cls(d_model=64, n_heads=4, num_vacuum_modes=8)
-        op = op_cls(cfg)
+    specs = [
+        ("sleep", sl.SleepSubconsciousConfig, sl.SleepSubconsciousNeuroOp,
+         dict(d_model=64, n_heads=4, num_dream_anchors=8)),
+        ("vacuum_zpe", vz.VacuumZPEFluctuationConfig, vz.VacuumZPEFluctuationOp,
+         dict(d_model=64, n_heads=4, num_vacuum_modes=8)),
+        ("cpu_gpu_bootstrap", cg.CPUGPUSelfBootstrappingConfig,
+         cg.CPUGPUSelfBootstrappingOp, dict(d_model=64, n_heads=4, num_isa_anchors=8)),
+    ]
+    for name, cfg_cls, op_cls, kw in specs:
+        op = op_cls(cfg_cls(**kw))
         xin = x.clone().requires_grad_(True)
         out, diag = op(xin)
         assert out.shape == x.shape and torch.isfinite(out).all(), f"{name} 输出异常"
@@ -359,8 +364,7 @@ def test_new_domain_ops():
         assert isinstance(diag, dict) and diag, f"{name} 无诊断"
         n = sum(p.numel() for p in op.parameters())
         print(f"        · {name}: {n / 1e3:.1f}K params, diag keys={sorted(diag)[:4]}")
-    return "sleep + vacuum_zpe 前向/反向/诊断 ok"
-
+    return "sleep + vacuum_zpe + cpu_gpu_bootstrap 前向/反向/诊断 ok"
 
 def test_torch_unified_layer():
     import torch
@@ -374,7 +378,7 @@ def test_torch_unified_layer():
                                             num_vacuum_modes=8, num_cross_modal_anchors=8,
                                             num_local_groups=4, local_rank=2,
                                             num_extra_dims=3, num_tulpas=2,
-                                            num_dream_anchors=8)
+                                            num_dream_anchors=8, num_isa_anchors=8)
     layer = U.UnifiedInterdisciplinaryMoALayer(cfg)
     x = torch.randn(2, 10, cfg.d_model, requires_grad=True)
     out, aux, diag = layer(x)
@@ -384,7 +388,7 @@ def test_torch_unified_layer():
     gnorm = float(x.grad.norm())
     assert gnorm > 0.0, "no gradient through the unified layer"
     n = sum(p.numel() for p in layer.parameters())
-    return f"11 域 6 阶段前向 ok, {n / 1e3:.1f}K params, |grad|={gnorm:.4f}, diag keys={len(diag)}"
+    return f"12 域 7 阶段前向 ok, {n / 1e3:.1f}K params, |grad|={gnorm:.4f}, diag keys={len(diag)}"
 
 
 def test_torch_unified_backbone():
@@ -400,7 +404,7 @@ def test_torch_unified_backbone():
                                             num_vacuum_modes=8, num_cross_modal_anchors=8,
                                             num_local_groups=4, local_rank=2,
                                             num_extra_dims=3, num_tulpas=2,
-                                            num_dream_anchors=8)
+                                            num_dream_anchors=8, num_isa_anchors=8)
     backbone = U.UnifiedHybridMoABackbone(cfg)
     x = torch.randn(2, 10, cfg.d_model, requires_grad=True)
     out, aux, telemetries = backbone(x)
@@ -439,7 +443,7 @@ def test_mechanism_stage_decoupling():
                                             top_k_proposers=2, num_vacuum_modes=8,
                                             num_cross_modal_anchors=8, num_local_groups=4,
                                             local_rank=2, num_extra_dims=3, num_tulpas=2,
-                                            num_dream_anchors=8)
+                                            num_dream_anchors=8, num_isa_anchors=8)
     B, L, D = 2, 16, cfg.d_model
     x = rng.standard_normal((B, L, D)) * 0.5
     params = U.UnifiedArchitectureExecutionEngine.init_layer_parameters(D, cfg, seed=2026)
@@ -458,8 +462,9 @@ def test_mechanism_stage_decoupling():
         "Stage0.A VacuumZPE": ("zpe_out",),
         "Stage0.B Baryogenesis": ("baryon_out",),
         "StageIII Cortex": ("h_cortex", "proposals_raw"),
-        "StageIV Tulpa": ("tulpa_out",),
-        "StageV Sleep": ("y_consolidated",),
+        "StageIV CPUGPU_TriISA": ("boot_out",),
+        "StageV Tulpa": ("tulpa_out",),
+        "StageVI Sleep": ("y_consolidated",),
         "干净感觉运动流": ("reflex_bypass", "mega_syn"),
     }
     worst = 0.0
@@ -484,7 +489,7 @@ def test_mechanism_stage_decoupling():
     tr_norm = float(np.linalg.norm(ctx["trauma_out"][:, 0, :]))
     tr_shock = float(np.linalg.norm(ctx_s["trauma_out"][:, 0, :]))
     assert tr_shock < tr_norm, f"冲击未触发 DPDR 压缩 {tr_shock:.3f} vs {tr_norm:.3f}"
-    return (f"Stage0/III/IV/V+干净流对创伤参数全部 = {worst:.1e}（创伤通路自身变了 {d_trauma:.1f}），"
+    return (f"Stage0/III/IV/V/VI+干净流对创伤参数全部 = {worst:.1e}（创伤通路自身变了 {d_trauma:.1f}），"
             f"G_shut {g_norm:.4f}→{g_shock:.2e}，DPDR 压缩 {tr_norm / max(tr_shock, 1e-12):.1f}×")
 
 
@@ -565,8 +570,8 @@ def main() -> int:
           + (", torch available" if torch_ok else ", torch MISSING (torch checks skipped)"))
     print("-" * 74)
 
-    check("package imports (14 modules + package exports)", test_imports)
-    check("module isolation: 13 个独立模块单独可 import", test_module_isolation)
+    check("package imports (15 modules + package exports)", test_imports)
+    check("module isolation: 14 个独立模块单独可 import", test_module_isolation)
     check("numpy branch RMSNorm fwd/bwd + FD gradient", test_numpy_rmsnorm)
     check("numpy cross-modal anchor co-attention (zero decay)", test_numpy_cross_modal_anchor_co_attention)
     check("numpy VL Hadamard-bilinear fusion + gradient", test_numpy_vl_bilinear_fusion)
@@ -576,12 +581,12 @@ def main() -> int:
     if not quick and torch_ok:
         check("torch CrossModalVisionLanguageFusionSubOp fwd/bwd", test_torch_vl_fusion)
         check("torch MoA stack (proposer + attention + 2 aggregators)", test_torch_moa_stack)
-        check("torch UnifiedInterdisciplinaryMoALayer (11 domains / 6 stages)", test_torch_unified_layer)
+        check("torch UnifiedInterdisciplinaryMoALayer (12 domains / 7 stages)", test_torch_unified_layer)
         check("torch UnifiedHybridMoABackbone (3 layers)", test_torch_unified_backbone)
-        check("torch new domain operators (sleep, vacuum ZPE)", test_new_domain_ops)
+        check("torch new domain operators (sleep, vacuum ZPE, CPU-GPU bootstrap)", test_new_domain_ops)
         check("torch domain operators (quantum tidal, neuro)", test_domain_ops)
         check("upstream dissociative verification suite", test_upstream_dissociative_suite)
-        check("mechanism: Stage 0/III/IV/V vs Trauma decoupling + regime gates",
+        check("mechanism: Stage 0/III/IV/V/VI vs Trauma decoupling + regime gates",
               test_mechanism_stage_decoupling)
         check("triton tile simulators vs references", test_triton_simulators)
     elif not quick:

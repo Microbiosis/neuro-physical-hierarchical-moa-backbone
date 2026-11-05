@@ -92,6 +92,14 @@ if __package__:
         FusedVacuumZPECasimirSchwingerFunction,
         VacuumZPEFluctuationOp,
     )
+    from .cpu_gpu_self_bootstrapping_operators import (
+        CPUGPUSelfBootstrappingConfig,
+        CPUGPUSelfBootstrappingAnalyticalKernels,
+        SelfBootstrappingCompilerEngine,
+        BootstrapStageArtifact,
+        FusedCPUGPUSelfBootstrappingFunction,
+        CPUGPUSelfBootstrappingOp,
+    )
     from .unified_hybrid_moa_architecture import (
         UnifiedHybridArchitectureConfig,
         UnifiedArchitectureExecutionEngine,
@@ -184,6 +192,14 @@ else:
         FusedVacuumZPECasimirSchwingerFunction,
         VacuumZPEFluctuationOp,
     )
+    from cpu_gpu_self_bootstrapping_operators import (
+        CPUGPUSelfBootstrappingConfig,
+        CPUGPUSelfBootstrappingAnalyticalKernels,
+        SelfBootstrappingCompilerEngine,
+        BootstrapStageArtifact,
+        FusedCPUGPUSelfBootstrappingFunction,
+        CPUGPUSelfBootstrappingOp,
+    )
     from unified_hybrid_moa_architecture import (
         UnifiedHybridArchitectureConfig,
         UnifiedArchitectureExecutionEngine,
@@ -274,7 +290,14 @@ __all__ = [
     "VacuumZPEAnalyticalKernels",
     "FusedVacuumZPECasimirSchwingerFunction",
     "VacuumZPEFluctuationOp",
-    # 14. Unified Assembly Architecture
+    # 14. CPU-GPU Heterogeneous & Self-Bootstrapping / Self-Compiling Operator
+    "CPUGPUSelfBootstrappingConfig",
+    "CPUGPUSelfBootstrappingAnalyticalKernels",
+    "SelfBootstrappingCompilerEngine",
+    "BootstrapStageArtifact",
+    "FusedCPUGPUSelfBootstrappingFunction",
+    "CPUGPUSelfBootstrappingOp",
+    # 15. Unified Assembly Architecture
     "UnifiedHybridArchitectureConfig",
     "UnifiedArchitectureExecutionEngine",
     "UnifiedInterdisciplinaryMoALayer",
