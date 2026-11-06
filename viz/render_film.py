@@ -87,11 +87,11 @@ plt.rcParams["axes.unicode_minus"] = False
 # ------------------------------------------------------------------ 风格 ------
 BG = "#0a0c10"
 PANEL = "#0e1218"
-EDGE = "#1b222c"
+EDGE = "#28313d"
 FG = "#f4f6fa"
-DIM = "#8a93a6"
-FAINT = "#4b5462"
-AMBER = "#e2a33c"
+DIM = "#aab4c4"
+FAINT = "#7d8794"
+AMBER = "#f5bd5c"
 MONO = "DejaVu Sans Mono"
 CN = _CN_FAM
 W_IN, H_IN, DPI, FPS = 19.2, 12.0, 100, 30
@@ -113,7 +113,7 @@ LABELS = [c[0] + " " + c[1] for c in CH]
 
 
 def cmap_for(hexcolor):
-    cm = LinearSegmentedColormap.from_list("c", [BG, hexcolor])
+    cm = LinearSegmentedColormap.from_list("c", ["#161c25", hexcolor])
     cm.set_bad(BG)
     return cm
 
@@ -128,10 +128,10 @@ def header(fig, i, color, params):
     no, name, desc, _c, _s, _st = CH[i]
     fig.text(0.026, 0.963, "本体论分层混合 MoA 架构 · 13 域 14 算子 7 阶段 4 地层",
              fontsize=22, color=FG, weight="bold", family=CN)
-    fig.text(0.026, 0.936, f"第 {i + 1} 章 / 5 · {name}", fontsize=12, color=DIM, family=CN)
-    fig.text(0.026, 0.895, f"{no}  {desc}", fontsize=16.5, color=color, weight="bold", family=CN)
-    fig.text(0.974, 0.958, params, fontsize=10.5, color=FAINT, family=CN, ha="right")
-    fig.text(0.974, 0.936, "真实前向 / 反向 / 计时", fontsize=10, color=FAINT, family=CN, ha="right")
+    fig.text(0.026, 0.936, f"第 {i + 1} 章 / 5 · {name}", fontsize=14.5, color=DIM, family=CN)
+    fig.text(0.026, 0.895, f"{no}  {desc}", fontsize=19.5, color=color, weight="bold", family=CN)
+    fig.text(0.974, 0.958, params, fontsize=12.5, color=DIM, family=CN, ha="right")
+    fig.text(0.974, 0.936, "真实前向 / 反向 / 计时", fontsize=11.5, color=DIM, family=CN, ha="right")
 
 
 def banner(fig, text, color):
@@ -141,7 +141,7 @@ def banner(fig, text, color):
     ax.add_patch(FancyBboxPatch((0, 0), 1, 1, boxstyle="round,pad=0.004,rounding_size=0.03",
                                 fc="#11151c", ec=color, lw=1.3, transform=ax.transAxes,
                                 clip_on=False))
-    ax.text(0.5, 0.5, text, ha="center", va="center", fontsize=16, color=FG,
+    ax.text(0.5, 0.5, text, ha="center", va="center", fontsize=19, color=FG,
             weight="bold", family=CN)
 
 
@@ -156,8 +156,8 @@ def progress(fig, active, color):
         w = 1 / n - 0.004
         c = color if i == active else "#151a21"
         ax.add_patch(Rectangle((x0, 0.30), w, 0.42, fc=c, ec="none"))
-        ax.text(x0 + w / 2, -0.25, LABELS[i], ha="center", va="top", fontsize=9,
-                color=(color if i == active else "#333b47"), family=CN)
+        ax.text(x0 + w / 2, -0.25, LABELS[i], ha="center", va="top", fontsize=11,
+                color=(color if i == active else "#59626e"), family=CN)
 
 
 def stage_flow(fig, rect, stages, color, t):
@@ -175,7 +175,7 @@ def stage_flow(fig, rect, stages, color, t):
                                     fc=(color if lit else "#141a22"),
                                     ec=(color if lit else EDGE), lw=1.2,
                                     transform=ax.transAxes))
-        ax.text(cx, 0.51, name, ha="center", va="center", fontsize=10.5,
+        ax.text(cx, 0.51, name, ha="center", va="center", fontsize=12.5,
                 color=(FG if lit else FAINT), family=CN)
         if i < n - 1:
             ax.annotate("", xy=((i + 1.5) / n - 0.062, 0.51),
@@ -192,9 +192,9 @@ def panel(fig, rect, caption=None):
     for s in ax.spines.values():
         s.set_color(EDGE)
         s.set_linewidth(1.0)
-    ax.tick_params(colors=FAINT, labelsize=8.5, length=2)
+    ax.tick_params(colors=DIM, labelsize=10, length=3)
     if caption:
-        ax.text(0.0, 1.025, caption, transform=ax.transAxes, fontsize=10.5, color=DIM, family=CN)
+        ax.text(0.0, 1.025, caption, transform=ax.transAxes, fontsize=13, color=DIM, family=CN)
     return ax
 
 
@@ -216,7 +216,7 @@ def heat(ax, M, color, vmin=None, vmax=None, reveal=None, values=False, fmt="{:.
                 v = M[i, j]
                 if np.isnan(v):
                     continue
-                ax.text(j, i, fmt.format(v), ha="center", va="center", fontsize=7.4,
+                ax.text(j, i, fmt.format(v), ha="center", va="center", fontsize=9.0,
                         color=(BG if v > hi * thresh else FG), family=MONO)
     return ax
 
@@ -228,18 +228,18 @@ def bars(ax, vals, color, labels=None, frac=1.0, horizontal=False):
         ax.barh(idx, vals, color=color, height=0.6)
         ax.set_yticks(idx)
         if labels:
-            ax.set_yticklabels(labels, fontsize=8, color=DIM, family=CN)
+            ax.set_yticklabels(labels, fontsize=9.5, color=DIM, family=CN)
         ax.invert_yaxis()
     else:
         ax.bar(idx, vals, color=color, width=0.62)
         ax.set_xticks(idx)
         if labels:
-            ax.set_xticklabels(labels, fontsize=8, color=DIM, family=CN)
+            ax.set_xticklabels(labels, fontsize=9.5, color=DIM, family=CN)
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
     for s in ("left", "bottom"):
         ax.spines[s].set_color(EDGE)
-    ax.tick_params(colors=FAINT, labelsize=8, length=2)
+    ax.tick_params(colors=DIM, labelsize=9.5, length=3)
     return ax
 
 
@@ -251,7 +251,7 @@ def curve(ax, xs, ys, color, frac=1.0, lw=2.4, label=None):
         ax.spines[s].set_visible(False)
     for s in ("left", "bottom"):
         ax.spines[s].set_color(EDGE)
-    ax.tick_params(colors=FAINT, labelsize=8.5, length=2)
+    ax.tick_params(colors=DIM, labelsize=10, length=3)
     if label:
         ax.legend(facecolor=PANEL, edgecolor=EDGE, labelcolor=DIM, fontsize=9)
     return ax
@@ -262,12 +262,12 @@ def bignum(ax, value, label, color, frac=1.0, fmt="{:.4f}", size=40, sub=None):
     txt = fmt.format(value * frac) if frac < 1.0 else fmt.format(value)
     ax.text(0.5, 0.62, txt, ha="center", va="center", fontsize=size, color=color,
             weight="bold", family=MONO)
-    ax.text(0.5, 0.24, label, ha="center", va="center", fontsize=11.5, color=DIM, family=CN)
+    ax.text(0.5, 0.24, label, ha="center", va="center", fontsize=14, color=DIM, family=CN)
     if sub:
-        ax.text(0.5, 0.08, sub, ha="center", va="center", fontsize=10, color=FAINT, family=CN)
+        ax.text(0.5, 0.08, sub, ha="center", va="center", fontsize=11.5, color=DIM, family=CN)
 
 
-def mono(ax, s, y=0.5, x=0.5, size=11.5, color=AMBER, ha="center", fam=None):
+def mono(ax, s, y=0.5, x=0.5, size=14, color=AMBER, ha="center", fam=None):
     ax.axis("off")
     if fam is None:
         fam = MONO if all(ord(ch) < 0x2E80 for ch in s) else CN
@@ -284,9 +284,9 @@ def dg(d, key, default=0.0):
 # ================================================================== 场景 ======
 def sc_open(fig, t, d):
     a = min(1.0, t / 0.35)
-    fig.text(0.5, 0.655, "本体论分层的混合 MoA 架构", ha="center", fontsize=42, color=FG,
+    fig.text(0.5, 0.655, "本体论分层的混合 MoA 架构", ha="center", fontsize=47, color=FG,
              weight="bold", family=CN, alpha=a)
-    fig.text(0.5, 0.575, "13 域 · 14 算子 · 7 阶段 · 4 地层", ha="center", fontsize=17,
+    fig.text(0.5, 0.575, "13 域 · 14 算子 · 7 阶段 · 4 地层", ha="center", fontsize=19.5,
              color=DIM, family=CN, alpha=a)
     # 四地层总览
     strata = [("Ⅰ", "时空发生基底", "Stage 0 & I", "#6366f1"),
@@ -304,24 +304,24 @@ def sc_open(fig, t, d):
                                     boxstyle="round,pad=0.006,rounding_size=0.06",
                                     fc=(col if lit else "#12171f"), ec=(col if lit else EDGE),
                                     lw=1.6, alpha=0.92, transform=ax.transAxes))
-        ax.text(x0 + 0.1075, 0.66, no, ha="center", va="center", fontsize=20,
+        ax.text(x0 + 0.1075, 0.66, no, ha="center", va="center", fontsize=23,
                 color=(FG if lit else FAINT), family=CN, weight="bold")
-        ax.text(x0 + 0.1075, 0.42, name, ha="center", va="center", fontsize=12.5,
+        ax.text(x0 + 0.1075, 0.42, name, ha="center", va="center", fontsize=14.5,
                 color=(FG if lit else FAINT), family=CN)
-        ax.text(x0 + 0.1075, 0.26, stg, ha="center", va="center", fontsize=10,
+        ax.text(x0 + 0.1075, 0.26, stg, ha="center", va="center", fontsize=11.5,
                 color=(DIM if lit else FAINT), family=CN)
     note = "算子来自 hybrid_moa_vl_operator_suite 本体"
     if "gpu_name" in d:
         note += f" · {str(d['gpu_name'][0])} 实测"
-    fig.text(0.5, 0.215, note, ha="center", fontsize=11.5, color="#7d6836", family=CN, alpha=a)
+    fig.text(0.5, 0.215, note, ha="center", fontsize=13, color="#a8894a", family=CN, alpha=a)
 
 
 def sc_end(fig, t, d):
     a = min(1.0, t / 0.4)
-    fig.text(0.5, 0.575, "机制", ha="center", fontsize=44, color=FG, weight="bold", family=CN, alpha=a)
-    fig.text(0.5, 0.485, "13 域 · 14 算子 · 7 阶段 · 4 地层", ha="center", fontsize=16,
+    fig.text(0.5, 0.575, "机制", ha="center", fontsize=48, color=FG, weight="bold", family=CN, alpha=a)
+    fig.text(0.5, 0.485, "13 域 · 14 算子 · 7 阶段 · 4 地层", ha="center", fontsize=19,
              color=DIM, family=CN, alpha=a)
-    fig.text(0.5, 0.415, "全部数值来自真实前向、反向与时延测量", ha="center", fontsize=11.5,
+    fig.text(0.5, 0.415, "全部数值来自真实前向、反向与时延测量", ha="center", fontsize=13.5,
              color="#7d6836", family=CN, alpha=a)
     banner(fig, "Stage 0 真空 → Stage VI 睡眠：一条前向，走完六个尺度", "#ef4444")
 
@@ -339,12 +339,12 @@ def sc1(fig, t, d):
     heat(ax3, d["np_qrp_out"][0], c, reveal=max(0.02, t * 1.6))
     ax4 = panel(fig, [0.026, 0.16, 0.30, 0.24], "0.A 零点能下限 / I.B WKB 隧穿")
     mono(ax4, f"ω²+ε ≥ 0.05   (ZPE 地板)\nWKB 隧穿率 {dg(d, 'stage1b_quantum_wkb_tunneling'):.4f}",
-         y=0.5, size=12)
+         y=0.5, size=14.5)
     ax5 = panel(fig, [0.35, 0.16, 0.30, 0.24], "I.C DQI 可靠性 / λ_eff")
     mono(ax5, f"DQI ρ = 1/R(ε)  {dg(d, 'stage1c_dqi_reliability'):.4f}\n"
-              f"λ_eff          {dg(d, 'stage1c_block_lambda_eff'):.4f}", y=0.5, size=12)
+              f"λ_eff          {dg(d, 'stage1c_block_lambda_eff'):.4f}", y=0.5, size=14.5)
     ax6 = panel(fig, [0.674, 0.16, 0.30, 0.24], "I.A DBI 阻尼")
-    mono(ax6, f"1/√(1+τ²E+β²F²)\n均值 {dg(d, 'stage1a_supermembrane_dbi'):.4f}", y=0.5, size=12)
+    mono(ax6, f"1/√(1+τ²E+β²F²)\n均值 {dg(d, 'stage1a_supermembrane_dbi'):.4f}", y=0.5, size=14.5)
     banner(fig, "从真空地板到时空紧致化：五个阶段都在写「有界物理量」而不是点态激活值", c)
     progress(fig, 0, c)
 
@@ -361,21 +361,21 @@ def sc2(fig, t, d):
     if xs is not None:
         curve(ax2, xs, ys, c, frac=min(1.0, t * 1.4))
         ax2.set_xscale("log")
-        ax2.set_xlabel("输入范数（log）", color=FAINT, fontsize=9)
+        ax2.set_xlabel("输入范数（log）", color=DIM, fontsize=10.5)
     ax3 = panel(fig, [0.646, 0.44, 0.328, 0.36], "III 三柱 · 异构新皮层柱")
     ax3.set_xticks([]); ax3.set_yticks([])
     for i, nm in enumerate(["Col0 VL 双线性", "Col1 树突 NMDA-FHN", "Col2 快权重 ΔOja"]):
         sub = fig.add_axes([0.652 + i * 0.107, 0.50, 0.10, 0.26])
         heat(sub, d["np_proposals_raw"][0, i], c, reveal=max(0.02, t * 1.5))
-        sub.text(0.0, -0.12, nm, transform=sub.transAxes, fontsize=8.5, color=DIM, family=CN)
+        sub.text(0.0, -0.12, nm, transform=sub.transAxes, fontsize=10, color=DIM, family=CN)
     ax4 = panel(fig, [0.026, 0.16, 0.29, 0.24], "II.C G_shut 闸门（常态 / 冲击）")
     g1 = dg(d, "stage2c_corticolimbic_shutdown_gate")
     g2 = float(np.mean(d["np_g_shut_shock"][:, 0, :]))
-    mono(ax4, f"常态 {g1:.4f}\n+50 冲击 {g2:.2e}", y=0.5, size=13)
+    mono(ax4, f"常态 {g1:.4f}\n+50 冲击 {g2:.2e}", y=0.5, size=15)
     ax5 = panel(fig, [0.336, 0.16, 0.29, 0.24], "III 路由：top-k 之外精确归零")
     heat(ax5, d["np_active_weights"][0], c, values=True, fmt="{:.2f}")
     ax6 = panel(fig, [0.646, 0.16, 0.328, 0.24], "零跨阶段创伤污染")
-    mono(ax6, "‖∂(内部)/∂Θ_Trauma‖_∞ ≡ 0.00e+00\n创伤只从 (1-G_shut) 旁路进输出", y=0.5, size=11.5)
+    mono(ax6, "‖∂(内部)/∂Θ_Trauma‖_∞ ≡ 0.00e+00\n创伤只从 (1-G_shut) 旁路进输出", y=0.5, size=13.5)
     banner(fig, "皮质下给基线，新皮层并行展开；创伤通路被正交隔离，进不了认知与睡眠阶段", c)
     progress(fig, 1, c)
 
@@ -396,13 +396,13 @@ def sc3(fig, t, d):
          labels=[f"x86-64 {gx:.2f}", f"ARM64 {ga:.2f}", f"RISC-V {gr:.2f}", f"GPU {gu:.2f}"],
          frac=min(1.0, t * 1.4))
     ax2.set_ylim(0, max(gx, ga, gr, gu) * 1.3)
-    mono(ax2, "Tri-ISA 仲裁器 Y_cpu → 32-lane warp 调度", y=0.035, x=0.02, size=10.5, ha="left")
+    mono(ax2, "Tri-ISA 仲裁器 Y_cpu → 32-lane warp 调度", y=0.035, x=0.02, size=12.5, ha="left")
     ax3 = panel(fig, [0.026, 0.16, 0.30, 0.24], "自举定点收敛")
     bignum(ax3, dg(d, "stage4_bootstrap_fixed_point"), "bootstrap_fixed_point", c, fmt="{:.4f}", size=40)
     ax4 = panel(fig, [0.35, 0.16, 0.30, 0.24], "自举编译校验")
-    mono(ax4, "SHA256(Stage1)\n  ==\nSHA256(Stage2)", y=0.5, size=12)
+    mono(ax4, "SHA256(Stage1)\n  ==\nSHA256(Stage2)", y=0.5, size=14.5)
     ax5 = panel(fig, [0.674, 0.16, 0.30, 0.24], "算子 14")
-    mono(ax5, "14:CPUGPU_TriISA_Bootstrap\n自举编译 + 安全回退", y=0.5, size=12)
+    mono(ax5, "14:CPUGPU_TriISA_Bootstrap\n自举编译 + 安全回退", y=0.5, size=14.5)
     banner(fig, "三种 ISA 的分歧被显式建模成可微权重，GPU 侧按 roofline 调度", c)
     progress(fig, 2, c)
 
@@ -423,16 +423,16 @@ def sc4(fig, t, d):
         heat(ax3, d["np_sleep_w_glymph"][0], c, vmin=0, vmax=1)
     ax4 = panel(fig, [0.026, 0.16, 0.29, 0.24], "TPJ 代理归因 / VLPO 睡眠门")
     mono(ax4, f"κ_eff(softplus) {dg(d, 'stage5_tulpa_tpj_agency'):.4f}\n"
-              f"VLPO 门     {dg(d, 'stage6_vlpo_sleep_gate'):.4f}", y=0.5, size=12)
+              f"VLPO 门     {dg(d, 'stage6_vlpo_sleep_gate'):.4f}", y=0.5, size=14.5)
     ax5 = panel(fig, [0.336, 0.16, 0.29, 0.24], "冲刷前后印迹强度")
     if "np_sleep_x_wake" in d and "np_sleep_w_glymph" in d:
         xw, wg = d["np_sleep_x_wake"][0], d["np_sleep_w_glymph"][0]
         before, after = float(np.linalg.norm(xw)), float(np.linalg.norm(xw * wg))
         bars(ax5, [before, after], [FAINT, c], labels=["冲刷前", "冲刷后"], frac=min(1.0, t * 1.4))
-        mono(ax5, f"保留 {after / max(before, 1e-9):.3f}×", y=0.04, x=0.02, size=11.5, ha="left")
+        mono(ax5, f"保留 {after / max(before, 1e-9):.3f}×", y=0.04, x=0.02, size=13, ha="left")
     ax6 = panel(fig, [0.646, 0.16, 0.328, 0.24], "互补门控合成")
     mono(ax6, "Y = H_clean + G_shut·Y_consolidated\n  + (1-G_shut)·(gate·Y_trauma)",
-         y=0.5, size=11)
+         y=0.5, size=13)
     banner(fig, "清醒态先被多吸引子审议，再用睡眠把弱印迹洗掉——冲击时这一整段被挂起", c)
     progress(fig, 3, c)
 
@@ -453,19 +453,19 @@ def sc5(fig, t, d):
     ax2 = panel(fig, [0.55, 0.42, 0.424, 0.185], "非对角交叉干扰（零串扰）")
     off = float(np.max(J - np.diag(np.diag(J))))
     bignum(ax2, off, "max off-diagonal", "#ef4444", fmt="{:.2e}", size=36)
-    ax3 = panel(fig, [0.55, 0.21, 0.424, 0.185], "四条架构不变量")
-    mono(ax3, "零本体论倒置 · 零重复算子\n零跨阶段创伤污染 · 连续安全 Triton 分派",
-         y=0.5, size=11)
+    ax3 = panel(fig, [0.026, 0.094, 0.948, 0.040], "")
+    mono(ax3, "四条架构不变量：零本体论倒置 · 零重复算子 · 零跨阶段创伤污染 · 连续安全 Triton 分派",
+         y=0.5, size=14)
     ax4 = panel(fig, [0.026, 0.16, 0.46, 0.22], "T4 实测：14 个算子前向 + 反向时延（ms）")
     ms = np.asarray(d["timing_ms"])
     bars(ax4, ms, c, labels=[str(i + 1) for i in range(len(ms))], frac=min(1.0, t * 1.4))
-    ax4.set_xlabel("算子编号（1=真空 … 14=硅基自举）", color=FAINT, fontsize=9)
+    ax4.set_xlabel("算子编号 1=真空 … 14=硅基自举", color=DIM, fontsize=10.5, labelpad=1)
     ax5 = panel(fig, [0.51, 0.16, 0.22, 0.22], "14 算子总代价")
     bignum(ax5, float(ms.sum()), "ms / step", c, fmt="{:.1f}", size=38)
     ax6 = panel(fig, [0.75, 0.16, 0.224, 0.22], "DeltaOja launch")
     le = int(np.asarray(d.get("oja_launches_eager", np.array([0])))[0])
     lp = int(np.asarray(d.get("oja_launches_persistent", np.array([1])))[0])
-    mono(ax6, f"{le} → {lp}\n前向 ≈34× 前反向 ≈26×", y=0.5, size=11)
+    mono(ax6, f"{le} → {lp}\n前向 ≈34× 前反向 ≈26×", y=0.5, size=13)
     banner(fig, f"非对角精确 {off:.2e}：14 个算子零串扰，这是可测的证据，不是修辞", c)
     progress(fig, 4, c)
 
