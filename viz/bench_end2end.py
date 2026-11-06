@@ -88,6 +88,56 @@ class CortexOnlyStack(nn.Module):
         return h, aux_total / self.refinement, metrics
 
 
+class SingleColumn(nn.Module):
+    """1 个柱子（Col1 树突），无 MoE 路由 —— 参数量对齐用。"""
+
+    def __init__(self, d_model=768, n_heads=12, n_cols=1, refinement=2):
+        super().__init__()
+        self.refinement = max(int(refinement), 1)
+        self.col_norm = RMSNorm(d_model, eps=1e-6)
+        self.cols = nn.ModuleList([
+            NonlinearDendriticNeuroOp(NeuroNonlinearConfig(d_model=d_model, n_heads=n_heads))
+            for _ in range(n_cols)])
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x):
+        h = x
+        aux = torch.zeros((), device=x.device, dtype=x.dtype)
+        for _ in range(self.refinement):
+            s = self.col_norm(h)
+            acc = self.cols[0](s)[0]
+            for c in self.cols[1:]:
+                acc = acc + c(s)[0]
+            h = h + self.out_proj(acc / len(self.cols))
+        return h, aux, {}
+
+
+class DenseEnsemble(nn.Module):
+    """3 个异构柱**全激活等权平均**（无路由）—— 隔离「多专家」与「路由」。"""
+
+    def __init__(self, d_model=768, n_heads=12, num_anchors=16, num_groups=16,
+                 local_rank=4, refinement=2):
+        super().__init__()
+        self.refinement = max(int(refinement), 1)
+        self.col_norm = RMSNorm(d_model, eps=1e-6)
+        self.col0 = CrossModalVisionLanguageFusionSubOp(d_model=d_model, num_anchors=num_anchors)
+        self.col1 = NonlinearDendriticNeuroOp(NeuroNonlinearConfig(d_model=d_model, n_heads=n_heads))
+        self.col2 = LocalNonlinearSelfModifyingOp(LocalSelfModConfig(
+            d_model=d_model, num_local_groups=num_groups, local_rank=local_rank))
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x):
+        h = x
+        aux = torch.zeros((), device=x.device, dtype=x.dtype)
+        for _ in range(self.refinement):
+            s = self.col_norm(h)
+            c0 = self.col0(s)
+            c1 = self.col1(s)[0]
+            c2 = self.col2(s)[0]
+            h = h + self.out_proj((c0 + c1 + c2) / 3.0)
+        return h, aux, {}
+
+
 class Head(nn.Module):
     def __init__(self, d_model: int, n_cls: int):
         super().__init__()
@@ -109,6 +159,14 @@ class Model(nn.Module):
                 UnifiedHybridArchitectureConfig(d_model=d_model, **cfg_kwargs))
         elif variant == "cortex":
             self.stack = CortexOnlyStack(d_model=d_model, **cfg_kwargs)
+        elif variant == "dense3":
+            self.stack = DenseEnsemble(d_model=d_model, **cfg_kwargs)
+        elif variant == "single1":
+            self.stack = SingleColumn(d_model=d_model, n_heads=cfg_kwargs["n_heads"],
+                                      n_cols=1, refinement=cfg_kwargs["refinement"])
+        elif variant == "single3":
+            self.stack = SingleColumn(d_model=d_model, n_heads=cfg_kwargs["n_heads"],
+                                      n_cols=3, refinement=cfg_kwargs["refinement"])
         else:
             self.stack = None
         self.head = Head(d_model, n_cls)
@@ -196,28 +254,50 @@ def run(variant: str, train, valid, cfg_kwargs: dict, args, seed: int = 0):
                 print(f"    [{variant}] ep{ep} step{i}/{len(tr_loader)} "
                       f"loss={float(loss):.4f} acc={correct / seen:.4f}", flush=True)
         tr_acc = correct / max(seen, 1)
-        va_acc = evaluate(model, va_loader)
+        va_acc, routing = evaluate(model, va_loader, collect_routing=True)
         log.append({"epoch": ep, "train_loss": run_loss / max(seen, 1),
-                    "train_acc": tr_acc, "val_acc": va_acc})
+                    "train_acc": tr_acc, "val_acc": va_acc, "routing": routing})
+        rs = ""
+        if routing:
+            rs = (" | load=%s ent=%.3f/%.3f bal=%.3f" % (
+                routing["expert_load"], routing["routing_entropy"],
+                routing["routing_entropy_max"], routing["balance_coeff"]))
         print(f"  [{variant}] epoch {ep}: loss={run_loss / max(seen, 1):.4f} "
-              f"train_acc={tr_acc:.4f} val_acc={va_acc:.4f}", flush=True)
+              f"train_acc={tr_acc:.4f} val_acc={va_acc:.4f}{rs}", flush=True)
 
     return {"variant": variant, "trainable_params": n_train, "log": log,
             "final_val_acc": log[-1]["val_acc"], "minutes": (time.time() - t0) / 60}
 
 
 @torch.no_grad()
-def evaluate(model, loader):
+def evaluate(model, loader, collect_routing: bool = False):
     model.eval()
     correct = seen = 0
+    imp_sum = None
+    n_batches = 0
     for b in loader:
         ids = b["input_ids"].cuda()
         mask = b["attention_mask"].cuda()
         y = b["label"].cuda()
-        logits, _, _ = model(ids, mask)
+        logits, _, metrics = model(ids, mask)
         correct += int((logits.argmax(-1) == y).sum())
         seen += y.size(0)
-    return correct / max(seen, 1)
+        if collect_routing and metrics and "proposal_importance" in metrics:
+            v = metrics["proposal_importance"].detach().float().cpu()
+            imp_sum = v if imp_sum is None else imp_sum + v
+            n_batches += 1
+    acc = correct / max(seen, 1)
+    routing = None
+    if imp_sum is not None and n_batches:
+        imp = (imp_sum / n_batches).numpy()
+        p = imp / max(float(imp.sum()), 1e-9)
+        ent = float(-np.sum(p * np.log(np.clip(p, 1e-12, 1.0))))
+        bal = float(1.0 / (len(p) * float(np.sum(p ** 2)))) if len(p) > 1 else 1.0
+        routing = {"expert_load": [round(float(x), 4) for x in imp],
+                   "routing_entropy": round(ent, 4),
+                   "routing_entropy_max": round(float(np.log(len(p))), 4),
+                   "balance_coeff": round(bal, 4)}
+    return acc, routing
 
 
 def main() -> int:
@@ -247,7 +327,7 @@ def main() -> int:
     for v in args.variants.split(","):
         v = v.strip()
         print(f"\n=== 变体 {v} ===", flush=True)
-        kw = cfg_kwargs if v == "full" else (cortex_kwargs if v == "cortex" else {})
+        kw = cfg_kwargs if v == "full" else (cortex_kwargs if v != "base" else {})
         try:
             results.append(run(v, train, valid, kw, args))
         except Exception as e:  # noqa: BLE001
@@ -260,8 +340,15 @@ def main() -> int:
         if "error" in r:
             print(f"  {r['variant']}: FAILED {r['error']}", flush=True)
         else:
+            rt = r["log"][-1].get("routing")
+            rts = ""
+            if rt:
+                rts = (" 路由熵 %.3f/%.3f 均衡 %.3f 负载 %s" % (
+                    rt["routing_entropy"], rt["routing_entropy_max"],
+                    rt["balance_coeff"], rt["expert_load"]))
             print(f"  {r['variant']:8s} held-out acc = {r['final_val_acc']:.4f} | "
-                  f"可训练参数 {r['trainable_params'] / 1e6:.2f}M | {r['minutes']:.1f} min", flush=True)
+                  f"可训练参数 {r['trainable_params'] / 1e6:.2f}M | {r['minutes']:.1f} min{rts}",
+                  flush=True)
     with open(args.out, "w") as f:
         json.dump({"args": vars(args), "results": results}, f, indent=2)
     print("saved", args.out, flush=True)
