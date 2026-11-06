@@ -37,42 +37,53 @@ from matplotlib.patches import FancyBboxPatch, Rectangle
 
 
 # ------------------------------------------------------------------ 字体 ------
+def _cjk_family(path):
+    """只有真正覆盖汉字的字体才算数（fc-match 可能返回拉丁字体）。"""
+    try:
+        from matplotlib import ft2font
+
+        f = ft2font.FT2Font(path)
+        if 0x4E00 in f.get_charmap():        # '一'
+            return f.family_name
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def _register_cjk_font():
     cands = [
-        "/workspace/fonts/NotoSansSC-Regular.ttf",
-        "/workspace/fonts/NotoSansSC-Bold.ttf",
         "/kaggle/working/fonts/NotoSansSC-Regular.otf",
         "/kaggle/working/fonts/NotoSansSC-Regular.ttf",
+        "/workspace/fonts/NotoSansSC-Regular.ttf",
+        "/workspace/fonts/NotoSansSC-Bold.ttf",
         "/root/.fonts/NotoSansSC-VF.ttf",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
     ]
     for p in cands:
-        if os.path.exists(p):
+        if not os.path.exists(p):
+            continue
+        fam = _cjk_family(p)
+        if fam:
             try:
                 font_manager.fontManager.addfont(p)
             except Exception:  # noqa: BLE001
-                pass
-    try:
+                continue
+            return fam
+    try:  # fc-match 兜底：仍要验证它覆盖汉字
         import subprocess as _sp
 
-        r = _sp.run(["fc-match", "-f", "%{file}|%{family}", "sans-serif:lang=zh"],
+        r = _sp.run(["fc-match", "-f", "%{file}", "sans-serif:lang=zh"],
                     capture_output=True, text=True, timeout=25).stdout.strip()
-        if "|" in r:
-            f, fam = r.split("|", 1)
-            if os.path.exists(f):
-                font_manager.fontManager.addfont(f)
+        if r and os.path.exists(r):
+            fam = _cjk_family(r)
+            if fam:
+                font_manager.fontManager.addfont(r)
+                return fam
     except Exception:  # noqa: BLE001
         pass
-    names = [f.name for f in font_manager.fontManager.ttflist]
-    for want in ("Noto Sans SC", "Noto Sans CJK SC", "Noto Sans CJK JP",
-                 "Source Han Sans SC", "WenQuanYi Zen Hei"):
-        if want in names:
-            return want
-    for n in names:
-        if any(k in n for k in ("CJK", "Han", "WenQuanYi", "Heiti", "Song")):
-            return n
     return None
 
 
