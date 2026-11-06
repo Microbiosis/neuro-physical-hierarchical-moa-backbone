@@ -144,11 +144,14 @@ def load_sst2(train_size: int, max_len: int):
     def enc(batch):
         return tok(batch["sentence"], truncation=True, max_length=max_len, padding="max_length")
 
-    cols = ["sentence", "label"]
     train = ds["train"].shuffle(seed=42).select(range(min(train_size, len(ds["train"]))))
     valid = ds["validation"] if "validation" in ds else ds["test"]
-    train = train.map(enc, batched=True, remove_columns=[c for c in cols if c in train.column_names])
-    valid = valid.map(enc, batched=True, remove_columns=[c for c in cols if c in valid.column_names])
+    # 只删文本/索引列，保留 label（此前把 label 一起删掉导致 set_format 报错）
+    keep = {"label"}
+    tr_drop = [c for c in train.column_names if c not in keep]
+    va_drop = [c for c in valid.column_names if c not in keep]
+    train = train.map(enc, batched=True, remove_columns=tr_drop)
+    valid = valid.map(enc, batched=True, remove_columns=va_drop)
     train.set_format("torch", columns=["input_ids", "attention_mask", "label"])
     valid.set_format("torch", columns=["input_ids", "attention_mask", "label"])
     return train, valid
