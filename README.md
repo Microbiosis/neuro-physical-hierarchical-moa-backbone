@@ -1,21 +1,14 @@
 # Neuro-Physical Hierarchical MoA Backbone
 
-**Hybrid MoA Vision-Language & Tri-ISA Self-Bootstrapping Operator Suite** — 16-module
-neural operator library for Mixture-of-Architectures (MoA) backbones: 14 standalone
-operator/kernel modules covering 12 physical, neurobiological & computer-architecture
-domains, plus a unified orchestrator that wires them into a 7-stage ontological hierarchy
-(quantum vacuum → matter genesis → spacetime → sensorimotor → corticolimbic gating →
-neocortical columns → Tri-ISA CPU/SIMT-GPU self-bootstrapping → agency → sleep).
+The Mixture-of-Architectures (MoA) backbone connects **15 domain operators in seven
+stages**. Each domain operator has its own parameters and interface. The unified
+layer connects their outputs to the next computation, from the physical and
+molecular substrate through sensorimotor control, cortical processing, silicon
+execution, agency, and sleep consolidation.
 
-Every module ships four layers: a dataclass config, deterministic NumPy analytical
-kernels, `torch.nn.Module` operators, and fused `autograd.Function` / `@triton.jit`
-implementations — and every layer is importable even without torch installed
-(fallback stubs raise a clear `ImportError` only when instantiated).
-
-Totals: **15,526 lines** across the 15 standalone operator modules, plus the unified
-orchestrator (1,750 lines), the 5-dimensional independence audit (657 lines) and the
-package `__init__.py` (131 lines) — **18,064 lines of Python** in the package, plus a
-660-line clean-room smoke test.
+The package supports NumPy analytical execution and PyTorch autograd. GPU kernels
+are available for specific operators. The 16 operator/kernel files can be run
+independently of the unified layer.
 
 ---
 
@@ -24,14 +17,15 @@ package `__init__.py` (131 lines) — **18,064 lines of Python** in the package,
 ```
 .
 ├── LICENSE / NOTICE                  Apache-2.0 + provenance
-├── smoke_test.py                     clean-room verification (16/16)
+├── smoke_test.py                     clean-room verification
 ├── README.md                         本文件
 └── hybrid_moa_vl_operator_suite/     算子包（Python package）
-    ├── __init__.py                   动态初始化（零硬编码表）→ 138 个公开导出
+    ├── __init__.py                   动态发现与导出算子
     ├── README.md                     包内说明（原始版本文档）
     ├── quantum_resource_phasing_operators.py   量子资源相位（1,065 行）← 新增
     ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（2,285 行）
-    ├── unified_hybrid_moa_architecture.py   七阶段总装 + 验证引擎（1,517 行）
+    ├── unified_hybrid_moa_architecture.py   七阶段骨干与角色消融审计
+    ├── viral_nucleic_acid_invasion_operators.py   Stage I.D 分子态调制算子
     ├── moa_operators.py              系统级 MoA + 跨模态图文融合（978 行）
     ├── sleep_subconscious_neuro_operators.py    睡眠/潜意识（1,007 行）
     ├── operator_independence_verification.py    五维独立性审计（609 行）
@@ -54,10 +48,9 @@ from hybrid_moa_vl_operator_suite.moa_operators import CrossModalVisionLanguageF
 
 Import mode is selected with `if __package__:` (not `try/except ImportError`), so a
 missing-symbol `ImportError` surfaces with the real module and symbol name instead of
-being masked by the fallback branch. The 13 standalone modules have zero sibling
-dependencies — each one imports on its own in an empty directory
-(`smoke_test.py` verifies this; `operator_independence_verification.py` audits it
-together with four further independence dimensions).
+being masked by the fallback branch. The standalone modules each import on their
+own in an empty directory, as checked by `smoke_test.py`. The original modules
+also have a separate five-dimensional independence audit.
 
 ## Modules
 
@@ -65,8 +58,9 @@ together with four further independence dimensions).
 |---|---|---|
 | `cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,285 |
 | `quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门 → **Stage I.C** | 1,065 |
-| `unified_hybrid_moa_architecture.py` | 七阶段十四算子四地层总装 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 可学习阶段间混合门 + 执行引擎 + LOSO 消融 + 非创伤解耦审计 | 1,750 |
-| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献），覆盖 15 个独立模块 | 657 |
+| `unified_hybrid_moa_architecture.py` | 七阶段总装、多层骨干、解析执行与角色审计 | — |
+| `viral_nucleic_acid_invasion_operators.py` | Stage I.D 分子场，含六个核酸入侵启发的子算子、并列感知 top-k 路由、精炼与自适应停机 | — |
+| `operator_independence_verification.py` | 16 个独立文件、15 个领域算子的五维独立性审计 | — |
 | `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,007 |
 | `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,169 |
 | `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 938 |
@@ -81,26 +75,29 @@ together with four further independence dimensions).
 | `dissociative_trauma_neuro_operators.py` | Stage-I 前门控：杏仁核超唤醒、PAG 过载关断、ANP/EP 隔离 + 独立验证套件 | 539 |
 | `moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 390 |
 
-## What this edition contains
+## 算子职责与下游接口
 
-- **六阶段本体论层级**（11 个领域，12 个 stage 名）：
+| 阶段 | 领域算子 | 输出用途 |
+|---|---|---|
+| 0.A | 真空零点能 | 构造物质生成阶段的输入 |
+| 0.B | 宇称重子生成 | 提供超膜阶段的物质态 |
+| I.A | 超膜 DBI / RSKK | 提供潮汐变换的基底 |
+| I.B | 量子潮汐 WKB | 提供资源相位算子的输入 |
+| I.C | 量子资源相位 | 形成分子调制和创伤监测共用的物理基底 |
+| I.D | 病毒核酸入侵 | 生成感觉运动主路径的逐通道分子调制 |
+| II.A | 脊髓通路 | 生成反射特征，供皮质脊髓与感觉运动通路使用 |
+| II.B | 皮质–脊髓混沌 | 生成感觉运动控制量和睡眠的皮质下印迹 |
+| II.C | 创伤调节 | 提供末端防御张量和互补门 `G_shut` |
+| III.Col0 | 图文融合 | 生成皮层内容 |
+| III.Col1 | 树突 NMDA/FHN | 调制皮层内容的兴奋性增益 |
+| III.Col2 | 突触快权重 | 提供皮层的记忆校正 |
+| IV | Tri-ISA CPU/SIMT GPU 自举 | 将感觉运动与皮层结果转换为代理的执行状态 |
+| V | Tulpa 代理 | 生成睡眠巩固所需的清醒状态 |
+| VI | 睡眠巩固 | 生成末端互补门的巩固分量 |
 
-  ```
-  Stage 0.A  VacuumZPE 真空零点能基底（前时空 QFT）
-  Stage 0.B  ParityBaryogenesis 物质起源
-  Stage I.A  Supermembrane 11D DBI / RSKK
-  Stage I.B  QuantumTidal WKB
-  Stage II.A SpinalCord 背角门控 / Renshaw
-  Stage II.B CorticospinalChaotic Pyragas
-  Stage II.C DissociativeTrauma 稳态负荷门
-  Stage III   3 个新皮层柱（跨模态 VL 联想 / 锥体树突 NMDA-FHN / 突触快权重 DeltaOja）
-  Stage IV    Tri-ISA CPU + SIMT GPU 自举（x86-64 / ARM64 / RISC-V 三种 ISA 仲裁 + warp 调度）
-  Stage V     Tulpa 代理（前额叶-TPJ 对话）
-  Stage VI    睡眠稳态 / 类淋巴清洗 / 潜意识巩固（SHY、SWR、PGO）
-  ```
+## 算子实现
 
-  `num_proposers` 的语义从「8 个异构专家」变为「Stage III 的 3 个新皮层柱」
-  （默认值 8 → 3，`top_k_proposers` 3 → 2），并新增 `num_vacuum_modes` / `num_dream_anchors`。 v7 再插入 Stage IV（Tri-ISA 自举）并新增 `num_isa_anchors`。 v8 把阶段间混合系数从硬编码常数（0.25/0.35/0.40/0.50）改成**可学习参数** `stage{0a,0b,1a,1b,4,5,6}_*_gate`。
+- `num_proposers=3` 对应皮层的三个固定职责，`top_k_proposers` 控制额外的稀疏精炼。
 - **Expert 0 = 跨模态图文融合** `CrossModalVisionLanguageFusionSubOp`
   （双向 2D 空间邻域卷积 + `R_anchor` 共享潜锚点共注意力 + Hadamard-Bilinear 门控合成）。
 - **零距离衰减**：任意图像 patch 与任意文本 token 通过 `R_anchor` 个共享锚点直接交互，
@@ -138,22 +135,18 @@ together with four further independence dimensions).
 - **Triton 内核双名并存**：`persistent_moa_norm_sparse_topk_megakernel` 与
   `persistent_norm_sparse_topk_agg_kernel` 在任何环境下都是同一个对象，两个名字都导出。
 
-### 非创伤解耦与互补门控（v5 引入，v6 扩展到全阶段）
+### 非创伤解耦与互补门控
 
 ```
-# 1) 严格因果解耦  d(Stage 0/III/IV/V) / d(Trauma) == 0
-h_clean    = x + σ(gate)·spinal + σ(gate)·chaotic_bridge(x)   # 零创伤污染
-trauma_out = CorticolimbicRegulator(s1_in)                    # 正交评估
-
-# 2) 互补的同稳态-稳态负荷分区（G_shut = σ(-κ·E_excess)）
-Y = h_clean + G_shut·MegaSyn(h_clean) + (1 - G_shut)·0.50·trauma_out
+x_molecular = x_spacetime * (0.5 + sigmoid(viral(x_spacetime)))
+h_clean = x_molecular + gain_reflex * spinal_out + gain_chaos * chaotic_bridge_out
+trauma_out, G_shut = trauma_regulator(x_spacetime)
+Y = h_clean + G_shut * consolidated + (1 - G_shut) * gain_trauma * trauma_out
 ```
 
 - 常态输入（`G_shut → 1`）：意志/Tulpa/睡眠合成域主导，创伤通路静默
 - 极端冲击（`G_shut → 0`）：认知与意志阶段被屏蔽，紧急 DPDR 防御接管
-- 反向传播同步改写：创伤通路只收 `(1 - G_shut)` 与边界门导数的梯度，
-   Stage 0/III/IV/V 与干净感觉运动流对创伤参数**零梯度**
-- v6 新增真空零点能与睡眠两个阶段后，解耦审计随之覆盖 Stage 0.A / 0.B / III / IV / V
+- 创伤调节参数经末端互补门影响输出。分子态和干净感觉运动特征对创伤调节参数保持零依赖。
 
 ### 融合算子的数学形式
 
@@ -191,7 +184,7 @@ y = fusion(torch.randn(2, 64, 256))
 cfg = MoAOperatorConfig(d_model=256, num_proposers=8, top_k_proposers=3)
 proposals = HeterogeneousProposerOp(cfg)(torch.randn(2, 64, 256))
 
-# 六阶段统一层 / 多层骨干
+# 七阶段统一层 / 多层骨干
 from hybrid_moa_vl_operator_suite import UnifiedHybridArchitectureConfig, UnifiedHybridMoABackbone
 bcfg = UnifiedHybridArchitectureConfig(d_model=256, n_layers=4)
 out, aux, telemetries = UnifiedHybridMoABackbone(bcfg)(torch.randn(2, 64, 256))
@@ -212,6 +205,38 @@ out, cache = k.cross_modal_vl_bilinear_fusion_forward(
     v_vis, t_txt, c_align, alpha_vis, alpha_txt, beta_bilin, lam_norm=0.35)
 ```
 
+### 固定角色接口
+
+每个 `UnifiedInterdisciplinaryMoALayer` 都执行 Stage I.D。分子调制的增益介于
+`0.5` 和 `1.5`，逐通道乘到物理基底上。`viral_invasion` 配置控制算子内部参数。
+算子继承骨干宽度，分组数取请求分组数和宽度的最大公约数。
+
+Stage III 的三个职责分别进入下式。Top-K 路由控制 `routed_detail`。
+
+```text
+cortical = alignment * (0.5 + sigmoid(dendritic)) + fast_weight_memory + routed_detail
+```
+
+阶段残差增益由 `0.05 + 0.95 * sigmoid(logit)` 得出。分子算子内部六个子算子的
+混合增益处于 `[0.05, 0.95]`，各自保留一条通向分子场输出的路径。
+
+```python
+import torch
+from hybrid_moa_vl_operator_suite import UnifiedHybridArchitectureConfig, UnifiedHybridMoABackbone
+
+cfg = UnifiedHybridArchitectureConfig(d_model=32, n_heads=4, n_layers=2)
+model = UnifiedHybridMoABackbone(cfg)
+out, aux_loss, telemetry = model(torch.randn(2, 8, 32))
+print(telemetry[0]["stage1d_molecular_rms"])
+```
+
+PyTorch 的分子算子在 CPU 上调用 NumPy float64 前向和一阶反向，并将结果返回
+输入的设备和 dtype。分子场处理潜变量张量，默认参数用于合成研究示范。
+
+加载带原始 PyTorch 版本元数据的旧骨干权重时，使用 `strict=False` 并检查
+缺失键仅属于 Stage I.D。旧阶段增益会转换成 logit，Stage I.D 新权重按配置初始化。
+已有兼容的分子算子权重也可迁移。重构会改变旧权重在新骨干中的输出。
+
 ## Package initializer (v12)
 
 `__init__.py` is no longer a hand-written export table. It now:
@@ -231,15 +256,34 @@ impossible by construction. Measured: **138 exports, package imports with no pat
 
 ## Verification
 
-`smoke_test.py` is the clean-room test: fresh interpreter, CPU only, no Triton.
-It takes roughly 5 minutes, most of which is the 13 isolated-subprocess imports.
+`smoke_test.py` is the CPU clean-room test. The standalone imports run in fresh
+interpreters and are typically the longest part of the test.
 
 ```bash
 python smoke_test.py            # everything available
 python smoke_test.py --quick    # imports + numpy kernels only
 ```
 
-Result: **16/16 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
+The current suite checks Stage I.D gradients, PyTorch/NumPy parity, cache isolation,
+and the three cortical roles with the routed correction set to zero.
+
+```bash
+python hybrid_moa_vl_operator_suite/operator_independence_verification.py
+python hybrid_moa_vl_operator_suite/unified_hybrid_moa_architecture.py
+```
+
+The first command checks independent execution, output and gradient rank,
+cross-sensitivity at fixed local inputs, and leave-one-out reconstruction on
+a synthetic target. The second command intervenes on the assembled layer. It
+ablates all 15 roles and substitutes each of the 14 single-output roles with
+each other role's frozen output. The dual-output trauma role is ablated by
+removing the defense output and setting `G_shut=1`. These forward interventions
+keep the other operators and weights in place and re-evaluate their downstream
+responses. The results apply to the tested configurations and inputs.
+The image-text reconstruction probe also re-executes downstream stages for the
+unaligned additive baseline. The aligned path must outperform it in each fold.
+
+The table below records the pre-integration baseline of **16/16 checks**.
 
 | Check | Result |
 |---|---|
@@ -260,7 +304,7 @@ Result: **16/16 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 | mechanism: Stage 0/III/IV/V/VI vs Trauma decoupling + regime gates | 七组全部精确 0.0e+00（含新增 Stage IV Tri-ISA；创伤通路自身变化 20.9 作对照）；G_shut 0.756 → 7.12e-218；DPDR 压缩 40.2× |
 | Triton tile simulators vs analytical references | 2.2e-16 / 8.9e-16 |
 
-Upstream benchmarks shipped with the package (`python3 <module>.py` inside the package):
+Historical upstream benchmarks before the role refactor:
 
 - `FusedCrossModalVLBilinear`: diff **0.00e+00**, launches 12 → 1, **HBM traffic −80.5%**
 - `PersistentNormSparseTopKMegakernel` (top-2/4): diff 2.66e-15, launches 17 → 1, **HBM −90.7%**
@@ -290,7 +334,7 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
   | II · forward-representation independence | joint subspace rank **14/14 full**; mean off-diag \|cos\| **0.0762**; max VIF **1.74** (< 2.0) |
   | III · input-gradient subspace independence | gradient matrix rank **14/14**; max gradient VIF < 5.0 |
   | IV · parameter cross-sensitivity Jacobian | off-diagonal cross-talk **exactly 0.00e+00**; all 14 active |
-  | V · leave-one-operator-out (CV) | full-ensemble CV R² **0.9997**; every operator irreplaceable |
+  | V · leave-one-operator-out (CV) | synthetic full-ensemble CV R² **0.9997** |
 
   v12 起覆盖 **15 个独立模块 / 14 个领域算子**（新增 `14:QuantumResource_Phasing`）。Kaggle GPU kernel
   `redmingwei/hetero-moe-operator-independence-v8`，1.1 min 跑完，日志见
@@ -312,9 +356,9 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
   used inside [hetero-moe](https://github.com/Microbiosis/hetero-moe)
   (`research/aligner/v62_dimension_projection_space/`) are modified for that project
   and are maintained there.
-- Everything under `hybrid_moa_vl_operator_suite/` is byte-identical to the shipped
-  archive. The only files written for this repository are `smoke_test.py`, `README.md`,
-  `NOTICE`, `.gitignore` and the files under `docs/`.
+- Stage I.D adapts the standalone operator supplied with the project and connects
+  its molecular field to the sensorimotor input of every unified layer.
+- The film scripts in `viz/` retain the historical 14-operator display.
 - `docs/TAXONOMY_AUDIT.md` audits an external taxonomy write-up of this architecture
   claim by claim against the code (which claims hold, which are overstated, and what
   the write-up missed).
@@ -327,8 +371,5 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 
 [Apache License 2.0](LICENSE) — Copyright 2026 Microbiosis.
 
-Provenance: written to specifications provided by the copyright holder, with
-implementation assistance from Google Gemini. Per-module license headers were
-deliberately not inserted so the operator files stay byte-identical to the shipped
-archive; the repository-level `LICENSE` applies to every file here. Apache-2.0 §3
-grants patent rights with defensive termination; §6 grants no trademark rights.
+The repository-level license applies to the package. The original provenance
+and the molecular operator adaptation are recorded in [NOTICE](NOTICE).

@@ -57,6 +57,7 @@ MODULES = [
     "vacuum_zpe_fluctuation_operators",
     "cpu_gpu_self_bootstrapping_operators",
     "quantum_resource_phasing_operators",
+    "viral_nucleic_acid_invasion_operators",
 ]
 # 独立算子模块（不含统一编排层，它按设计 import 全部兄弟模块）
 STANDALONE = [m for m in MODULES if m != "unified_hybrid_moa_architecture"]
@@ -107,7 +108,7 @@ def test_imports():
 
 
 def test_module_isolation():
-    """13 个独立算子模块各自单独放进空目录也能 import（零兄弟依赖）。"""
+    """Each standalone operator module imports in an empty directory."""
     import shutil
 
     pkg_dir = os.path.dirname(importlib.import_module(f"{PKG}.moa_operators").__file__)
@@ -397,7 +398,7 @@ def test_torch_unified_layer():
     gnorm = float(x.grad.norm())
     assert gnorm > 0.0, "no gradient through the unified layer"
     n = sum(p.numel() for p in layer.parameters())
-    return f"12 域 7 阶段前向 ok, {n / 1e3:.1f}K params, |grad|={gnorm:.4f}, diag keys={len(diag)}"
+    return f"15 算子 7 阶段前向 ok, {n / 1e3:.1f}K params, |grad|={gnorm:.4f}, diag keys={len(diag)}"
 
 
 def test_torch_unified_backbone():
@@ -470,6 +471,7 @@ def test_mechanism_stage_decoupling():
     groups = {
         "Stage0.A VacuumZPE": ("zpe_out",),
         "Stage0.B Baryogenesis": ("baryon_out",),
+        "StageI.D Molecular state": ("x_molecular",),
         "StageIII Cortex": ("h_cortex", "proposals_raw"),
         "StageIV CPUGPU_TriISA": ("boot_out",),
         "StageV Tulpa": ("tulpa_out",),
@@ -498,7 +500,7 @@ def test_mechanism_stage_decoupling():
     tr_norm = float(np.linalg.norm(ctx["trauma_out"][:, 0, :]))
     tr_shock = float(np.linalg.norm(ctx_s["trauma_out"][:, 0, :]))
     assert tr_shock < tr_norm, f"冲击未触发 DPDR 压缩 {tr_shock:.3f} vs {tr_norm:.3f}"
-    return (f"Stage0/III/IV/V/VI+干净流对创伤参数全部 = {worst:.1e}（创伤通路自身变了 {d_trauma:.1f}），"
+    return (f"分子态与各干净通路对创伤参数的最大变化为 {worst:.1e}（创伤通路自身变了 {d_trauma:.1f}），"
             f"G_shut {g_norm:.4f}→{g_shock:.2e}，DPDR 压缩 {tr_norm / max(tr_shock, 1e-12):.1f}×")
 
 
@@ -571,6 +573,161 @@ def test_triton_simulators():
             f"自报带宽节省={bw_b:.1f}%" if bw_b is not None else f"errs {err_b:.1e}/{err_m:.1e}")
 
 
+def test_numpy_viral_operator():
+    from hybrid_moa_vl_operator_suite import ViralInvasionHybridMoABackbone, ViralInvasionOperatorConfig
+
+    rng = np.random.default_rng(162)
+    x = 0.5 * rng.normal(size=(2, 4, 8))
+    dx_probe = rng.normal(size=x.shape)
+    dy = rng.normal(size=x.shape)
+    eps = 1e-6
+    for adaptive in (True, False):
+        op = ViralInvasionHybridMoABackbone(ViralInvasionOperatorConfig(
+            d_model=8, num_refinement_steps=3, share_refinement_weights=adaptive,
+            enable_adaptive_halting=adaptive, halting_threshold=0.55,
+        ))
+        params = op.named_parameters()
+        _, cache = op.forward(x)
+        op.forward(x * 0.8)  # A second forward must leave the first context usable.
+        dx, grads = op.backward(dy, cache)
+        directions = {key: rng.normal(size=value.shape) for key, value in params.items()}
+        up, _ = op.forward(x + eps * dx_probe, {k: v + eps * directions[k] for k, v in params.items()})
+        down, _ = op.forward(x - eps * dx_probe, {k: v - eps * directions[k] for k, v in params.items()})
+        analytical = np.sum(dx * dx_probe) + sum(np.sum(grads[k] * d) for k, d in directions.items())
+        numerical = np.sum(dy * (up - down)) / (2.0 * eps)
+        np.testing.assert_allclose(analytical, numerical, rtol=1e-6, atol=1e-8)
+        if adaptive:
+            active = cache["halting_probs"][0] < op.config.halting_threshold
+            assert active.any() and not active.all()
+    return "input and parameter gradients match finite differences in both halting modes"
+
+
+def test_numpy_required_roles():
+    from hybrid_moa_vl_operator_suite import (
+        UnifiedArchitectureExecutionEngine as Engine,
+        UnifiedHybridArchitectureConfig,
+    )
+
+    cfg = UnifiedHybridArchitectureConfig(
+        d_model=16, n_heads=2, num_local_groups=2, local_rank=2, top_k_proposers=1,
+    )
+    rng = np.random.default_rng(26)
+    x = 0.5 * rng.normal(size=(3, 9, 16))
+    dy = rng.normal(size=x.shape)
+    params = Engine.init_layer_parameters(cfg.d_model, cfg)
+    forward = Engine.forward_unified_layer_exact
+    y, ctx = forward(x, params, cfg)
+    assert tuple(ctx["role_outputs"]) == cfg.STAGE_DOMAIN_NAMES
+    viral_role = next(name for name in cfg.STAGE_DOMAIN_NAMES if name.startswith("StageI.D:"))
+    np.testing.assert_array_equal(ctx["x_molecular"], ctx["x_spacetime"] * (0.5 + ctx["molecular_prob"]))
+    for role_name in cfg.STAGE_DOMAIN_NAMES:
+        ablated, ablated_ctx = forward(x, params, cfg, ablate_stage_name=role_name)
+        assert np.isfinite(ablated).all() and not np.allclose(ablated, y), role_name
+        if role_name == viral_role:
+            np.testing.assert_array_equal(ablated_ctx["x_molecular"], ctx["x_spacetime"])
+            np.testing.assert_array_equal(ablated_ctx["trauma_out"], ctx["trauma_out"])
+            assert not np.allclose(ablated_ctx["spinal_out"], ctx["spinal_out"])
+
+    # Each cortical role must affect the output even when every routed value is zero.
+    no_route = {**params, "scale_norm": np.zeros_like(params["scale_norm"])}
+    y_roles, roles_ctx = forward(x, no_route, cfg)
+    cortical_roles = [name for name in cfg.STAGE_DOMAIN_NAMES if name.startswith("StageIII.Col")]
+    for role_name in cortical_roles:
+        ablated, _ = forward(x, no_route, cfg, ablate_stage_name=role_name)
+        assert not np.allclose(ablated, y_roles), role_name
+    alignment, excitability, _ = cortical_roles
+    roles = roles_ctx["role_outputs"]
+    swapped, _ = forward(x, no_route, cfg, role_replacements={
+        alignment: roles[excitability], excitability: roles[alignment],
+    })
+    assert not np.allclose(swapped, y_roles)
+
+    saturated = {**params, "stage1c_qrp_gate": np.array(-1000.0)}
+    _, gate_ctx = forward(x, saturated, cfg)
+    assert gate_ctx["mixing_gates"]["stage1c_qrp_gate"] >= 0.05
+    grads = Engine.backward_unified_layer_exact(dy, ctx)
+    eps = 1e-6
+    direction = rng.normal(size=x.shape)
+    up, _ = forward(x + eps * direction, params, cfg)
+    down, _ = forward(x - eps * direction, params, cfg)
+    np.testing.assert_allclose(
+        np.sum(grads["d_x_in"] * direction), np.sum(dy * (up - down)) / (2.0 * eps), rtol=1e-6, atol=1e-8,
+    )
+    key = "stage1d_viral_router_weight"
+    direction = rng.normal(size=params[key].shape)
+    up, _ = forward(x, {**params, key: params[key] + eps * direction}, cfg)
+    down, _ = forward(x, {**params, key: params[key] - eps * direction}, cfg)
+    np.testing.assert_allclose(
+        np.sum(grads[f"d_{key}"] * direction), np.sum(dy * (up - down)) / (2.0 * eps), rtol=1e-6, atol=1e-8,
+    )
+    return "15 ablations, cortical role swap with zero routed values, Stage I.D and input gradchecks"
+
+
+def test_torch_viral_operator():
+    import torch
+    from hybrid_moa_vl_operator_suite import TorchViralNucleicAcidInvasionOperator, ViralInvasionOperatorConfig
+
+    torch.manual_seed(42)
+    op = TorchViralNucleicAcidInvasionOperator(ViralInvasionOperatorConfig(d_model=8)).double()
+    x1 = torch.randn(2, 3, 8, dtype=torch.float64, requires_grad=True)
+    x2 = torch.randn_like(x1, requires_grad=True)
+    y1, y2 = op(x1), op(x2)
+    params = {name: param.detach().numpy() for name, param in op.weights.items()}
+    ref1, cache1 = op.core.forward(x1.detach().numpy(), params)
+    ref2, cache2 = op.core.forward(x2.detach().numpy(), params)
+    np.testing.assert_array_equal(y1.detach().numpy(), ref1)
+    np.testing.assert_array_equal(y2.detach().numpy(), ref2)
+    dx1, grads1 = op.core.backward(2.0 * ref1, cache1)
+    dx2, grads2 = op.core.backward(2.0 * ref2, cache2)
+    (y1.square().sum() + y2.square().sum()).backward()
+    np.testing.assert_allclose(x1.grad.numpy(), dx1, atol=1e-14)
+    np.testing.assert_allclose(x2.grad.numpy(), dx2, atol=1e-14)
+    for name, param in op.weights.items():
+        np.testing.assert_allclose(param.grad.numpy(), grads1[name] + grads2[name], atol=1e-14)
+    return "two forwards on one module, both outputs and all gradients match NumPy"
+
+
+def test_torch_required_role_backbone():
+    import torch
+    from hybrid_moa_vl_operator_suite import (
+        UnifiedHybridArchitectureConfig, UnifiedHybridMoABackbone,
+    )
+
+    torch.manual_seed(43)
+    cfg = UnifiedHybridArchitectureConfig(
+        d_model=16, n_heads=2, n_layers=2, num_local_groups=2, local_rank=2, top_k_proposers=1,
+    )
+    model = UnifiedHybridMoABackbone(cfg)
+    model.load_state_dict(model.state_dict(), strict=True)
+    with torch.no_grad():
+        for layer in model.layers:
+            layer.branch_scale_4d.zero_()
+
+    x = torch.randn(2, 4, 16, requires_grad=True)
+    y, aux, telemetry = model(x)
+    assert y.shape == x.shape and y.isfinite().all()
+    assert len(telemetry) == len(model.layers) and all(t["stage1d_molecular_rms"] > 0 for t in telemetry)
+    (y[..., 0].square().mean() + aux).backward()
+    assert x.grad.isfinite().all() and x.grad.abs().sum() > 0
+    assert all(param.grad is None or param.grad.isfinite().all() for param in model.parameters())
+    for layer in model.layers:
+        required_operators = (
+            layer.stage0a_vacuum_zpe, layer.stage0b_baryogenesis, layer.stage1a_supermembrane,
+            layer.stage1b_quantum_tidal, layer.stage1c_quantum_resource_phasing, layer.stage1d_viral_invasion,
+            layer.stage2a_spinal_pathway, layer.stage2b_corticospinal_chaos, layer.stage2c_trauma_regulator,
+            layer.col0_vl_association, layer.col1_dendritic_nmda, layer.col2_synaptic_selfmod,
+            layer.stage4_cpu_gpu_bootstrap, layer.stage5_tulpa_agency, layer.stage6_sleep_subconscious,
+        )
+        parameter_ids = [id(param) for op in required_operators for param in op.parameters()]
+        assert len(parameter_ids) == len(set(parameter_ids))
+        for op in required_operators:
+            assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in op.parameters()), type(op).__name__
+        weights = layer.stage1d_viral_invasion.weights
+        for name in ("router_weight", "stage_gates_raw", "refinement_gates_raw", "halting_probe_weight", "stage1_alpha_trop"):
+            assert weights[name].grad.abs().sum() > 0, name
+    return "all 15 roles train in both layers with routed values zero"
+
+
 def main() -> int:
     quick = "--quick" in sys.argv
     torch_ok = has_torch()
@@ -579,19 +736,23 @@ def main() -> int:
           + (", torch available" if torch_ok else ", torch MISSING (torch checks skipped)"))
     print("-" * 74)
 
-    check("package imports (16 modules + package exports)", test_imports)
-    check("module isolation: 15 个独立模块单独可 import", test_module_isolation)
+    check("package imports and exports", test_imports)
+    check("standalone module imports", test_module_isolation)
     check("numpy branch RMSNorm fwd/bwd + FD gradient", test_numpy_rmsnorm)
     check("numpy cross-modal anchor co-attention (zero decay)", test_numpy_cross_modal_anchor_co_attention)
     check("numpy VL Hadamard-bilinear fusion + gradient", test_numpy_vl_bilinear_fusion)
     check("numpy per-head MoA attention mask", test_numpy_attention_mask)
     check("numpy sparse top-k router", test_numpy_router)
+    check("numpy viral invasion operator forward/backward", test_numpy_viral_operator)
+    check("numpy unified layer required roles", test_numpy_required_roles)
 
     if not quick and torch_ok:
         check("torch CrossModalVisionLanguageFusionSubOp fwd/bwd", test_torch_vl_fusion)
         check("torch MoA stack (proposer + attention + 2 aggregators)", test_torch_moa_stack)
-        check("torch UnifiedInterdisciplinaryMoALayer (12 domains / 7 stages)", test_torch_unified_layer)
+        check("torch UnifiedInterdisciplinaryMoALayer (15 operators / 7 stages)", test_torch_unified_layer)
         check("torch UnifiedHybridMoABackbone (3 layers)", test_torch_unified_backbone)
+        check("torch viral invasion operator parity and cache isolation", test_torch_viral_operator)
+        check("torch UnifiedHybridMoABackbone required roles", test_torch_required_role_backbone)
         check("torch new domain operators (sleep, vacuum ZPE, CPU-GPU, quantum resource)", test_new_domain_ops)
         check("torch domain operators (quantum tidal, neuro)", test_domain_ops)
         check("upstream dissociative verification suite", test_upstream_dissociative_suite)

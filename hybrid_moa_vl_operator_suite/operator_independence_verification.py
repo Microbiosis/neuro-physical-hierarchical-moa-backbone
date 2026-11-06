@@ -1,44 +1,15 @@
 """
-Comprehensive Operator Independence Verification Suite (`operator_independence_verification.py`).
+Five-dimensional audit of 15 domain operators on fixed synthetic probes.
 
-Conducts a 5-Dimensional Independence Audit across all 15 standalone operator/kernel
-modules (covering all 14 foundational physical, quantum-resource, neurobiological &
-computer-architecture operators):
+1. Check imports with AST and run each of the 16 operator/kernel files in isolation.
+2. Measure rank, cosine similarity and VIF of the isolated forward features.
+3. Measure the same statistics for analytical input gradients.
+4. Perturb each operator's parameters while fixing all operators' local inputs.
+5. Fit a synthetic target over four folds and measure each leave-one-out drop.
 
-Dimension I — Physical File & Runtime Isolation Independence (Sandbox Tempdir Audit):
-   - Copies each of the 15 standalone modules (`moa_operators.py`, `moa_triton_kernels.py`,
-     `vacuum_zpe_fluctuation_operators.py`, `baryogenesis_parity_operators.py`,
-     `supermembrane_spacetime_operators.py`, `quantum_tidal_operators.py`,
-     `quantum_resource_phasing_operators.py`, `spinal_cord_pathway_operators.py`,
-     `corticospinal_chaotic_operators.py`, `dissociative_trauma_neuro_operators.py`,
-     `neuro_nonlinear_operators.py`, `local_self_modifying_operators.py`,
-     `tulpa_neuro_operators.py`, `sleep_subconscious_neuro_operators.py`,
-     `cpu_gpu_self_bootstrapping_operators.py`) ONE BY ONE into an empty `/tmp`
-     directory with ZERO sibling files.
-   - Verifies:
-     (a) Static AST import graph has 0 local sibling dependencies.
-     (b) Standalone import succeeds under `HAS_TORCH=False, HAS_TRITON=False`.
-     (c) Standalone script execution (`python3 <module>.py`) passes all internal gradchecks.
-
-Dimension II — Forward Representation Linear Independence & CKA/VIF Orthogonality:
-   - Evaluates all 14 domain operators on the exact same input tensor `X [B, L, D]`.
-   - Computes the 14x14 pairwise absolute cosine similarity matrix, SVD rank, and Variance
-     Inflation Factor (`VIF_i`) for each operator (verifying `rank == 14` and `max VIF < 2.0`,
-     proving zero functional collinearity or redundancy).
-
-Dimension III — Analytical Backward Input-Gradient Subspace Independence:
-   - Computes exact analytical input gradients `G_i = dL_i / dX` for all 14 operators
-     on the same input `X` and upstream seed `U`.
-   - Verifies that the 14 gradient vectors span a full 14-dimensional subspace (`rank == 14`).
-
-Dimension IV — Parameter-Space Cross-Sensitivity Isolation (`||dY_i / dTheta_j||_inf == 0`):
-   - Verifies that each operator's parameter dictionary is 100% encapsulated with
-     zero shared global state or cross-talk (`||dY_i / dTheta_j||_inf == 0.00e+00` for `i != j`).
-
-Dimension V — Irreplaceable Marginal Contribution (`Delta R^2_i > 0` in 4-Fold CV):
-   - Evaluates Leave-One-Operator-Out (LOOO) marginal generalization drop `Delta R^2_i`
-     across 4 folds when each of the 14 operators is removed from the ensemble,
-     proving every single operator provides unique, irreplaceable inductive bias.
+Feature and gradient statistics use centered residuals after projecting out the
+common input or upstream gradient. This audit measures isolated behavior. The
+assembled graph has a separate role-ablation and substitution audit.
 """
 
 from __future__ import annotations
@@ -69,6 +40,7 @@ if __package__:
     from .tulpa_neuro_operators import TulpaAnalyticalKernels
     from .sleep_subconscious_neuro_operators import SleepSubconsciousAnalyticalKernels
     from .cpu_gpu_self_bootstrapping_operators import CPUGPUSelfBootstrappingAnalyticalKernels
+    from .viral_nucleic_acid_invasion_operators import ViralInvasionHybridMoABackbone, ViralInvasionOperatorConfig
 else:
     from moa_operators import NumpyMoAOperatorKernels
     from vacuum_zpe_fluctuation_operators import VacuumZPEAnalyticalKernels
@@ -84,6 +56,7 @@ else:
     from tulpa_neuro_operators import TulpaAnalyticalKernels
     from sleep_subconscious_neuro_operators import SleepSubconsciousAnalyticalKernels
     from cpu_gpu_self_bootstrapping_operators import CPUGPUSelfBootstrappingAnalyticalKernels
+    from viral_nucleic_acid_invasion_operators import ViralInvasionHybridMoABackbone, ViralInvasionOperatorConfig
 
 
 STANDALONE_OPERATOR_FILES: Tuple[str, ...] = (
@@ -102,6 +75,7 @@ STANDALONE_OPERATOR_FILES: Tuple[str, ...] = (
     "tulpa_neuro_operators.py",
     "sleep_subconscious_neuro_operators.py",
     "cpu_gpu_self_bootstrapping_operators.py",
+    "viral_nucleic_acid_invasion_operators.py",
 )
 
 DOMAIN_OPERATOR_NAMES: Tuple[str, ...] = (
@@ -119,6 +93,7 @@ DOMAIN_OPERATOR_NAMES: Tuple[str, ...] = (
     "12:Tulpa_Persona_Agency",
     "13:Sleep_Subconscious",
     "14:CPUGPU_TriISA_Bootstrap",
+    "15:Viral_Molecular_State",
 )
 
 
@@ -449,14 +424,32 @@ def evaluate_all_14_domain_operators_independently(
 evaluate_all_13_domain_operators_independently = evaluate_all_14_domain_operators_independently
 
 
+def evaluate_all_15_domain_operators_independently(
+    x: np.ndarray,
+    grad_out: np.ndarray,
+    seed: int = 2026,
+    perturb_domain_idx: int = -1,
+) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    outputs, input_grads = evaluate_all_14_domain_operators_independently(
+        x, grad_out, seed=seed, perturb_domain_idx=perturb_domain_idx,
+    )
+    viral = ViralInvasionHybridMoABackbone(ViralInvasionOperatorConfig(d_model=x.shape[-1]), seed=seed)
+    params = viral.named_parameters()
+    if perturb_domain_idx == 14:
+        params["stage1_gamma_pore"] = params["stage1_gamma_pore"] + 5.0
+    y, ctx = viral.forward(x, params)
+    dx, _ = viral.backward(grad_out, ctx)
+    return [*outputs, y], [*input_grads, dx]
+
+
 def run_five_dimensional_operator_independence_verification() -> None:
     cur_dir = os.path.dirname(os.path.abspath(__file__))
     print("=" * 98)
-    print("COMPREHENSIVE 5-DIMENSIONAL OPERATOR INDEPENDENCE VERIFICATION SUITE (15 FILES / 14 OPS)")
+    print("5-DIMENSIONAL OPERATOR INDEPENDENCE VERIFICATION (16 FILES / 15 OPS)")
     print("=" * 98)
 
     # ==========================================================================
-    # DIMENSION I: Physical File & Runtime Isolation Independence (15 Modules)
+    # DIMENSION I: Physical File & Runtime Isolation Independence
     # ==========================================================================
     print("\n[Dimension I] Physical File & Runtime Isolation Audit (Zero Sibling Dependencies)")
     print("-" * 98)
@@ -505,15 +498,15 @@ def run_five_dimensional_operator_independence_verification() -> None:
     # ==========================================================================
     # DIMENSION II: Forward Representation Linear Independence & VIF Orthogonality
     # ==========================================================================
-    print("\n[Dimension II] Forward Representation Linear Independence, Cosine & VIF Audit (14 Ops)")
+    print("\n[Dimension II] Forward Representation Rank, Cosine & VIF Audit")
     print("-" * 98)
     rng = np.random.default_rng(2026)
     B, L, D = 8, 24, 32
     x_probe = rng.standard_normal((B, L, D)).astype(np.float64) * 0.7
     grad_probe = rng.standard_normal((B, L, D)).astype(np.float64)
 
-    outputs, grad_inputs = evaluate_all_14_domain_operators_independently(x_probe, grad_probe)
-    M = len(outputs)  # 14 domain operators
+    outputs, grad_inputs = evaluate_all_15_domain_operators_independently(x_probe, grad_probe)
+    M = len(DOMAIN_OPERATOR_NAMES)
 
     x_flat = x_probe.reshape(-1)
     x_u = x_flat / (np.linalg.norm(x_flat) + 1e-15)
@@ -523,7 +516,7 @@ def run_five_dimensional_operator_independence_verification() -> None:
         yf_nl = yf - np.dot(yf, x_u) * x_u
         yf_nl = yf_nl - np.mean(yf_nl)
         F_nl_list.append(yf_nl / (np.linalg.norm(yf_nl) + 1e-15))
-    F_unit = np.stack(F_nl_list, axis=1)  # [N_elem, 14]
+    F_unit = np.stack(F_nl_list, axis=1)
 
     cos_mat = np.abs(F_unit.T @ F_unit)
     off_diag_mask = ~np.eye(M, dtype=bool)
@@ -538,7 +531,7 @@ def run_five_dimensional_operator_independence_verification() -> None:
         max_pair_cos = float(np.max(np.delete(cos_mat[i], i)))
         print(
             f"   Op [{name:27s}] | Max Pairwise |Cos|: {max_pair_cos:.4f} "
-            f"| VIF: {vifs[i]:5.2f} (< 2.0)  [ORTHOGONAL]"
+            f"| VIF: {vifs[i]:5.2f} (< 2.0)"
         )
         assert vifs[i] < 2.0 and max_pair_cos < 0.60
 
@@ -561,7 +554,7 @@ def run_five_dimensional_operator_independence_verification() -> None:
         gf_nl = gf - np.dot(gf, g_u) * g_u
         gf_nl = gf_nl - np.mean(gf_nl)
         G_nl_list.append(gf_nl / (np.linalg.norm(gf_nl) + 1e-15))
-    G_unit = np.stack(G_nl_list, axis=1)  # [N_elem, 14]
+    G_unit = np.stack(G_nl_list, axis=1)
 
     grad_cos_mat = np.abs(G_unit.T @ G_unit)
     mean_grad_cos = float(np.mean(grad_cos_mat[off_diag_mask]))
@@ -569,19 +562,19 @@ def run_five_dimensional_operator_independence_verification() -> None:
     grad_rank = int(np.linalg.matrix_rank(G_unit, tol=1e-5))
     grad_vifs = np.diag(np.linalg.inv(G_unit.T @ G_unit))
 
-    print(f"   Joint Input-Gradient Matrix Rank  : {grad_rank} / {M}  [PASS == 14/14 Full Rank]")
+    print(f"   Joint Input-Gradient Matrix Rank  : {grad_rank} / {M}")
     print(f"   Mean Pairwise Gradient |Cos(Gi,Gj)|: {mean_grad_cos:.4f}  (Max Off-Diag: {max_grad_cos:.4f} < 0.80)")
-    print(f"   Max Gradient Variance Inflation   : {float(np.max(grad_vifs)):.2f}  [PASS < 5.0: Orthogonal Backprop Directions]")
-    assert grad_rank == M and max_grad_cos < 0.80 and float(np.max(grad_vifs)) < 5.0
+    print(f"   Max Gradient Variance Inflation   : {float(np.max(grad_vifs)):.2f}  [PASS < 2.0]")
+    assert grad_rank == M and max_grad_cos < 0.80 and float(np.max(grad_vifs)) < 2.0
 
     # ==========================================================================
     # DIMENSION IV: Parameter-Space Cross-Sensitivity Isolation (`||dY_i/dTheta_j|| == 0`)
     # ==========================================================================
-    print("\n[Dimension IV] 14x14 Parameter-Space Cross-Sensitivity Jacobian Audit (Zero Cross-Talk)")
+    print("\n[Dimension IV] 15x15 Parameter Perturbation Audit at Fixed Local Inputs")
     print("-" * 98)
     cross_talk_mat = np.zeros((M, M), dtype=np.float64)
     for j in range(M):
-        outs_pert, _ = evaluate_all_14_domain_operators_independently(
+        outs_pert, _ = evaluate_all_15_domain_operators_independently(
             x_probe, grad_probe, seed=2026, perturb_domain_idx=j
         )
         for i in range(M):
@@ -591,14 +584,14 @@ def run_five_dimensional_operator_independence_verification() -> None:
     max_off_diag_leakage = float(np.max(cross_talk_mat[off_diag_mask]))
     min_self_sens = float(np.min(diag_self_sens))
 
-    print(f"   Min Diagonal Self-Sensitivity   min_i ||dY_i / dTheta_i||_inf : {min_self_sens:.4e} > 0  [PASS: All 14 Active]")
-    print(f"   Max Off-Diagonal Cross-Talk     max_{{i!=j}} ||dY_i / dTheta_j||_inf : {max_off_diag_leakage:.2e}  [PASS == 0.00e+00]")
-    assert min_self_sens > 1e-3 and max_off_diag_leakage == 0.0
+    print(f"   Min Diagonal Output Change    : {min_self_sens:.4e}  [PASS > 0.08]")
+    print(f"   Max Off-Diagonal Output Change: {max_off_diag_leakage:.2e}  [PASS == 0.00e+00]")
+    assert min_self_sens > 0.08 and max_off_diag_leakage == 0.0
 
     # ==========================================================================
     # DIMENSION V: Leave-One-Operator-Out (LOOO) Marginal Generalization Audit
     # ==========================================================================
-    print("\n[Dimension V] Leave-One-Operator-Out (LOOO) Unique Variance Contribution (4-Fold CV)")
+    print("\n[Dimension V] Leave-One-Operator-Out on a Synthetic Target (4-Fold CV)")
     print("-" * 98)
     N_cv = B * L
     F_3d = (F_unit * math.sqrt(F_unit.shape[0])).reshape(B, L, D, M)
@@ -625,14 +618,15 @@ def run_five_dimensional_operator_independence_verification() -> None:
         return float(np.mean(r2s))
 
     r2_full = cv_r2(X_design)
-    print(f"   Full 14-Operator Ensemble Out-of-Sample 4-Fold CV R2 : {r2_full:.4f}")
+    print(f"   Full 15-Operator Ensemble 4-Fold CV R2 : {r2_full:.4f}")
+    assert r2_full > 0.999
     for i, name in enumerate(DOMAIN_OPERATOR_NAMES):
         keep_cols = [k for k in range(M) if k != i]
         r2_looo = cv_r2(X_design[:, :, keep_cols])
         delta_r2 = r2_full - r2_looo
         print(
             f"   LOOO Drop without [{name:27s}] | R2={r2_looo:.4f} "
-            f"| Unique Delta R2 = +{delta_r2:.4f}  [IRREPLACEABLE]"
+            f"| Delta R2 = +{delta_r2:.4f}"
         )
         assert delta_r2 > 0.020
 

@@ -6,7 +6,7 @@ This product includes software developed by Microbiosis
 
 Provenance
 ----------
-The 12 operator modules in this repository were written to specifications
+The original operator modules in this repository were written to specifications
 provided by the copyright holder, with implementation assistance from Google
 Gemini. Adapted copies of some of these modules are maintained in the
 hetero-moe research repository
@@ -16,15 +16,16 @@ the same license.
 
 Scope of this repository
 ------------------------
-Everything under hybrid_moa_vl_operator_suite/ is byte-identical to the
-shipped archive, including the import fixes it carries (if __package__:
+The original package was imported from the shipped archive, including
+the import fixes it carries (if __package__:
 dual-mode imports, and the persistent sparse top-k megakernel exposed under
 both persistent_moa_norm_sparse_topk_megakernel and
 persistent_norm_sparse_topk_agg_kernel in every environment).
 
-The only files written for this repository are smoke_test.py, README.md,
-NOTICE, .gitignore, the files under docs/ and the render/verification tooling
-under viz/; they are covered by the LICENSE file below.
+Stage I.D adapts the project-supplied standalone Viral Nucleic Acid Invasion
+Operator for the required molecular modulation in the unified architecture.
+The operator code, tests, documentation and visualization tooling are covered
+by the LICENSE file below.
 
 Upstream defects found and fixed here
 -------------------------------------
@@ -60,9 +61,6 @@ whose init_layer_parameters sets harm_phases to zeros, but the two paths would
 diverge if non-zero phases were ever supplied. viz/check_gpu_launch.py now runs all 14 domain operators forward+backward
 on CUDA and cross-checks each against the CPU path, so this class of defect is
 caught automatically from now on.
-
-Per-module license headers were deliberately not inserted, so the operator
-files stay byte-identical to the shipped archive.
 
 License
 -------
