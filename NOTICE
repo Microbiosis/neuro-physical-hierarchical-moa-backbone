@@ -43,7 +43,21 @@ is why CPU-only testing never caught them. Fixed here (one line each):
       tau_brane=..., beta_flux=... ->  tau_sq=tau_brane ** 2, beta_sq=beta_flux ** 2
 
 The squared / cubed forms match the NumPy reference implementations in the same
-files. viz/check_gpu_launch.py now runs all 14 domain operators forward+backward
+files.
+
+Two further launch sites passed one extra positional argument, so the value
+landed on a constexpr slot that was also given by keyword:
+
+  quantum_tidal_operators.py:480
+      removed harm_phases.contiguous(),  (the Triton kernel has no HarmPhases slot)
+  spinal_cord_pathway_operators.py:541
+      removed the extra positional D,   (the kernel has no stride_row slot)
+
+Note for upstream: the Triton kernel of quantum_tidal ignores the harmonic
+phase offsets entirely (u_tidal += c_m * cos(m*omega*t), while the NumPy path
+uses cos(m*omega*t + harm_phases[m-1])). This is harmless for the unified layer,
+whose init_layer_parameters sets harm_phases to zeros, but the two paths would
+diverge if non-zero phases were ever supplied. viz/check_gpu_launch.py now runs all 14 domain operators forward+backward
 on CUDA and cross-checks each against the CPU path, so this class of defect is
 caught automatically from now on.
 

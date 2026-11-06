@@ -538,7 +538,7 @@ if HAS_TORCH:
                     x_abeta.contiguous(), x_cfiber.contiguous(), x_desc.contiguous(),
                     kappa_pad.contiguous(), gamma_ia.contiguous(), lambda_rc.contiguous(),
                     alpha_cpg.contiguous(), omega_cpg.contiguous(), out_t,
-                    D, L_SEQ=L, D_MODEL=D, D_HALF=D_half, beta_desc=beta_desc, BLOCK_DH=block_dh,
+                    L_SEQ=L, D_MODEL=D, D_HALF=D_half, beta_desc=beta_desc, BLOCK_DH=block_dh,
                 )
 
             kap_b = kappa_pad.view(1, 1, D)
