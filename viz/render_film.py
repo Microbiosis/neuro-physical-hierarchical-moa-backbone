@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-六阶十一域混合架构 · 机制动画 —— 渲染器（v12）
+六阶十一域混合架构 · 机制动画 —— 渲染器（v12，按 4 地层组织）
 
-风格基准：moe_mechanism_full.mp4 —— 近黑底 / 左上标题 / 每章一行场景说明 /
+对齐 v12 unified_hybrid_moa_architecture.py 的权威结构：
+    Unified 13-Domain, 7-Stage (14-Operator, 4-Stratum)
+    Stratum I   — 宇宙学 / 相对论 / 量子资源时空发生基底（Stage 0 & I）
+    Stratum II  — 皮质下控制轴 vs. 新皮层并行张量柱（Stage II & III）
+    Stratum III — 异构硅基 Tri-ISA CPU + SIMT GPU 自举协处理器（Stage IV）
+    Stratum IV  — 多吸引子双稳态代理与清醒后睡眠巩固（Stage V & VI）
+
+风格基准：moe_mechanism_full.mp4 —— 近黑底 / 左上标题 / 章节场景说明 /
 主体全是真实数据图表 / 等宽琥珀色公式 / 底部结论横幅 / 章节进度条。1920×1200 / 30fps。
-
-十章：① 真空基底 ② 物质起源 ③ 时空几何 ④ 量子资源相位 ⑤ 皮质下
-      ⑥ 三柱 MoA ⑦ 硅基自举 ⑧ 代理与睡眠 ⑨ 两种机制 ⑩ 真实代价
 """
 from __future__ import annotations
 
@@ -92,17 +96,18 @@ MONO = "DejaVu Sans Mono"
 CN = _CN_FAM
 W_IN, H_IN, DPI, FPS = 19.2, 12.0, 100, 30
 
-CH = [  # (编号, 章名, 场景说明, 强调色, 秒)
-    ("①", "真空基底", "Stage 0.A：真空零点能地板，64 个共享潜锚点零距离衰减", "#6366f1", 7.0),
-    ("②", "物质起源", "Stage 0.B：正反物质对消之后，剩余净重子不对称穿过", "#3b82f6", 6.0),
-    ("③", "时空几何", "Stage I.A/B：DBI 阻尼随张力增强，WKB 只让部分概率隧穿", "#06b6d4", 6.0),
-    ("④", "量子资源相位", "Stage I.C：定点逆平方根相位 + DQI 可靠性 + 分块编码门", "#14b8a6", 6.5),
-    ("⑤", "皮质下", "Stage II：Pyragas 闭环镇定混沌，G_shut 闸门常态全开", "#10b981", 7.0),
-    ("⑥", "三柱 MoA", "Stage III：top-k 之外，权重与梯度被精确归零", "#f59e0b", 9.0),
-    ("⑦", "硅基自举", "Stage IV：Tri-ISA CPU 仲裁 + SIMT GPU roofline + 自举定点收敛", "#64748b", 7.0),
-    ("⑧", "代理与睡眠", "Stage V/VI：弱印迹被类淋巴清除，强印迹保留", "#a855f7", 8.0),
-    ("⑨", "两种机制", "扰动算子 j，算子 i 输出逐位不变；稳态/异态互斥", "#ef4444", 9.0),
-    ("⑩", "真实代价", "T4 实测：14 个算子串行前向 + 反向的每一步代价", "#94a3b8", 7.0),
+# 五个章节 = 四个地层 + 一个不变量/代价章
+CH = [
+    ("Ⅰ", "Stratum I", "宇宙学 / 相对论 / 量子资源时空发生基底 · Stage 0 & I",
+     "#6366f1", 12.0, ["0.A 真空", "0.B 重子", "I.A 超膜", "I.B 潮汐", "I.C 量子资源"]),
+    ("Ⅱ", "Stratum II", "皮质下控制轴 vs. 新皮层并行张量柱 · Stage II & III",
+     "#10b981", 14.0, ["II.A 脊髓", "II.B 混沌", "II.C 解离门", "III 三柱 MoA"]),
+    ("Ⅲ", "Stratum III", "异构硅基 Tri-ISA CPU + SIMT GPU 自举协处理器 · Stage IV",
+     "#64748b", 9.0, ["IV 硅基自举"]),
+    ("Ⅳ", "Stratum IV", "多吸引子双稳态代理与清醒后睡眠巩固 · Stage V & VI",
+     "#a855f7", 12.0, ["V Tulpa 代理", "VI 睡眠巩固"]),
+    ("Ω", "不变量与代价", "四条架构不变量 + T4 实测逐算子代价",
+     "#ef4444", 12.0, ["零串扰", "零污染", "逐算子代价"]),
 ]
 LABELS = [c[0] + " " + c[1] for c in CH]
 
@@ -120,11 +125,11 @@ def new_fig():
 
 
 def header(fig, i, color, params):
-    no, name, desc, _c, _s = CH[i]
-    fig.text(0.026, 0.963, "六阶十一域混合架构 · 13 域 14 算子", fontsize=23, color=FG,
-             weight="bold", family=CN)
-    fig.text(0.026, 0.936, f"第 {i + 1} 章 / 10 · {name}", fontsize=12, color=DIM, family=CN)
-    fig.text(0.026, 0.893, f"{no}  {desc}", fontsize=16.5, color=color, weight="bold", family=CN)
+    no, name, desc, _c, _s, _st = CH[i]
+    fig.text(0.026, 0.963, "本体论分层混合 MoA 架构 · 13 域 14 算子 7 阶段 4 地层",
+             fontsize=22, color=FG, weight="bold", family=CN)
+    fig.text(0.026, 0.936, f"第 {i + 1} 章 / 5 · {name}", fontsize=12, color=DIM, family=CN)
+    fig.text(0.026, 0.895, f"{no}  {desc}", fontsize=16.5, color=color, weight="bold", family=CN)
     fig.text(0.974, 0.958, params, fontsize=10.5, color=FAINT, family=CN, ha="right")
     fig.text(0.974, 0.936, "真实前向 / 反向 / 计时", fontsize=10, color=FAINT, family=CN, ha="right")
 
@@ -136,7 +141,7 @@ def banner(fig, text, color):
     ax.add_patch(FancyBboxPatch((0, 0), 1, 1, boxstyle="round,pad=0.004,rounding_size=0.03",
                                 fc="#11151c", ec=color, lw=1.3, transform=ax.transAxes,
                                 clip_on=False))
-    ax.text(0.5, 0.5, text, ha="center", va="center", fontsize=16.5, color=FG,
+    ax.text(0.5, 0.5, text, ha="center", va="center", fontsize=16, color=FG,
             weight="bold", family=CN)
 
 
@@ -151,8 +156,34 @@ def progress(fig, active, color):
         w = 1 / n - 0.004
         c = color if i == active else "#151a21"
         ax.add_patch(Rectangle((x0, 0.30), w, 0.42, fc=c, ec="none"))
-        ax.text(x0 + w / 2, -0.25, LABELS[i], ha="center", va="top", fontsize=8.4,
+        ax.text(x0 + w / 2, -0.25, LABELS[i], ha="center", va="top", fontsize=9,
                 color=(color if i == active else "#333b47"), family=CN)
+
+
+def stage_flow(fig, rect, stages, color, t):
+    """地层内部的 stage 流条：节点自左向右依次点亮。"""
+    ax = fig.add_axes(rect)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    n = len(stages)
+    for i, name in enumerate(stages):
+        cx = (i + 0.5) / n
+        lit = t > (i + 0.35) / n
+        ax.add_patch(FancyBboxPatch((cx - 0.055, 0.30), 0.11, 0.42,
+                                    boxstyle="round,pad=0.004,rounding_size=0.12",
+                                    fc=(color if lit else "#141a22"),
+                                    ec=(color if lit else EDGE), lw=1.2,
+                                    transform=ax.transAxes))
+        ax.text(cx, 0.51, name, ha="center", va="center", fontsize=10.5,
+                color=(FG if lit else FAINT), family=CN)
+        if i < n - 1:
+            ax.annotate("", xy=((i + 1.5) / n - 0.062, 0.51),
+                        xytext=((i + 0.5) / n + 0.062, 0.51),
+                        xycoords="axes fraction", textcoords="axes fraction",
+                        arrowprops=dict(arrowstyle="-|>", color=(color if lit else EDGE),
+                                        lw=1.6))
+    return ax
 
 
 def panel(fig, rect, caption=None):
@@ -163,7 +194,7 @@ def panel(fig, rect, caption=None):
         s.set_linewidth(1.0)
     ax.tick_params(colors=FAINT, labelsize=8.5, length=2)
     if caption:
-        ax.text(0.0, 1.025, caption, transform=ax.transAxes, fontsize=11, color=DIM, family=CN)
+        ax.text(0.0, 1.025, caption, transform=ax.transAxes, fontsize=10.5, color=DIM, family=CN)
     return ax
 
 
@@ -231,7 +262,7 @@ def bignum(ax, value, label, color, frac=1.0, fmt="{:.4f}", size=40, sub=None):
     txt = fmt.format(value * frac) if frac < 1.0 else fmt.format(value)
     ax.text(0.5, 0.62, txt, ha="center", va="center", fontsize=size, color=color,
             weight="bold", family=MONO)
-    ax.text(0.5, 0.24, label, ha="center", va="center", fontsize=12, color=DIM, family=CN)
+    ax.text(0.5, 0.24, label, ha="center", va="center", fontsize=11.5, color=DIM, family=CN)
     if sub:
         ax.text(0.5, 0.08, sub, ha="center", va="center", fontsize=10, color=FAINT, family=CN)
 
@@ -252,21 +283,43 @@ def dg(d, key, default=0.0):
 
 # ================================================================== 场景 ======
 def sc_open(fig, t, d):
-    a = min(1.0, t / 0.4)
-    fig.text(0.5, 0.575, "六阶十一域混合架构", ha="center", fontsize=44, color=FG,
+    a = min(1.0, t / 0.35)
+    fig.text(0.5, 0.655, "本体论分层的混合 MoA 架构", ha="center", fontsize=42, color=FG,
              weight="bold", family=CN, alpha=a)
-    fig.text(0.5, 0.485, "13 域 · 14 算子 · 6 阶段 · 4 地层", ha="center", fontsize=16,
+    fig.text(0.5, 0.575, "13 域 · 14 算子 · 7 阶段 · 4 地层", ha="center", fontsize=17,
              color=DIM, family=CN, alpha=a)
+    # 四地层总览
+    strata = [("Ⅰ", "时空发生基底", "Stage 0 & I", "#6366f1"),
+              ("Ⅱ", "皮质下 / 新皮层", "Stage II & III", "#10b981"),
+              ("Ⅲ", "硅基自举协处理器", "Stage IV", "#64748b"),
+              ("Ⅳ", "代理 / 睡眠巩固", "Stage V & VI", "#a855f7")]
+    ax = fig.add_axes([0.10, 0.30, 0.80, 0.20])
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    for i, (no, name, stg, col) in enumerate(strata):
+        x0 = 0.02 + i * 0.245
+        lit = t > 0.25 + i * 0.13
+        ax.add_patch(FancyBboxPatch((x0, 0.18), 0.215, 0.64,
+                                    boxstyle="round,pad=0.006,rounding_size=0.06",
+                                    fc=(col if lit else "#12171f"), ec=(col if lit else EDGE),
+                                    lw=1.6, alpha=0.92, transform=ax.transAxes))
+        ax.text(x0 + 0.1075, 0.66, no, ha="center", va="center", fontsize=20,
+                color=(FG if lit else FAINT), family=CN, weight="bold")
+        ax.text(x0 + 0.1075, 0.42, name, ha="center", va="center", fontsize=12.5,
+                color=(FG if lit else FAINT), family=CN)
+        ax.text(x0 + 0.1075, 0.26, stg, ha="center", va="center", fontsize=10,
+                color=(DIM if lit else FAINT), family=CN)
     note = "算子来自 hybrid_moa_vl_operator_suite 本体"
     if "gpu_name" in d:
         note += f" · {str(d['gpu_name'][0])} 实测"
-    fig.text(0.5, 0.415, note, ha="center", fontsize=11.5, color="#7d6836", family=CN, alpha=a)
+    fig.text(0.5, 0.215, note, ha="center", fontsize=11.5, color="#7d6836", family=CN, alpha=a)
 
 
 def sc_end(fig, t, d):
     a = min(1.0, t / 0.4)
     fig.text(0.5, 0.575, "机制", ha="center", fontsize=44, color=FG, weight="bold", family=CN, alpha=a)
-    fig.text(0.5, 0.485, "13 域 · 14 算子 · 6 阶段 · 4 地层", ha="center", fontsize=16,
+    fig.text(0.5, 0.485, "13 域 · 14 算子 · 7 阶段 · 4 地层", ha="center", fontsize=16,
              color=DIM, family=CN, alpha=a)
     fig.text(0.5, 0.415, "全部数值来自真实前向、反向与时延测量", ha="center", fontsize=11.5,
              color="#7d6836", family=CN, alpha=a)
@@ -274,157 +327,67 @@ def sc_end(fig, t, d):
 
 
 def sc1(fig, t, d):
+    """Stratum I：Stage 0.A / 0.B / I.A / I.B / I.C"""
     c = CH[0][3]
     header(fig, 0, c, f"B={d['np_x_in'].shape[0]} · L={d['np_x_in'].shape[1]} · D={d['np_x_in'].shape[2]}")
-    ax = panel(fig, [0.026, 0.44, 0.60, 0.36],
-               "attn_abs [B=0] · 每个 token 对全部真空锚点的读出（逐列点亮）")
-    heat(ax, d["vac_attn_abs"][0], c, reveal=max(0.02, t), vmin=0)
-    ax2 = panel(fig, [0.66, 0.44, 0.314, 0.36], "Bogoliubov 挤压：q,p → q_sq,p_sq")
-    q = d["np_zpe_q"][0].ravel()
-    p = d["np_zpe_p"][0].ravel()
-    r = float(np.asarray(d["np_zpe_r_squeeze"])[0])
-    qs = q * np.cosh(r) + p * np.sinh(r)
-    ps = p * np.cosh(r) + q * np.sinh(r)
-    n = max(20, int(t * len(q)))
-    ax2.scatter(q[:n], p[:n], s=3, color=FAINT, alpha=0.5, label="挤压前")
-    ax2.scatter(qs[:n], ps[:n], s=3, color=c, alpha=0.8, label="挤压后")
-    ax2.legend(facecolor=PANEL, edgecolor=EDGE, labelcolor=DIM, fontsize=8.5, loc="upper left")
-    for s in ("top", "right"):
-        ax2.spines[s].set_visible(False)
-    ax3 = panel(fig, [0.026, 0.16, 0.60, 0.24],
-                "E_vac 逐通道最小值：q² + p² + ω² + ε，永不低于零点能下限")
-    e = d["np_zpe_q"] ** 2 + d["np_zpe_p"] ** 2
-    omega = np.asarray(d["np_zpe_omega"])[None, None, :]
-    e = e + omega ** 2 + 0.05
-    mn, mx = e.min(axis=(0, 1)), e.max(axis=(0, 1))
-    xs = np.arange(len(mn))
-    ax3.fill_between(xs, mn, mx, color=c, alpha=0.25)
-    ax3.plot(xs, mn, color=c, lw=2.0)
-    ax3.axhline(0.05, color=AMBER, lw=1.4, ls="--")
-    ax3.text(len(mn) * 0.99, 0.05, " ε = 0.05 零点能下限", color=AMBER, fontsize=9,
-             family=CN, ha="right", va="bottom")
-    ax3.set_xlabel("channel", color=FAINT, fontsize=9)
-    ax4 = panel(fig, [0.66, 0.16, 0.314, 0.24], "真空锚点数 R_vac")
-    bignum(ax4, float(d["vac_attn_abs"].shape[2]), "个共享潜锚点", c, fmt="{:.0f}", size=44)
-    banner(fig, f"{d['vac_attn_abs'].shape[2]} 个锚点把交互从 O(L²D) 压到 O(L·R·D)，零距离衰减", c)
+    stage_flow(fig, [0.026, 0.845, 0.948, 0.055], CH[0][5], c, t)
+    ax = panel(fig, [0.026, 0.44, 0.30, 0.36], "0.A attn_abs · 真空锚点读出")
+    heat(ax, d["vac_attn_abs"][0], c, reveal=max(0.02, t * 1.6), vmin=0)
+    ax2 = panel(fig, [0.35, 0.44, 0.30, 0.36], "0.B baryon_out · 净重子不对称")
+    heat(ax2, d["np_baryon_out"][0], c, reveal=max(0.02, t * 1.6))
+    ax3 = panel(fig, [0.674, 0.44, 0.30, 0.36], "I.C qrp_out · 定点逆平方根相位")
+    heat(ax3, d["np_qrp_out"][0], c, reveal=max(0.02, t * 1.6))
+    ax4 = panel(fig, [0.026, 0.16, 0.30, 0.24], "0.A 零点能下限 / I.B WKB 隧穿")
+    mono(ax4, f"ω²+ε ≥ 0.05   (ZPE 地板)\nWKB 隧穿率 {dg(d, 'stage1b_quantum_wkb_tunneling'):.4f}",
+         y=0.5, size=12)
+    ax5 = panel(fig, [0.35, 0.16, 0.30, 0.24], "I.C DQI 可靠性 / λ_eff")
+    mono(ax5, f"DQI ρ = 1/R(ε)  {dg(d, 'stage1c_dqi_reliability'):.4f}\n"
+              f"λ_eff          {dg(d, 'stage1c_block_lambda_eff'):.4f}", y=0.5, size=12)
+    ax6 = panel(fig, [0.674, 0.16, 0.30, 0.24], "I.A DBI 阻尼")
+    mono(ax6, f"1/√(1+τ²E+β²F²)\n均值 {dg(d, 'stage1a_supermembrane_dbi'):.4f}", y=0.5, size=12)
+    banner(fig, "从真空地板到时空紧致化：五个阶段都在写「有界物理量」而不是点态激活值", c)
     progress(fig, 0, c)
 
 
 def sc2(fig, t, d):
+    """Stratum II：Stage II.A/B/C + Stage III 三柱"""
     c = CH[1][3]
-    header(fig, 1, c, f"B={d['np_x_in'].shape[0]} · L={d['np_x_in'].shape[1]}")
-    ax = panel(fig, [0.026, 0.44, 0.475, 0.36], "baryon_out [B=0] · 重子生成阶段输出")
-    heat(ax, d["np_baryon_out"][0], c, reveal=max(0.02, t))
-    ax2 = panel(fig, [0.53, 0.44, 0.444, 0.36], "逐通道净不对称（对 L 取均值）")
-    net = d["np_baryon_out"].mean(axis=(0, 1))
-    bars(ax2, np.abs(net), c, frac=min(1.0, t * 1.4))
-    ax2.set_xlabel("channel", color=FAINT, fontsize=9)
-    ax3 = panel(fig, [0.026, 0.16, 0.30, 0.24], "Stage 0.A → 0.B 输出范数")
-    mono(ax3, f"‖x_matter‖ = {np.linalg.norm(d['np_x_matter']):.1f}\n"
-              f"‖baryon_out‖ = {np.linalg.norm(d['np_baryon_out']):.1f}", y=0.5, size=13)
-    ax4 = panel(fig, [0.35, 0.16, 0.30, 0.24], "输入 → 输出范数比")
-    bignum(ax4, float(np.linalg.norm(d["np_baryon_out"]) / np.linalg.norm(d["np_x_matter"])),
-           "输出 / 输入", c, fmt="{:.3f}", size=40)
-    ax5 = panel(fig, [0.674, 0.16, 0.30, 0.24], "净不对称均值")
-    bignum(ax5, dg(d, "stage0b_baryon_asymmetry"), "stage0b_baryon_asymmetry", c, fmt="{:.4f}", size=40)
-    banner(fig, "绝大部分对消，剩余一股净重子不对称穿过闸门", c)
+    header(fig, 1, c, f"L={d['np_x_in'].shape[1]} · D={d['np_x_in'].shape[2]}")
+    stage_flow(fig, [0.026, 0.845, 0.948, 0.055], CH[1][5], c, t)
+    ax = panel(fig, [0.026, 0.44, 0.29, 0.36], "II.A spinal_out · 背角门控")
+    heat(ax, d["np_spinal_out"][0], c, reveal=max(0.02, t * 1.5))
+    ax2 = panel(fig, [0.336, 0.44, 0.29, 0.36], "II.B 混沌有界：输入扫 48 倍")
+    xs, ys = d.get("bound_in_chaos"), d.get("bound_out_chaos")
+    if xs is not None:
+        curve(ax2, xs, ys, c, frac=min(1.0, t * 1.4))
+        ax2.set_xscale("log")
+        ax2.set_xlabel("输入范数（log）", color=FAINT, fontsize=9)
+    ax3 = panel(fig, [0.646, 0.44, 0.328, 0.36], "III 三柱 · 异构新皮层柱")
+    ax3.set_xticks([]); ax3.set_yticks([])
+    for i, nm in enumerate(["Col0 VL 双线性", "Col1 树突 NMDA-FHN", "Col2 快权重 ΔOja"]):
+        sub = fig.add_axes([0.652 + i * 0.107, 0.50, 0.10, 0.26])
+        heat(sub, d["np_proposals_raw"][0, i], c, reveal=max(0.02, t * 1.5))
+        sub.text(0.0, -0.12, nm, transform=sub.transAxes, fontsize=8.5, color=DIM, family=CN)
+    ax4 = panel(fig, [0.026, 0.16, 0.29, 0.24], "II.C G_shut 闸门（常态 / 冲击）")
+    g1 = dg(d, "stage2c_corticolimbic_shutdown_gate")
+    g2 = float(np.mean(d["np_g_shut_shock"][:, 0, :]))
+    mono(ax4, f"常态 {g1:.4f}\n+50 冲击 {g2:.2e}", y=0.5, size=13)
+    ax5 = panel(fig, [0.336, 0.16, 0.29, 0.24], "III 路由：top-k 之外精确归零")
+    heat(ax5, d["np_active_weights"][0], c, values=True, fmt="{:.2f}")
+    ax6 = panel(fig, [0.646, 0.16, 0.328, 0.24], "零跨阶段创伤污染")
+    mono(ax6, "‖∂(内部)/∂Θ_Trauma‖_∞ ≡ 0.00e+00\n创伤只从 (1-G_shut) 旁路进输出", y=0.5, size=11.5)
+    banner(fig, "皮质下给基线，新皮层并行展开；创伤通路被正交隔离，进不了认知与睡眠阶段", c)
     progress(fig, 1, c)
 
 
 def sc3(fig, t, d):
+    """Stratum III：Stage IV 硅基自举"""
     c = CH[2][3]
-    header(fig, 2, c, f"L={d['np_x_in'].shape[1]} · D={d['np_x_in'].shape[2]}")
-    ax = panel(fig, [0.026, 0.44, 0.475, 0.36], "brane_out [B=0] · 超膜紧致化后")
-    heat(ax, d["np_brane_out"][0], c, reveal=max(0.02, t))
-    ax2 = panel(fig, [0.53, 0.44, 0.444, 0.36], "KK 紧致化模态塔（w_kk × ω_kk）")
-    kk = np.asarray(d.get("kk_w", np.array([0.2, 0.4, 0.6]))) * np.asarray(
-        d.get("kk_omega", np.array([0.3, 0.5, 0.7])))
-    bars(ax2, kk, c, labels=[f"m{i}" for i in range(len(kk))], frac=min(1.0, t * 1.5))
-    ax3 = panel(fig, [0.026, 0.16, 0.475, 0.24], "x_spacetime → brane_out：DBI 阻尼后的压缩")
-    a_, b_ = np.linalg.norm(d["np_x_spacetime"]), np.linalg.norm(d["np_brane_out"])
-    bars(ax3, [a_, b_], [c, FAINT], labels=["输入", "输出"], frac=min(1.0, t * 1.4))
-    mono(ax3, f"‖in‖={a_:.1f}  →  ‖out‖={b_:.1f}   压缩 {b_ / max(a_, 1e-9):.3f}×",
-         y=0.06, x=0.02, size=12, ha="left")
-    ax4 = panel(fig, [0.53, 0.16, 0.444, 0.24], "Stage I.B 量子潮汐 WKB 隧穿率")
-    bignum(ax4, dg(d, "stage1b_quantum_wkb_tunneling"), "quantum_wkb_tunneling", c, fmt="{:.4f}", size=40)
-    banner(fig, "张力越大，DBI 阻尼越把膜振压住；潮汐只让一部分概率隧穿", c)
-    progress(fig, 2, c)
-
-
-def sc4(fig, t, d):
-    """Stage I.C 量子资源相位（v12 新增阶段）"""
-    c = CH[3][3]
-    header(fig, 3, c, f"L={d['np_x_in'].shape[1]} · D={d['np_x_in'].shape[2]}")
-    ax = panel(fig, [0.026, 0.44, 0.475, 0.36], "qrp_out [B=0] · 定点逆平方根相位输出")
-    heat(ax, d["np_qrp_out"][0], c, reveal=max(0.02, t))
-    ax2 = panel(fig, [0.53, 0.44, 0.444, 0.36], "DQI 可靠性 1/R(ε) 与分块编码门 λ_eff")
-    rel = dg(d, "stage1c_dqi_reliability")
-    lam = dg(d, "stage1c_block_lambda_eff")
-    bars(ax2, [rel, min(lam, 1.0)], c, labels=[f"DQI 可靠 {rel:.3f}", f"λ_eff {lam:.3f}"],
-         frac=min(1.0, t * 1.4))
-    ax2.set_ylim(0, 1.35)
-    mono(ax2, "z = (softplus(a) + δ)^(-1/2)   ·   φ = p + z   ·   g_block = 1/√(1+λ_eff²)",
-         y=0.035, x=0.02, size=10.5, ha="left")
-    ax3 = panel(fig, [0.026, 0.16, 0.30, 0.24], "DQI 可靠性")
-    bignum(ax3, rel, "stage1c_dqi_reliability", c, fmt="{:.4f}", size=40)
-    ax4 = panel(fig, [0.35, 0.16, 0.30, 0.24], "分块编码 λ_eff")
-    bignum(ax4, lam, "stage1c_block_lambda_eff", c, fmt="{:.4f}", size=40)
-    ax5 = panel(fig, [0.674, 0.16, 0.30, 0.24], "量子资源阶段")
-    mono(ax5, "Stage I.C\n新算子 05:QuantumResource_Phasing", y=0.5, size=12)
-    banner(fig, "资源相位不再靠激活函数限幅：定点逆平方根 + 可靠性门直接给出物理量纲", c)
-    progress(fig, 3, c)
-
-
-def sc5(fig, t, d):
-    c = CH[4][3]
-    header(fig, 4, c, f"L={d['np_x_in'].shape[1]} · D={d['np_x_in'].shape[2]}")
-    ax = panel(fig, [0.026, 0.44, 0.44, 0.36], "spinal_out [B=0] · 脊髓背角门控输出")
-    heat(ax, d["np_spinal_out"][0], c, reveal=max(0.02, t))
-    ax2 = panel(fig, [0.50, 0.44, 0.474, 0.36],
-                "皮质脊髓混沌：输入幅度扫 48 倍，输出幅度几乎不变")
-    xs, ys = d.get("bound_in_chaos"), d.get("bound_out_chaos")
-    if xs is not None:
-        curve(ax2, xs, ys, c, frac=min(1.0, t * 1.2))
-        ax2.set_xscale("log")
-        ax2.set_xlabel("输入范数（log）", color=FAINT, fontsize=9)
-    ax3 = panel(fig, [0.026, 0.16, 0.30, 0.24], "G_shut 闸门（常态）")
-    bignum(ax3, dg(d, "stage2c_corticolimbic_shutdown_gate"), "mean(G_shut)", c, fmt="{:.4f}", size=40)
-    ax4 = panel(fig, [0.35, 0.16, 0.30, 0.24], "G_shut 闸门（+50 冲击）")
-    g2 = float(np.mean(d["np_g_shut_shock"][:, 0, :]))
-    bignum(ax4, g2, "mean(G_shut | shock)", "#ef4444", fmt="{:.2e}", size=34)
-    ax5 = panel(fig, [0.674, 0.16, 0.30, 0.24], "创伤通路被挡在认知流之外")
-    mono(ax5, "trauma_out 只从 (1-G_shut) 进输出\n认知阶段对创伤参数零灵敏", y=0.5, size=12)
-    banner(fig, "混沌被 Pyragas 闭环压住；闸门常态全开，冲击瞬间切到异态", c)
-    progress(fig, 4, c)
-
-
-def sc6(fig, t, d):
-    c = CH[5][3]
-    header(fig, 5, c, f"L={d['np_proposals_raw'].shape[2]} · D={d['np_proposals_raw'].shape[3]}")
-    names = ["Col0 跨模态 VL 双线性", "Col1 锥体树突 NMDA-FHN", "Col2 突触快权重 DeltaOja"]
-    for i in range(3):
-        ax = panel(fig, [0.026 + i * 0.318, 0.42, 0.30, 0.38], names[i])
-        heat(ax, d["np_proposals_raw"][0, i], c, reveal=max(0.02, t))
-    ax = panel(fig, [0.026, 0.16, 0.30, 0.22], "router_logits [B=0] · 逐 token 三柱得分")
-    heat(ax, d["np_router_logits"][0], c, values=True, fmt="{:.1f}")
-    ax2 = panel(fig, [0.35, 0.16, 0.30, 0.22], "top-k 之后：未选中精确归零")
-    heat(ax2, d["np_active_weights"][0], c, values=True, fmt="{:.2f}")
-    ax3 = panel(fig, [0.674, 0.16, 0.30, 0.22], "专家负载 f_i 与均衡系数")
-    fi = np.asarray(d["np_f_i"])
-    bars(ax3, fi, c, labels=["C0", "C1", "C2"], frac=min(1.0, t * 1.4))
-    bal = 1.0 / (len(fi) * float(np.sum(fi ** 2))) if float(np.sum(fi ** 2)) > 0 else 0.0
-    mono(ax3, f"均衡系数 = {bal:.4f}", y=0.06, x=0.02, size=12, ha="left")
-    banner(fig, "top-k 之外，权重与梯度都被精确归零——不是近似，是逐位为 0", c)
-    progress(fig, 5, c)
-
-
-def sc7(fig, t, d):
-    """Stage IV 硅基自举（Tri-ISA CPU 仲裁 + SIMT GPU）"""
-    c = CH[6][3]
-    header(fig, 6, c, "x86-64 / ARM64 / RISC-V · 32-lane warp")
-    ax = panel(fig, [0.026, 0.44, 0.475, 0.36], "boot_out [B=0] · 自举编译后的硅基状态")
-    heat(ax, d["np_boot_out"][0], c, reveal=max(0.02, t))
-    ax2 = panel(fig, [0.53, 0.44, 0.444, 0.36], "三路 ISA 分发权重 + GPU roofline 利用率")
+    header(fig, 2, c, "x86-64 / ARM64 / RISC-V · 32-lane warp")
+    stage_flow(fig, [0.026, 0.845, 0.948, 0.055], CH[2][5], c, t)
+    ax = panel(fig, [0.026, 0.44, 0.44, 0.36], "boot_out · 自举编译后的硅基状态 H_silicon")
+    heat(ax, d["np_boot_out"][0], c, reveal=max(0.02, t * 1.5))
+    ax2 = panel(fig, [0.50, 0.44, 0.474, 0.36], "三路 ISA 分发权重 + GPU roofline 利用率")
     gx = dg(d, "stage4_cpu_x86_gate")
     ga = dg(d, "stage4_cpu_arm64_sve")
     gr = dg(d, "stage4_cpu_riscv_vsetvli")
@@ -436,42 +399,50 @@ def sc7(fig, t, d):
     mono(ax2, "Tri-ISA 仲裁器 Y_cpu → 32-lane warp 调度", y=0.035, x=0.02, size=10.5, ha="left")
     ax3 = panel(fig, [0.026, 0.16, 0.30, 0.24], "自举定点收敛")
     bignum(ax3, dg(d, "stage4_bootstrap_fixed_point"), "bootstrap_fixed_point", c, fmt="{:.4f}", size=40)
-    ax4 = panel(fig, [0.35, 0.16, 0.30, 0.24], "SHA256 自举校验")
+    ax4 = panel(fig, [0.35, 0.16, 0.30, 0.24], "自举编译校验")
     mono(ax4, "SHA256(Stage1)\n  ==\nSHA256(Stage2)", y=0.5, size=12)
     ax5 = panel(fig, [0.674, 0.16, 0.30, 0.24], "算子 14")
     mono(ax5, "14:CPUGPU_TriISA_Bootstrap\n自举编译 + 安全回退", y=0.5, size=12)
     banner(fig, "三种 ISA 的分歧被显式建模成可微权重，GPU 侧按 roofline 调度", c)
-    progress(fig, 6, c)
+    progress(fig, 2, c)
 
 
-def sc8(fig, t, d):
-    c = CH[7][3]
+def sc4(fig, t, d):
+    """Stratum IV：Stage V 代理 + Stage VI 睡眠巩固 + 互补门控"""
+    c = CH[3][3]
     rd = d["dream_attn_bc"].shape[2] if "dream_attn_bc" in d else 0
-    header(fig, 7, c, f"R_dream={rd} · D={d['np_x_in'].shape[2]}")
-    ax = panel(fig, [0.026, 0.44, 0.44, 0.36], "tulpa_out [B=0] · 多子人格审议输出")
-    heat(ax, d["np_tulpa_out"][0], c, reveal=max(0.02, t))
-    ax2 = panel(fig, [0.50, 0.44, 0.474, 0.36], "梦境锚点广播 attn_bc [B=0]")
+    header(fig, 3, c, f"R_dream={rd} · D={d['np_x_in'].shape[2]}")
+    stage_flow(fig, [0.026, 0.845, 0.948, 0.055], CH[3][5], c, t)
+    ax = panel(fig, [0.026, 0.44, 0.29, 0.36], "V tulpa_out · 多吸引子双稳态审议")
+    heat(ax, d["np_tulpa_out"][0], c, reveal=max(0.02, t * 1.5))
+    ax2 = panel(fig, [0.336, 0.44, 0.29, 0.36], "VI 梦境锚点广播 attn_bc")
     if "dream_attn_bc" in d:
-        heat(ax2, d["dream_attn_bc"][0], c, reveal=max(0.02, t))
-    ax3 = panel(fig, [0.026, 0.16, 0.30, 0.24], "VLPO 睡眠门")
-    bignum(ax3, dg(d, "stage6_vlpo_sleep_gate"), "stage6_vlpo_sleep_gate", c, fmt="{:.4f}", size=38)
-    ax4 = panel(fig, [0.35, 0.16, 0.30, 0.24], "类淋巴冲刷滤子 W_glymph [B=0]")
+        heat(ax2, d["dream_attn_bc"][0], c, reveal=max(0.02, t * 1.5))
+    ax3 = panel(fig, [0.646, 0.44, 0.328, 0.36], "VI 类淋巴冲刷滤子 W_glymph")
     if "np_sleep_w_glymph" in d:
-        heat(ax4, d["np_sleep_w_glymph"][0], c, vmin=0, vmax=1)
-    ax5 = panel(fig, [0.674, 0.16, 0.30, 0.24], "冲刷前后印迹强度")
+        heat(ax3, d["np_sleep_w_glymph"][0], c, vmin=0, vmax=1)
+    ax4 = panel(fig, [0.026, 0.16, 0.29, 0.24], "TPJ 代理归因 / VLPO 睡眠门")
+    mono(ax4, f"κ_eff(softplus) {dg(d, 'stage5_tulpa_tpj_agency'):.4f}\n"
+              f"VLPO 门     {dg(d, 'stage6_vlpo_sleep_gate'):.4f}", y=0.5, size=12)
+    ax5 = panel(fig, [0.336, 0.16, 0.29, 0.24], "冲刷前后印迹强度")
     if "np_sleep_x_wake" in d and "np_sleep_w_glymph" in d:
         xw, wg = d["np_sleep_x_wake"][0], d["np_sleep_w_glymph"][0]
         before, after = float(np.linalg.norm(xw)), float(np.linalg.norm(xw * wg))
         bars(ax5, [before, after], [FAINT, c], labels=["冲刷前", "冲刷后"], frac=min(1.0, t * 1.4))
-        mono(ax5, f"保留 {after / max(before, 1e-9):.3f}×", y=0.06, x=0.02, size=12, ha="left")
-    banner(fig, "SHY 先整体压暗，类淋巴再清掉弱印迹——强印迹保留", c)
-    progress(fig, 7, c)
+        mono(ax5, f"保留 {after / max(before, 1e-9):.3f}×", y=0.04, x=0.02, size=11.5, ha="left")
+    ax6 = panel(fig, [0.646, 0.16, 0.328, 0.24], "互补门控合成")
+    mono(ax6, "Y = H_clean + G_shut·Y_consolidated\n  + (1-G_shut)·(gate·Y_trauma)",
+         y=0.5, size=11)
+    banner(fig, "清醒态先被多吸引子审议，再用睡眠把弱印迹洗掉——冲击时这一整段被挂起", c)
+    progress(fig, 3, c)
 
 
-def sc9(fig, t, d):
-    c = CH[8][3]
-    header(fig, 8, c, "14 个领域算子 × 14 组参数")
-    ax = panel(fig, [0.026, 0.40, 0.52, 0.40],
+def sc5(fig, t, d):
+    """不变量与真实代价"""
+    c = CH[4][3]
+    header(fig, 4, c, "14 个领域算子 × 14 组参数")
+    stage_flow(fig, [0.026, 0.845, 0.948, 0.055], CH[4][5], c, t)
+    ax = panel(fig, [0.026, 0.42, 0.50, 0.38],
                "参数交叉灵敏矩阵 ‖∂Y_i / ∂Θ_j‖_inf（对角=自灵敏，非对角=串扰）")
     J = np.asarray(d["jacobian"])
     heat(ax, J, c, values=True, fmt="{:.2f}", vmin=0, vmax=max(J.max(), 1e-9))
@@ -479,54 +450,33 @@ def sc9(fig, t, d):
     ax.set_yticks(range(J.shape[0]))
     ax.set_xticklabels([str(i + 1) for i in range(J.shape[1])], fontsize=7.5, color=DIM)
     ax.set_yticklabels([str(i + 1) for i in range(J.shape[0])], fontsize=7.5, color=DIM)
-    ax2 = panel(fig, [0.57, 0.40, 0.424, 0.185], "非对角交叉干扰")
+    ax2 = panel(fig, [0.55, 0.42, 0.424, 0.185], "非对角交叉干扰（零串扰）")
     off = float(np.max(J - np.diag(np.diag(J))))
     bignum(ax2, off, "max off-diagonal", "#ef4444", fmt="{:.2e}", size=36)
-    ax3 = panel(fig, [0.57, 0.19, 0.424, 0.185], "G_shut：常态 vs +50 冲击")
-    g1 = dg(d, "stage2c_corticolimbic_shutdown_gate")
-    g2 = float(np.mean(d["np_g_shut_shock"][:, 0, :]))
-    bars(ax3, [g1, g2], [c, "#ef4444"], labels=[f"常态 {g1:.4f}", f"冲击 {g2:.1e}"],
-         frac=min(1.0, t * 1.4), horizontal=True)
-    ax4 = panel(fig, [0.026, 0.16, 0.968, 0.20], "")
+    ax3 = panel(fig, [0.55, 0.21, 0.424, 0.185], "四条架构不变量")
+    mono(ax3, "零本体论倒置 · 零重复算子\n零跨阶段创伤污染 · 连续安全 Triton 分派",
+         y=0.5, size=11)
+    ax4 = panel(fig, [0.026, 0.16, 0.46, 0.22], "T4 实测：14 个算子前向 + 反向时延（ms）")
+    ms = np.asarray(d["timing_ms"])
+    bars(ax4, ms, c, labels=[str(i + 1) for i in range(len(ms))], frac=min(1.0, t * 1.4))
+    ax4.set_xlabel("算子编号（1=真空 … 14=硅基自举）", color=FAINT, fontsize=9)
+    ax5 = panel(fig, [0.51, 0.16, 0.22, 0.22], "14 算子总代价")
+    bignum(ax5, float(ms.sum()), "ms / step", c, fmt="{:.1f}", size=38)
+    ax6 = panel(fig, [0.75, 0.16, 0.224, 0.22], "DeltaOja launch")
     le = int(np.asarray(d.get("oja_launches_eager", np.array([0])))[0])
     lp = int(np.asarray(d.get("oja_launches_persistent", np.array([1])))[0])
-    mono(ax4, "扰动算子 j 的参数 → 算子 i 的输出逐位不变（非对角精确 0）\n"
-              f"DeltaOja persistent kernel：launch {le} → {lp}，前向 ≈34× / 前反向 ≈26×",
-         y=0.5, size=13)
-    banner(fig, f"非对角精确 {off:.2e}：这是「异构算子柱」可测的证据，不是修辞", c)
-    progress(fig, 8, c)
+    mono(ax6, f"{le} → {lp}\n前向 ≈34× 前反向 ≈26×", y=0.5, size=11)
+    banner(fig, f"非对角精确 {off:.2e}：14 个算子零串扰，这是可测的证据，不是修辞", c)
+    progress(fig, 4, c)
 
 
-def sc10(fig, t, d):
-    c = CH[9][3]
-    dev = str(d["gpu_name"][0]) if "gpu_name" in d else "CPU"
-    header(fig, 9, c, f"{dev} · 前向 + 反向 · 5 次平均")
-    ax = panel(fig, [0.026, 0.44, 0.62, 0.36], "14 个算子前向 + 反向时延（ms）")
-    ms = np.asarray(d["timing_ms"])
-    names = [str(i + 1) for i in range(len(ms))]
-    bars(ax, ms, c, labels=names, frac=min(1.0, t * 1.4))
-    ax.set_xlabel("算子编号（1=真空 … 14=硅基自举）", color=FAINT, fontsize=9)
-    ax2 = panel(fig, [0.674, 0.44, 0.30, 0.36], "每算子参数量（M）")
-    par = np.asarray(d["timing_params"]) / 1e6
-    bars(ax2, par, c, labels=names, frac=min(1.0, t * 1.4))
-    ax3 = panel(fig, [0.026, 0.16, 0.30, 0.24], "14 算子总时延")
-    bignum(ax3, float(ms.sum()), "ms / step", c, fmt="{:.1f}", size=40)
-    ax4 = panel(fig, [0.35, 0.16, 0.30, 0.24], "14 算子总参数")
-    bignum(ax4, float(np.asarray(d["timing_params"]).sum() / 1e6), "M params", c, fmt="{:.2f}", size=40)
-    ax5 = panel(fig, [0.674, 0.16, 0.30, 0.24], "最慢 / 最快算子")
-    i_s, i_f = int(np.argmax(ms)), int(np.argmin(ms))
-    mono(ax5, f"{i_s + 1} 号 {ms[i_s]:.1f} ms\n{i_f + 1} 号 {ms[i_f]:.1f} ms", y=0.5, size=14)
-    banner(fig, f"{dev} 实测：14 个算子串行前向 + 反向共 {ms.sum():.1f} ms / step", c)
-    progress(fig, 9, c)
-
-
-SCENES = [sc1, sc2, sc3, sc4, sc5, sc6, sc7, sc8, sc9, sc10]
+SCENES = [sc1, sc2, sc3, sc4, sc5]
 
 
 def main():
     d = dict(np.load(DATA))
-    total = sum(c[4] for c in CH) + 3.5 + 4.0
-    print(f"[render] {len(CH)} 章 + 片头片尾，共 {total:.1f}s @ {FPS}fps")
+    total = sum(c[4] for c in CH) + 4.0 + 4.0
+    print(f"[render] {len(CH)} 章（4 地层 + 不变量）+ 片头片尾，共 {total:.1f}s @ {FPS}fps")
     segs = []
 
     def emit(name, dur, fn):
@@ -547,10 +497,10 @@ def main():
         segs.append(seg)
         print(f"    {name}: {n} 帧 -> {seg}", flush=True)
 
-    emit("s0_open", 3.5, sc_open)
+    emit("s0_open", 4.0, sc_open)
     for i, fn in enumerate(SCENES):
         emit(f"s{i + 1}", CH[i][4], fn)
-    emit("s11_end", 4.0, sc_end)
+    emit("s6_end", 4.0, sc_end)
 
     lst = os.path.join(OUTDIR, "list.txt")
     with open(lst, "w") as f:
