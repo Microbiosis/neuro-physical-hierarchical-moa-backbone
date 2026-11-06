@@ -232,6 +232,11 @@ def capture():
             out["vac_attn_emit"] = np.asarray(vc["attn_emit"])       # [B, R, L]
             out["vac_attn_abs"] = np.asarray(vc["attn_abs"])         # [B, L, R]
         if sc:
+            out["np_sleep_x_wake"] = np.asarray(sc["x_wake"])
+            out["np_sleep_w_glymph"] = np.asarray(sc["w_glymph"])
+            out["np_sleep_inv_shy"] = np.asarray(sc["inv_shy"])
+            out["np_sleep_g"] = np.asarray(sc["g_sleep"])
+            out["np_sleep_d_shy"] = np.asarray(sc["d_shy"])
             danchors = np.random.default_rng(7).standard_normal((CFG["num_dream_anchors"], D)) * (D ** -0.5)
             _, dc = SK.subconscious_pgo_dream_recombination_forward(
                 sc["x_wake"], sc["m_hipp"], danchors)
