@@ -478,7 +478,7 @@ if HAS_TORCH:
                 fused_quantum_tidal_wave_fwd_kernel[grid](
                     amp.contiguous(), phi0.contiguous(), sigma.contiguous(), delta_v.contiguous(),
                     omega.contiguous(), harm_weights.contiguous(), harm_phases.contiguous(),
-                    pr_t, pi_t, D, L_SEQ=L, D_MODEL=D, M_HARM=M,
+                    pr_t, pi_t, D, L_SEQ=L, D_MODEL=D, M_HARMONICS=M,
                     hbar_eff=hbar_eff, kappa=kappa, wkb_eps=wkb_eps, BLOCK_D=block_d,
                 )
             t = torch.arange(L, device=amp.device, dtype=amp.dtype).unsqueeze(1)  # [L, 1]

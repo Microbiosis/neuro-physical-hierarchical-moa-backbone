@@ -513,7 +513,7 @@ if HAS_TORCH:
                     x.contiguous(), delta_weak.contiguous(), eps_parity.contiguous(),
                     phi_cp.contiguous(), gamma_cp.contiguous(), sigma_ann.contiguous(),
                     beta_2gamma.contiguous(), out_t, D,
-                    D_MODEL=D, delta_mass=delta_mass, kappa_asym=kappa_asym, lam_therm=lam_therm, BLOCK_D=block_d,
+                    D_MODEL=D, delta_mass_sq=delta_mass ** 2, kappa_asym=kappa_asym, lam_therm=lam_therm, BLOCK_D=block_d,
                 )
             eps_b = eps_parity.view(1, 1, -1)
             phi_b = phi_cp.view(1, 1, -1)

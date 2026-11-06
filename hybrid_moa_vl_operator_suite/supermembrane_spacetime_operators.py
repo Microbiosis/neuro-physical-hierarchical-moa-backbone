@@ -494,7 +494,7 @@ if HAS_TORCH:
                     x_base.contiguous(), y_extra.contiguous(), flux_f.contiguous(),
                     w_kk.contiguous(), kappa_warp.contiguous(), omega_kk.contiguous(),
                     alpha_proj.contiguous(), out_t,
-                    D_MODEL=D, K_EXTRA=K, tau_brane=tau_brane, beta_flux=beta_flux, warp_eps=warp_eps, BLOCK_D=block_d,
+                    D_MODEL=D, K_EXTRA=K, tau_sq=tau_brane ** 2, beta_sq=beta_flux ** 2, warp_eps=warp_eps, BLOCK_D=block_d,
                 )
             w_b = w_kk.view(1, 1, 1, -1)
             kap_b = kappa_warp.view(1, 1, 1, -1)

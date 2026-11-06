@@ -23,7 +23,29 @@ both persistent_moa_norm_sparse_topk_megakernel and
 persistent_norm_sparse_topk_agg_kernel in every environment).
 
 The only files written for this repository are smoke_test.py, README.md,
-NOTICE and .gitignore; they are covered by the LICENSE file below.
+NOTICE, .gitignore, the files under docs/ and the render/verification tooling
+under viz/; they are covered by the LICENSE file below.
+
+Upstream defects found and fixed here
+-------------------------------------
+Four Triton launch sites in the operator package passed argument names that do
+not exist in the corresponding @triton.jit kernel signatures, so every GPU
+(code path) forward pass raised TypeError. The NumPy path was unaffected, which
+is why CPU-only testing never caught them. Fixed here (one line each):
+
+  baryogenesis_parity_operators.py:516
+      delta_mass=delta_mass      ->  delta_mass_sq=delta_mass ** 2
+  neuro_nonlinear_operators.py:463
+      fhn_kappa=fhn_kappa        ->  kappa_sq3=3.0 * (fhn_kappa ** 2)
+  quantum_tidal_operators.py:481
+      M_HARM=M                    ->  M_HARMONICS=M
+  supermembrane_spacetime_operators.py:497
+      tau_brane=..., beta_flux=... ->  tau_sq=tau_brane ** 2, beta_sq=beta_flux ** 2
+
+The squared / cubed forms match the NumPy reference implementations in the same
+files. viz/check_gpu_launch.py now runs all 14 domain operators forward+backward
+on CUDA and cross-checks each against the CPU path, so this class of defect is
+caught automatically from now on.
 
 Per-module license headers were deliberately not inserted, so the operator
 files stay byte-identical to the shipped archive.

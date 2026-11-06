@@ -460,7 +460,7 @@ if HAS_TORCH:
                     v.contiguous(), s.contiguous(), g_shunt.contiguous(), w_adapt.contiguous(),
                     g_nmda.contiguous(), alpha_mg.contiguous(), out_t, D,
                     D_MODEL=D, eta_mg=eta_mg, gamma_shunt=gamma_shunt,
-                    fhn_kappa=fhn_kappa, fhn_beta=fhn_beta, BLOCK_D=block_d,
+                    kappa_sq3=3.0 * (fhn_kappa ** 2), fhn_beta=fhn_beta, BLOCK_D=block_d,
                 )
             alpha_b = alpha_mg.view(1, 1, -1)
             gnmda_b = g_nmda.view(1, 1, -1)
