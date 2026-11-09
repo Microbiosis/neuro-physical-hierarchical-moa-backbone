@@ -108,7 +108,7 @@ if HAS_TRITON:
             y_plastic += u_col * psi_r
 
         e_loc = tl.sum(z_sq_sum, axis=0) / R_RANK
-        oja_scale = 1.0 - lambda_oja * e_loc
+        oja_scale = 1.0 / (1.0 + lambda_oja * e_loc)
         out = oja_scale * y_base + alpha_mod * y_plastic
 
         tl.store(Out_ptr + base_offset, out, mask=mask_d)
@@ -178,11 +178,11 @@ if HAS_TRITON:
 
         # Reduce 1-element tensor z_sq_sum to 0D scalar so tl.atomic_add passes tt.atomic_rmw verification on T4
         e_loc = tl.sum(z_sq_sum, axis=0) / R_RANK
-        oja_scale = 1.0 - lambda_oja * e_loc
+        oja_scale = 1.0 / (1.0 + lambda_oja * e_loc)
         dy_base = dout * oja_scale
         tl.store(GradYBase_ptr + base_offset, dy_base, mask=mask_d)
 
-        tl.atomic_add(GradLambdaOja_ptr + g_idx, -dot_dout_ybase * e_loc)
+        tl.atomic_add(GradLambdaOja_ptr + g_idx, -dot_dout_ybase * e_loc * oja_scale * oja_scale)
         tl.atomic_add(GradAlphaMod_ptr + g_idx * D_G + cols, dout * y_plastic, mask=mask_d)
 
 
@@ -449,7 +449,7 @@ class LocalSelfModifyingAnalyticalKernels:
 
         y_plastic = np.einsum("blgdr,blgr->blgd", u_basis, psi)
         e_loc = np.mean(np.square(z_proj), axis=-1, keepdims=True)
-        oja_scale = 1.0 - lam_b * e_loc
+        oja_scale = 1.0 / (1.0 + lam_b * e_loc)
         out = oja_scale * y_base + alp_b * y_plastic
 
         cache = {
@@ -492,8 +492,9 @@ class LocalSelfModifyingAnalyticalKernels:
         d_alpha_mod = np.sum(grad_out * y_plastic, axis=(0, 1))
 
         dot_dout_ybase = np.sum(grad_out * y_base, axis=-1, keepdims=True)
-        d_lambda_oja = np.sum(-dot_dout_ybase * e_loc, axis=(0, 1, 3))
-        d_eloc = -dot_dout_ybase * lambda_oja
+        oja_sq = np.square(oja_scale)
+        d_lambda_oja = np.sum(-dot_dout_ybase * e_loc * oja_sq, axis=(0, 1, 3))
+        d_eloc = -dot_dout_ybase * lambda_oja * oja_sq
 
         dy_plastic = grad_out * alpha_mod
         d_ubasis = np.einsum("blgd,blgr->blgdr", dy_plastic, psi)
@@ -801,7 +802,7 @@ if HAS_TORCH:
 
             y_plastic = torch.einsum("blgdr,blgr->blgd", u_basis, psi)
             e_loc = z_proj.pow(2).mean(dim=-1, keepdim=True)
-            oja_scale = 1.0 - lam_b * e_loc
+            oja_scale = 1.0 / (1.0 + lam_b * e_loc)
             out = oja_scale * y_base + alp_b * y_plastic
 
             ctx.save_for_backward(
@@ -865,7 +866,7 @@ if HAS_TORCH:
                     psi = ez / denom
                     y_plastic = torch.einsum("blgdr,blgr->blgd", u_basis, psi)
                     e_loc = z_proj.pow(2).mean(dim=-1, keepdim=True)
-                    oja_scale = 1.0 - lam_b * e_loc
+                    oja_scale = 1.0 / (1.0 + lam_b * e_loc)
                 else:
                     return None
             else:
@@ -882,8 +883,9 @@ if HAS_TORCH:
             d_alpha_mod = (grad_out * y_plastic).sum(dim=(0, 1))
 
             dot_dout_ybase = (grad_out * y_base).sum(dim=-1, keepdim=True)
-            d_lambda_oja = (-dot_dout_ybase * e_loc).sum(dim=(0, 1, 3))
-            d_eloc = -dot_dout_ybase * lam_b
+            oja_sq = oja_scale.pow(2)
+            d_lambda_oja = (-dot_dout_ybase * e_loc * oja_sq).sum(dim=(0, 1, 3))
+            d_eloc = -dot_dout_ybase * lam_b * oja_sq
 
             dy_plastic = grad_out * alp_b
             d_ubasis = torch.einsum("blgd,blgr->blgdr", dy_plastic, psi)
@@ -1186,7 +1188,7 @@ if HAS_TORCH:
                     / math.sqrt(B * self.G * self.D_g * self.D_g)
                 )
                 mean_oja = float(
-                    (1.0 - self.lambda_oja.view(1, 1, -1, 1) * z_proj.pow(2).mean(dim=-1, keepdim=True)).mean().item()
+                    (1.0 / (1.0 + self.lambda_oja.view(1, 1, -1, 1) * z_proj.pow(2).mean(dim=-1, keepdim=True))).mean().item()
                 )
             return out, {"rms_fast_weight_drift": drift, "mean_oja_homeostasis_scale": mean_oja}
 
@@ -1234,7 +1236,7 @@ def simulate_triton_local_self_mod_kernel(
                 y_plastic += u_3d[row_id, d0:d1, r] * psi_r
 
             e_loc = z_sq_sum / R
-            oja_scale = 1.0 - lam_g * e_loc
+            oja_scale = 1.0 / (1.0 + lam_g * e_loc)
             out_2d[row_id, d0:d1] = oja_scale * yb_tile + alp_tile * y_plastic
 
     out = out_2d.reshape(B, L, G, D_g)
