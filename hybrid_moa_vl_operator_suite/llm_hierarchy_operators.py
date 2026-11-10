@@ -1487,7 +1487,10 @@ if HAS_TRITON:
             bm, bn, stages, warps = _flash_block_cfg(q.dtype, d)
             scale = torch.tensor(1.0 / math.sqrt(float(d)), dtype=q.dtype, device=q.device)
             _flash_fwd_kernel[(triton.cdiv(l, bm), b * h)](
-                q, k, v, out, lse, l, scale, h, hk, rep, d, bm, bn,
+                # D 必须是 head_dim（内核用它做每 token 的行跨度和 arange 上界），
+                # 不是模型维度 d —— 传 d 会让偏移量按 d/head_dim 倍错位，
+                # 并按 d 分配共享内存（fp32 下 128 宽需 80KB > T4 的 64KB 上限）。
+                q, k, v, out, lse, l, scale, h, hk, rep, hd, bm, bn,
                 q.dtype in (torch.float32, torch.float64),
                 tl.float64 if q.dtype == torch.float64 else tl.float32,
                 num_stages=stages, num_warps=warps,
@@ -1513,7 +1516,10 @@ if HAS_TRITON:
                 delta = (do.float() * out.float()).sum(-1).contiguous()
             _flash_bwd_kernel[(triton.cdiv(l, bm), b * h)](
                 q, k, v, do.contiguous(), lse, delta, dq, dk, dv, l, scale,
-                h, hk, rep, d, bm, bn,
+                # D 必须是 head_dim（内核用它做每 token 的行跨度和 arange 上界），
+                # 不是模型维度 d —— 传 d 会让偏移量按 d/head_dim 倍错位，
+                # 并按 d 分配共享内存（fp32 下 128 宽需 80KB > T4 的 64KB 上限）。
+                h, hk, rep, hd, bm, bn,
                 q.dtype in (torch.float32, torch.float64),
                 tl.float64 if q.dtype == torch.float64 else tl.float32,
                 num_stages=stages, num_warps=warps,
