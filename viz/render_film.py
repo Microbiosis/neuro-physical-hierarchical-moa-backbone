@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-六阶十一域混合架构 · 机制动画 —— 渲染器（v12，按 4 地层组织）
+13 域 14 算子 7 阶段 4 地层 · 机制动画 —— 渲染器（按 4 地层组织）
 
 对齐 v12 unified_hybrid_moa_architecture.py 的权威结构：
     Unified 13-Domain, 7-Stage (14-Operator, 4-Stratum)

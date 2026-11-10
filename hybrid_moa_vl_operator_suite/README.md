@@ -4,7 +4,7 @@
 - **单算子 100% 独立可用 + 整包集成可用**：15 个独立算子/内核模块之间**零交叉耦合**（AST 兄弟导入数为 0），任意抽取单个 `.py` 文件放到 `/tmp` 空目录中均可直接 `import` 或 `python3 <module>.py` 运行内置验证套件；同时支持整包导入 `import hybrid_moa_vl_operator_suite`。
 - **全路径 Triton GPU 内核防线与连续步幅保证**：所有 `@triton.jit` 前/反向核均强制使用 `memory_format=torch.contiguous_format`（根治 `einsum` 导致的 `(G, B, L, D_g)` 非连续步幅错位），标量原子归约统一经过 0D `tl.sum(..., axis=0)`（通过 Tesla T4 `tt.atomic_rmw` 类型校验），并配备 `try ... except` 无损降级回退。
 
-## 1. 4 大层级（Stratum I–IV）、7 阶段、17 个核心模块映射表
+## 1. 4 大层级（Stratum I–IV）、7 阶段、14 主干算子 + 12 个扩展模块映射表
 
 | 架构层级与阶段 | 序号 | 模块文件名 | 配置类 (`Config`) | 解析/模拟内核 (`Kernels`) | 核心神经网络算子 (`nn.Module`) | 融合 Autograd / Triton 内核 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -25,6 +25,15 @@
 | Stage VI | 15 | `sleep_subconscious_neuro_operators.py` | `SleepSubconsciousConfig` | `SleepSubconsciousAnalyticalKernels` | `SleepSubconsciousNeuroOp` | `FusedSleepSubconsciousSHYSWRPGOFunction` |
 | **统一总装与独立性验证**<br>All Stages | 16 | `unified_hybrid_moa_architecture.py` | `UnifiedHybridArchitectureConfig` | `UnifiedArchitectureExecutionEngine` | `UnifiedInterdisciplinaryMoALayer`, `UnifiedHybridMoABackbone` | 12 个可学习跨阶段混合门控 + 全链路解析反向 |
 | 5D Independence Audit | 17 | `operator_independence_verification.py` | - | `evaluate_all_14_domain_operators_independently` | - | 15 文件 `/tmp` 隔离 + 14 算子五维正交验证 |
+| 扩展：物理波动力学 | 18 | `physical_wave_dynamics_operators.py` | `PhysicalWaveDynamicsConfig` | - | `SchwingerZPEWavePacketOp`, `SymplecticDampedHarmonicHamiltonianOp`, `ReactionDiffusionField2DOp`, `DBIGaugeMembraneDampingOp`, `UnifiedPhysicalWaveDynamicsLayer` | 10 个 `@triton.jit` |
+| 扩展：高阶 PDE/ODE | 19 | `high_order_pde_ode_megakernels.py` | - | - | `StormerVerletSymplecticMegakernelOp`, `CrankNicolsonIMEX2DMegakernelOp`, `RungeKuttaMidpointZPEWaveOp`, `DBIRelativisticVerletGaugeOp`, `UnifiedHighOrderPhysicsMegakernelLayer` | 5 个 `@triton.jit` + Roofline 分析器 |
+| 扩展：检查点伴随 | 20 | `adaptive_checkpointed_adjoint_megakernels.py` | - | - | `CheckpointedAdaptiveStormerVerletOp`, `AdaptiveCrankNicolsonIMEX2DOp`, `AdaptiveEmbeddedRK21ZPEWaveOp`, `AdaptiveDBIGaugeMembraneOp` | 3 个 `@triton.jit`，O(√L·D) 分段检查点 |
+| 扩展：分布式序列并行 | 21 | `distributed_sequence_parallel_adjoint.py` | - | - | `DistributedSequenceParallelEngine`, `LocalPhysicalBoundaryState`, `LocalAdjointCoState` | P2P 伴随交接 |
+| 扩展：DeepSpeed/Megatron 插件 | 22 | `deepspeed_megatron_physics_plugin.py` | `CoupledViralInvasionConfig` 同族 | - | `HybridPhysicalMoABlock`, `DeepSpeedZeROCompatibleWrapper`, `MegatronSequenceParallelPlugin` | 7 个 `@triton.jit` + ZeRO-3 + SP P2P |
+| 扩展：LLM 层次结构 | 23 | `llm_hierarchy_operators.py` | `LLMHierarchyConfig` | - | `LLMHierarchyOperator` | `LLMHierarchyAutogradFunction`，三后端（NumPy/Torch/Triton） |
+| 扩展：自旋-手性 | 24 | `spin_chirality_operators.py` | `SpinChiralityConfig` | - | `SpinChiralityOperator` | `SpinChiralityAutogradFunction`，三后端 |
+| 独立模型：NBSC-Ω | 25 | `nbsc_omega_operator.py` | - | - | `NBSCOperator`, `NBSCState`, `NBSCOutput` | 42 神经元 / 202 延迟边 / 858 参数，脉冲 + 肌骨 |
+| 独立模型：病毒核酸侵入 | 26 | `viral_invasion_operator.py` | `CoupledViralInvasionConfig` | - | `TorchCoupledViralInvasionOperator`, `NumpyCoupledViralInvasionOperator` | 7 状态 / 11 边 / 13 条 PMID 约束 |
 
 ## 2. 前反向双持久化片上 SRAM Delta-Oja 融合核 (`local_self_modifying_operators.py`)
 

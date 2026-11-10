@@ -397,7 +397,7 @@ def test_torch_unified_layer():
     gnorm = float(x.grad.norm())
     assert gnorm > 0.0, "no gradient through the unified layer"
     n = sum(p.numel() for p in layer.parameters())
-    return f"12 域 7 阶段前向 ok, {n / 1e3:.1f}K params, |grad|={gnorm:.4f}, diag keys={len(diag)}"
+    return f"13 域 14 算子 7 阶段 4 地层前向 ok, {n / 1e3:.1f}K params, |grad|={gnorm:.4f}, diag keys={len(diag)}"
 
 
 def test_torch_unified_backbone():

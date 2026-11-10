@@ -80,27 +80,54 @@ together with four further independence dimensions).
 | `tulpa_neuro_operators.py` | 多子人格吸引子、精度加权自由能路由、Agency 比较器 | 692 |
 | `dissociative_trauma_neuro_operators.py` | Stage-I 前门控：杏仁核超唤醒、PAG 过载关断、ANP/EP 隔离 + 独立验证套件 | 539 |
 | `moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 390 |
+| `physical_wave_dynamics_operators.py` | Schwinger ZPE 波包 / 阻尼辛谐振 / 2D 反应扩散 / DBI 规范膜阻尼（6 类 10 个 Triton 内核） | 2,062 |
+| `high_order_pde_ode_megakernels.py` | Störmer-Verlet 辛蛙跳 / Crank-Nicolson IMEX / RK2 中点 / DBI 规范膜 + Roofline 分析器 | 1,878 |
+| `adaptive_checkpointed_adjoint_megakernels.py` | O(√L·D) 分段检查点伴随 + 局部相空间误差自适应步长 | 1,583 |
+| `deepspeed_megatron_physics_plugin.py` | 4 个物理阶段的 DeepSpeed/Megatron 即插即用层 + ZeRO-3 分片引擎 + SP P2P | 1,890 |
+| `distributed_sequence_parallel_adjoint.py` | Ring/Ulysses 序列并行、伴随交接、计算-通信重叠 | 853 |
+| `llm_hierarchy_operators.py` | LLM 四层结构（Pre-RMSNorm+RoPE / 多头 QKV+KV-Cache / SwiGLU / QK 凝聚+Softcap） | 2,148 |
+| `spin_chirality_operators.py` | 左手/右手 Weyl 手性流 + SU(2) 泡利进动 + ABJ 手性反常门 | 1,990 |
+| `nbsc_omega_operator.py` | 脉冲神经元 + 脊髓牵张反射 + 肌骨力学 + STDP（42 神经元 / 202 边 / 858 参数，独立模型） | 445 |
+| `viral_invasion_operator.py` | 病毒核酸侵入 DNA 状态机（7 状态 / 11 边 / 13 条 PMID 约束，独立模型） | 615 |
 
 ## What this edition contains
 
-- **六阶段本体论层级**（11 个领域，12 个 stage 名）：
+- **7 阶段 / 13 域 / 14 算子 / 4 地层**（`STAGE_DOMAIN_NAMES` 共 14 条）：
+
+  Stratum I — 时空发生基底
 
   ```
   Stage 0.A  VacuumZPE 真空零点能基底（前时空 QFT）
   Stage 0.B  ParityBaryogenesis 物质起源
   Stage I.A  Supermembrane 11D DBI / RSKK
   Stage I.B  QuantumTidal WKB
+  Stage I.C  QuantumResourcePhasing DQI 块门控 / 1/R(ε) 可靠性
+  ```
+
+  Stratum II — 皮质下 / 新皮层
+
+  ```
   Stage II.A SpinalCord 背角门控 / Renshaw
   Stage II.B CorticospinalChaotic Pyragas
-  Stage II.C DissociativeTrauma 稳态负荷门
-  Stage III   3 个新皮层柱（跨模态 VL 联想 / 锥体树突 NMDA-FHN / 突触快权重 DeltaOja）
-  Stage IV    Tri-ISA CPU + SIMT GPU 自举（x86-64 / ARM64 / RISC-V 三种 ISA 仲裁 + warp 调度）
+  Stage II.C DissociativeTrauma 异态负荷门（正交防御旁路）
+  Stage III  Col0 跨模态 VL 联想 / Col1 锥体树突 NMDA-FHN / Col2 突触快权重 DeltaOja
+  ```
+
+  Stratum III — 硅基自举
+
+  ```
+  Stage IV   Tri-ISA CPU + SIMT GPU 自举（x86-64 / ARM64 / RISC-V 仲裁 + warp 调度）
+  ```
+
+  Stratum IV — 代理与睡眠
+
+  ```
   Stage V     Tulpa 代理（前额叶-TPJ 对话）
   Stage VI    睡眠稳态 / 类淋巴清洗 / 潜意识巩固（SHY、SWR、PGO）
   ```
 
-  `num_proposers` 的语义从「8 个异构专家」变为「Stage III 的 3 个新皮层柱」
-  （默认值 8 → 3，`top_k_proposers` 3 → 2），并新增 `num_vacuum_modes` / `num_dream_anchors`。 v7 再插入 Stage IV（Tri-ISA 自举）并新增 `num_isa_anchors`。 v8 把阶段间混合系数从硬编码常数（0.25/0.35/0.40/0.50）改成**可学习参数** `stage{0a,0b,1a,1b,4,5,6}_*_gate`。
+  `num_proposers` 指 Stage III 的 3 个新皮层柱（`top_k_proposers` = 2）；
+  阶段间混合系数是**可学习参数** `stage{0a,0b,1a,1b,1c,4,5,6}_*_gate`，不是硬编码常数。
 - **Expert 0 = 跨模态图文融合** `CrossModalVisionLanguageFusionSubOp`
   （双向 2D 空间邻域卷积 + `R_anchor` 共享潜锚点共注意力 + Hadamard-Bilinear 门控合成）。
 - **零距离衰减**：任意图像 patch 与任意文本 token 通过 `R_anchor` 个共享锚点直接交互，
@@ -191,7 +218,7 @@ y = fusion(torch.randn(2, 64, 256))
 cfg = MoAOperatorConfig(d_model=256, num_proposers=8, top_k_proposers=3)
 proposals = HeterogeneousProposerOp(cfg)(torch.randn(2, 64, 256))
 
-# 六阶段统一层 / 多层骨干
+# 7 阶段统一层 / 多层骨干
 from hybrid_moa_vl_operator_suite import UnifiedHybridArchitectureConfig, UnifiedHybridMoABackbone
 bcfg = UnifiedHybridArchitectureConfig(d_model=256, n_layers=4)
 out, aux, telemetries = UnifiedHybridMoABackbone(bcfg)(torch.randn(2, 64, 256))
