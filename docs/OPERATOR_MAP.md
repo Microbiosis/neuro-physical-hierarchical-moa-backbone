@@ -120,7 +120,7 @@
 | 7 | **llm_hierarchy**（FlashAttention fwd/bwd、norm+RoPE fwd/bwd、SwiGLU fwd/bwd、RoPE 表）|
 | 3 | dissociative_trauma / cpu_gpu_bootstrap / adaptive_checkpointed |
 | 2 | quantum_resource |
-| 0 | distributed_sequence_parallel / **nbsc_omega** / viral_invasion / spin_chirality_qft |
+| 0 | distributed_sequence_parallel / **nbsc_omega** / viral_invasion |
 
 ### 3. 机制属于哪个学科
 

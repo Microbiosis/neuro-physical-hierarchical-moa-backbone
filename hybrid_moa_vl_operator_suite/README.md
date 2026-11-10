@@ -31,7 +31,7 @@
 | 扩展：分布式序列并行 | 21 | `distributed_sequence_parallel_adjoint.py` | - | - | `DistributedSequenceParallelEngine`, `LocalPhysicalBoundaryState`, `LocalAdjointCoState` | P2P 伴随交接 |
 | 扩展：DeepSpeed/Megatron 插件 | 22 | `deepspeed_megatron_physics_plugin.py` | - | - | `HybridPhysicalMoABlock`, `DeepSpeedZeROCompatibleWrapper`, `MegatronSequenceParallelPlugin` | 7 个 `@triton.jit` + ZeRO-3 + SP P2P |
 | 扩展：LLM 层次结构 | 23 | `llm_hierarchy_operators.py` | `LLMHierarchyConfig` | - | `EmbeddingOp`, `RMSNormPositionOp`, `CausalAttentionOp`, `SwiGLUFFNOp`, `ResidualStreamOp`, `VocabHeadOp`, `LLMHierarchyBlock`, `LLMHierarchyOperator` | 7 个 `@triton.jit`（FlashAttention fwd/bwd、norm+RoPE fwd/bwd、SwiGLU fwd/bwd、RoPE 表）+ KV-Cache + generate |
-| 扩展：自旋-手性 | 24 | `spin_chirality_operators.py` | `SpinChiralityConfig` | - | `SpinChiralityOperator` | `SpinChiralityAutogradFunction`，三后端 |
+| 扩展：自旋-手性 | 24 | `spin_chirality_operators.py` | `SpinChiralityConfig` | - | `SpinChiralityOperator` | 复旋量 / 真 SU(2) 手性规范 / 精确 Dirac 演化 / 轴矢流 j⁵；P1–P16 物理自检；单粒子 QFT 工具层已并入本文件 |
 | 独立模型：NBSC-Ω | 25 | `nbsc_omega_operator.py` | - | - | `NBSCOperator`, `NBSCState`, `NBSCOutput` | 42 神经元 / 202 延迟边 / 858 参数，脉冲 + 肌骨 |
 | 独立模型：病毒核酸侵入 | 26 | `viral_invasion_operator.py` | `CoupledViralInvasionConfig` | - | `TorchCoupledViralInvasionOperator`, `NumpyCoupledViralInvasionOperator` | 7 状态 / 11 边 / 13 条 PMID 约束 |
 
