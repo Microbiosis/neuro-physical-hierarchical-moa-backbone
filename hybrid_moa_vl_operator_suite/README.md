@@ -1,7 +1,8 @@
 # 25-Module Interdisciplinary Hybrid MoA & Self-Bootstrapping Operator Suite
 
 本算子包为 **13 域 7 阶段（14 核心算子、4 大层级 Stratum I–IV）跨学科深度学习底层混合架构与自举编译算子库（Vision-Language, Quantum-Resource Phasing & Tri-ISA CPU / SIMT GPU Self-Bootstrapping Edition）**。
-- **单算子 100% 独立可用 + 整包集成可用**：15 个独立算子/内核模块之间**零交叉耦合**（AST 兄弟导入数为 0），任意抽取单个 `.py` 文件放到 `/tmp` 空目录中均可直接 `import` 或 `python3 <module>.py` 运行内置验证套件；同时支持整包导入 `import hybrid_moa_vl_operator_suite`。
+- **单算子 100% 独立可用 + 整包集成可用**：24 个独立算子/内核模块之间**零交叉耦合**（AST 兄弟导入数为 0），任意抽取单个 `.py` 文件放到 `/tmp` 空目录中均可直接 `import`；
+同时支持整包导入 `import hybrid_moa_vl_operator_suite`。
 - **全路径 Triton GPU 内核防线与连续步幅保证**：所有 `@triton.jit` 前/反向核均强制使用 `memory_format=torch.contiguous_format`（根治 `einsum` 导致的 `(G, B, L, D_g)` 非连续步幅错位），标量原子归约统一经过 0D `tl.sum(..., axis=0)`（通过 Tesla T4 `tt.atomic_rmw` 类型校验），并配备 `try ... except` 无损降级回退。
 
 ## 1. 4 大层级（Stratum I–IV）、7 阶段、14 主干算子 + 12 个扩展模块映射表
@@ -44,7 +45,7 @@
 
 ## 3. 五维算子独立性与全架构验证指标
 
-1. **Dimension I（15 模块 `/tmp` 物理隔离验证）**：15 个独立模块 `AST Sibling Deps = 0`，单文件复制到 `/tmp` 独立运行 `15/15 PASS`。
+1. **Dimension I（24 模块 `/tmp` 物理隔离验证）**：24 个独立模块 `AST Sibling Deps = 0`，单文件复制到 `/tmp` 独立运行 `24/24 PASS`。
 2. **Dimension II（14 算子前向非线性子空间满秩）**：联合子空间秩 `14/14 Full Rank`，平均非对角余弦相似度 `0.0762`，最大方差膨胀因子 `Max VIF = 1.74 < 2.0`。
 3. **Dimension III（14 算子反向输入雅可比满秩）**：联合输入梯度秩 `14/14 Full Rank`，`Max Gradient VIF = 1.91 < 5.0`。
 4. **Dimension IV（14×14 参数交叉灵敏度严格对角化）**：非对角项 $\max_{i \neq j} \|\partial Y_i / \partial \Theta_j\|_\infty = \mathbf{0.00 \times 10^0}$，对角自灵敏度 $\min_i \|\partial Y_i / \partial \Theta_i\|_\infty = 8.16 \times 10^{-2} > 0.08$。

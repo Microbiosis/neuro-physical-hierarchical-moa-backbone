@@ -443,3 +443,74 @@ class NBSCOperator(nn.Module):
                             fiber_reference, difference, power, strong)
         return NBSCOutput(updated, spikes, spike_probability, count, release, edge_weight,
                           force, torque, log_probability, payload, speed_impulse, stop_impulse)
+
+
+# ==============================================================================
+# Standalone verification suite
+# ==============================================================================
+def run_nbsc_omega_verification() -> None:
+    """自检：构造、脉冲、静默性、边界与可微性。"""
+    import numpy as np  # noqa: F401  (仅用于可选路径)
+
+    try:
+        import torch
+    except ImportError:
+        print("[SKIP] torch is required for the NBSC-Omega verification suite.")
+        return
+
+    op = NBSCOperator(segments=4)
+    n_par = sum(p.numel() for p in op.parameters())
+    print(f"NBSC-Omega operator: {op.neuron_count} neurons, {op.edge_count} edges, "
+          f"{n_par} trainable parameters")
+
+    state = op.initial_state(2)
+    drive = torch.zeros(2, op.neuron_count)
+    load = torch.zeros(2, op.segments)
+
+    out = op(state, drive, load)
+    print(f"[PASS] single step: spikes={tuple(out.spikes.shape)}, "
+          f"torque={tuple(out.joint_torque.shape)}")
+
+    # 无驱动必须完全静默
+    st = state
+    spikes = 0
+    for _ in range(100):
+        o = op(st, drive, load)
+        spikes += int(o.spikes.sum())
+        st = o.state
+    assert spikes == 0, f"silent path produced {spikes} spikes"
+    assert torch.all(st.angle == 0), "silent path moved the joint"
+    print("[PASS] silent when undriven: 100 steps, zero spikes, zero motion")
+
+    # 有驱动必须产生脉冲，且全程有界
+    torch.manual_seed(0)
+    drive = torch.zeros(2, op.neuron_count)
+    drive[:, :2] = 1.5
+    drive[:, 2:] = 0.8
+    load = torch.full((2, op.segments), 0.5)
+    st = state
+    spikes = 0
+    for _ in range(300):
+        o = op(st, drive, load)
+        spikes += int(o.spikes.sum())
+        st = o.state
+    assert spikes > 0, "driven path produced no spikes"
+    for field in ("voltage", "utilization", "resource", "angle", "velocity"):
+        assert torch.isfinite(getattr(st, field)).all(), f"{field} not finite"
+    print(f"[PASS] driven: 300 steps, {spikes} spikes, all state fields finite")
+
+    # 反向可达
+    op.zero_grad(set_to_none=True)
+    st = state
+    for _ in range(30):
+        o = op(st, drive, load)
+        st = o.state
+    o.joint_torque.abs().sum().backward()
+    got = [n for n, p in op.named_parameters() if p.grad is not None]
+    assert got, "no parameter received a gradient"
+    print(f"[PASS] backward reaches {len(got)}/{len(list(op.named_parameters()))} parameter tensors")
+    print("ALL NBSC-OMEGA VERIFICATION CHECKS PASSED SUCCESSFULLY!")
+
+
+if __name__ == "__main__":
+    run_nbsc_omega_verification()

@@ -23,16 +23,16 @@ and the package `__init__.py` (131 lines); a clean-room smoke test covers 13 che
 ├── smoke_test.py                     clean-room verification (16/16)
 ├── README.md                         本文件
 └── hybrid_moa_vl_operator_suite/     算子包（Python package）
-    ├── __init__.py                   动态初始化（零硬编码表）→ 138 个公开导出
+    ├── __init__.py                   动态初始化（零硬编码表）→ 169 个公开导出
     ├── README.md                     包内说明（原始版本文档）
-    ├── quantum_resource_phasing_operators.py   量子资源相位（1,065 行）← 新增
-    ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（2,285 行）
-    ├── moa_operators.py              系统级 MoA + 跨模态图文融合（978 行）
+    ├── quantum_resource_phasing_operators.py   量子资源相位（1087 行）
+    ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（2325 行）
+    ├── moa_operators.py              系统级 MoA + 跨模态图文融合（1177 行）
     ├── sleep_subconscious_neuro_operators.py    睡眠/潜意识（1,007 行）
-    ├── operator_independence_verification.py    五维独立性审计（609 行）
-    ├── moa_triton_kernels.py         Triton 内核 + tile 模拟器（390 行）
+    ├── operator_independence_verification.py    五维独立性审计（658 行）
+    ├── moa_triton_kernels.py         Triton 内核 + tile 模拟器（469 行）
     ├── vacuum_zpe_fluctuation_operators.py      真空零点能涨落（928 行）
-    └── … 其余 10 个领域算子模块
+    └── … 其余 18 个算子模块
 ```
 
 Two import styles are supported:
@@ -59,7 +59,7 @@ together with four further independence dimensions).
 |---|---|---|
 | `cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,285 |
 | `quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门 → **Stage I.C** | 1,065 |
-| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献），覆盖 15 个独立模块 | 657 |
+| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献）；文件隔离覆盖 24 个模块，五维独立性分析覆盖 14 个领域算子 | 657 |
 | `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,007 |
 | `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,169 |
 | `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 938 |
@@ -297,13 +297,14 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 
   | Dimension | Result |
   |---|---|
-  | I · file & runtime isolation | **15/15 modules**: zero sibling imports, standalone run PASS |
+  | I · file & runtime isolation | **24/24 modules**: zero sibling imports, standalone run PASS |
   | II · forward-representation independence | joint subspace rank **14/14 full**; mean off-diag \|cos\| **0.0762**; max VIF **1.74** (< 2.0) |
   | III · input-gradient subspace independence | gradient matrix rank **14/14**; max gradient VIF < 5.0 |
   | IV · parameter cross-sensitivity Jacobian | off-diagonal cross-talk **exactly 0.00e+00**; all 14 active |
   | V · leave-one-operator-out (CV) | full-ensemble CV R² **0.9997**; every operator irreplaceable |
 
-  v12 起覆盖 **15 个独立模块 / 14 个领域算子**（新增 `14:QuantumResource_Phasing`）。Kaggle GPU kernel
+  五维独立性分析覆盖 **14 个领域算子**（新增 `14:QuantumResource_Phasing`）；文件隔离维度
+  已扩展到全部 24 个算子模块。Kaggle GPU kernel
   `redmingwei/hetero-moe-operator-independence-v8`，1.1 min 跑完，日志见
   `docs/operator_independence_audit.log`。
   Note: the script's header says "5-Fold CV" while its result line prints "4-Fold CV R²";

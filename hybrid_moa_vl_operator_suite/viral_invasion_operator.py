@@ -613,3 +613,59 @@ def create_viral_invasion_operator(config=None, seed=2026, *, backend="auto", de
     return NumpyCoupledViralInvasionOperator(cfg, seed)
 
 
+
+
+# ==============================================================================
+# Standalone verification suite
+# ==============================================================================
+def run_viral_invasion_verification() -> None:
+    """自检：单纯形、门控、因果、确定性与两后端一致。"""
+    import warnings
+
+    import numpy as np
+
+    cfg = CoupledViralInvasionConfig(d_model=16)
+
+    op = create_viral_invasion_operator(cfg, backend="numpy")
+    x = np.random.default_rng(0).standard_normal((2, 8, 16))
+    y, info = op(x, return_aux=True)
+    traj = info["state_trajectory"]
+    total = traj.sum(-1)
+    assert np.abs(total - 1.0).max() < 1e-12, "state left the simplex"
+    assert traj.min() >= 0.0, "negative state occupancy"
+    print(f"[PASS] simplex constraint: max|sum(q)-1| = {np.abs(total - 1.0).max():.2e}")
+
+    op_t = create_viral_invasion_operator(cfg, backend="numpy")
+    xa = np.random.default_rng(1).standard_normal((1, 8, 16))
+    ya, _ = op_t(xa, return_aux=True)
+    xb = xa.copy()
+    xb[0, 5:] += 3.0
+    yb, _ = op_t(xb, return_aux=True)
+    d = float(np.abs(ya[0, :5] - yb[0, :5]).max())
+    assert d < 1e-12, f"causality violated: {d:.3e}"
+    print(f"[PASS] causality along L: perturbing t>=5 leaves t<5 at max|d| = {d:.2e}")
+
+    y1, _ = op_t(xa, return_aux=True)
+    y2, _ = op_t(xa, return_aux=True)
+    assert np.array_equal(y1, y2), "operator is not deterministic"
+    print("[PASS] deterministic: identical input gives bit-identical output")
+
+    try:
+        import torch
+    except ImportError:
+        print("[SKIP] torch not installed; two-backend parity check skipped.")
+        print("ALL VIRAL INVASION VERIFICATION CHECKS PASSED SUCCESSFULLY!")
+        return
+
+    op_torch = create_viral_invasion_operator(cfg, backend="torch")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        yt, _ = op_torch(torch.from_numpy(xa), return_aux=True)
+    d = float(np.abs(yt.detach().numpy() - y1).max())
+    assert d < 1e-6, f"backend mismatch: {d:.3e}"
+    print(f"[PASS] numpy/torch parity: max|d| = {d:.2e}")
+    print("ALL VIRAL INVASION VERIFICATION CHECKS PASSED SUCCESSFULLY!")
+
+
+if __name__ == "__main__":
+    run_viral_invasion_verification()

@@ -102,6 +102,15 @@ STANDALONE_OPERATOR_FILES: Tuple[str, ...] = (
     "tulpa_neuro_operators.py",
     "sleep_subconscious_neuro_operators.py",
     "cpu_gpu_self_bootstrapping_operators.py",
+    "physical_wave_dynamics_operators.py",
+    "high_order_pde_ode_megakernels.py",
+    "adaptive_checkpointed_adjoint_megakernels.py",
+    "distributed_sequence_parallel_adjoint.py",
+    "deepspeed_megatron_physics_plugin.py",
+    "llm_hierarchy_operators.py",
+    "spin_chirality_operators.py",
+    "nbsc_omega_operator.py",
+    "viral_invasion_operator.py",
 )
 
 DOMAIN_OPERATOR_NAMES: Tuple[str, ...] = (

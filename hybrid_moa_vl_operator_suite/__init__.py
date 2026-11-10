@@ -1,9 +1,12 @@
 """
-Unified Interdisciplinary Hybrid MoA Operator Suite (`hybrid_moa_vl_operator_suite`).
+Interdisciplinary Hybrid MoA Operator Suite (`hybrid_moa_vl_operator_suite`).
+
+25 standalone operator modules; there is no orchestration layer - every module is
+independently importable and carries its own verification suite.
 
 Zero-hardcoded-table dynamic package initializer:
 1. Automatically discovers all `.py` submodules in the package directory via `pkgutil.iter_modules`
-   (ordering standalone operator/kernel modules before unified assembly and verification modules).
+   (ordering standalone operator/kernel modules before the verification module).
 2. Dynamically scans each submodule's `__all__` (or inspects objects whose `__module__ == mod.__name__`)
    and resolves every symbol via `getattr` with fault-tolerant fallback to nested `*Kernels`,
    `*Simulator`, and `*Engine` classes.
