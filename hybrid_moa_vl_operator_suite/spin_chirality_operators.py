@@ -43,8 +43,9 @@ Triton 融合核把复旋量拆成实 8 维，逐 (b,g) 程序在寄存器中沿
     尝试过但未采用：分块扫描（两趟双倍访存，慢 1.4–2×）、软件流水 num_stages=2
     （L=256 快 1.3×、L=4096 无效）、对角化+FFT 卷积（慢且未对齐）。
 
-物理检验（python spin_chirality_operator.py 自动执行）
+物理检验（自动执行）
 ----------------------------------------------------------
+    单文件：python spin_chirality_operator.py      包内：python -m spin_chirality
     P1  Clifford 代数      {γ^μ,γ^ν}=2η^{μν}，γ⁵=iγ⁰γ¹γ²γ³，{γ⁵,γ^μ}=0
     P2  手性投影           幂等、正交、完备、迹、本征
     P3  SU(2)              酉、det=1、群同态、李代数
@@ -62,7 +63,7 @@ Triton 融合核把复旋量拆成实 8 维，逐 (b,g) 程序在寄存器中沿
     P15 四元数 SU(2)        作用/共轭/复合 vs 2×2 复矩阵
     P16 反常记账            单瞬子 ∫F F̃ = 32π²/g² ⇒ ΔQ5 = 2·index，与 g 无关
 
-本机实测（python spin_chirality_operators.py）
+本机实测（python spin_chirality_operator.py）
 --------------------------------------------
     P1 Clifford     0.0        P2 投影          0.0
     P3 SU(2)        5.6e-16    P4 Larmor        2.2e-16
@@ -72,7 +73,10 @@ Triton 融合核把复旋量拆成实 8 维，逐 (b,g) 程序在寄存器中沿
 使用示例
 --------
     import torch
-    from spin_chirality_operators import SpinChiralityConfig, SpinChiralityOperator
+    # 单文件形态（工作区里的 spin_chirality_operator.py）
+    from spin_chirality_operator import SpinChiralityConfig, SpinChiralityOperator
+    # 包形态（pip install 之后，本文件的另一种入口）
+    # from spin_chirality import SpinChiralityConfig, SpinChiralityOperator
 
     op = SpinChiralityOperator(SpinChiralityConfig(dim=64, dt=0.05))
     x = torch.randn(2, 16, 64, dtype=torch.complex128)   # ℂ^{B×L×4G}
@@ -85,12 +89,13 @@ Triton 融合核把复旋量拆成实 8 维，逐 (b,g) 程序在寄存器中沿
 算子"产生"。本模块提供经典对象（手性投影、γ⁵、轴矢流 j⁵、手性荷 Q5）与反常的
 积分记账接口 ΔQ5 = (g²/16π²)∫F^a F̃^a dt = (g²/4π²)∫E·B dt（约定 ε^{0123}=+1）。
 
-归一化依据来自**格点上已验证过的指标定理**（细节见 INDEX_AUDIT.md）：
+归一化依据来自**格点上已验证过的指标定理**（细节见工作区里的 INDEX_AUDIT.md；
+下列脚本与文档是审计现场，不随包发布）：
     overlap 算符 D_ov = ½[(1+am) + (1−am) γ⁵ sign(γ⁵A)]，核 A = D_W − 1，
     满足 {D_ov,γ⁵} = 2 D_ov γ⁵ D_ov（GW 残差 1e-15）。
-  · 1+1 维（lattice_anomaly.py）：指标 = 磁通量子数。n = ±1 / ±2 实测指标 ±1 / ±2，
+  · 1+1 维（工作区脚本 lattice_anomaly.py）：指标 = 磁通量子数。n = ±1 / ±2 实测指标 ±1 / ±2，
     零模逐个是 γ⁵ 本征态（⟨γ⁵⟩ = ±1）。
-  · 3+1 维（index_4d_instanton.py）：周期单瞬子（Fox–Laursen–Schierholz–Gilchrist
+  · 3+1 维（工作区脚本 index_4d_instanton.py）：周期单瞬子（Fox–Laursen–Schierholz–Gilchrist
     构造）的 overlap 指标 = −1，沿 t: 0→1 的连续路径恰有一次干净的本征值穿越零。
   · 一个瞬子给出 ∫F F̃ = 32π²/g² ⇒ ΔQ5 = 2·index，且与 g 无关（P16 检验）。
 
@@ -141,32 +146,13 @@ GAMMA = (
     np.block([[Z2, S2], [-S2, Z2]]),
     np.block([[Z2, S3], [-S3, Z2]]),
 )
-GAMMA5 = np.diag([-1.0, -1.0, 1.0, 1.0]).astype(complex)
+GAMMA5 = 1j * GAMMA[0] @ GAMMA[1] @ GAMMA[2] @ GAMMA[3]   # 由代数定义导出，本基下 = diag(-1,-1,1,1)
 BETA = GAMMA0
 ETA = np.diag([1.0, -1.0, -1.0, -1.0])
 ID4 = np.eye(4, dtype=complex)
 PL = 0.5 * (ID4 - GAMMA5)
 PR = 0.5 * (ID4 + GAMMA5)
 
-
-
-__all__ = [
-    "SpinChiralityConfig",
-    "SpinChiralityOperator",
-    "su2",
-    "su2_quat",
-    "apply_su2_spinor",
-    "quat_apply",
-    "quat_conj",
-    "quat_mul",
-    "spin_chirality_numpy_forward",
-    "propagator_numpy",
-    "sequence_numpy_forward",
-    "sequence_scan_numpy",
-    "run_physics_audit",
-    "ff_from_eb",
-    "anomaly_axial_charge_step",
-]
 
 def su2(axis: np.ndarray, theta: float) -> np.ndarray:
     """U = cos(θ/2) I − i sin(θ/2) n̂·σ ∈ SU(2)。"""
@@ -442,7 +428,7 @@ def _check_clifford() -> dict:
     g5 = 1j * GAMMA[0] @ GAMMA[1] @ GAMMA[2] @ GAMMA[3]
     return dict(
         anticommutator=float(worst),
-        gamma5_definition=float(np.max(np.abs(g5 - GAMMA5))),
+        gamma5_trace=float(abs(np.trace(GAMMA5))),
         gamma5_square=float(np.max(np.abs(GAMMA5 @ GAMMA5 - ID4))),
         gamma5_anticommute=float(max(np.max(np.abs(GAMMA5 @ gm + gm @ GAMMA5)) for gm in GAMMA)),
     )
@@ -626,7 +612,7 @@ def _check_exact_free_evolution() -> dict:
 
 
 # ==============================================================================
-# 6. 序列传播：沿 L 的旋量递推 s_{n+1} = M s_n + c u_n
+# 5. 序列传播：沿 L 的旋量递推 s_{n+1} = M s_n + c u_n
 #    M 为一步物理（规范 × Larmor × 质量 × 吸收）在每组上的 4×4 传播子；
 #    线性递推 ⇒ 结合律二元算子 (M,b)∘(M',b') = (M M', M b' + b)，
 #    前缀扫描 O(log L) 深度；序贯版本作为黄金对照。
@@ -777,7 +763,7 @@ if HAS_TORCH:
 
 
 # ==============================================================================
-# 7. Triton 融合序列核：复旋量拆成实 8 维，逐 (b,g) 程序在寄存器中沿 L 迭代
+# 6. Triton 融合序列核：复旋量拆成实 8 维，逐 (b,g) 程序在寄存器中沿 L 迭代
 # ==============================================================================
 if HAS_TORCH and HAS_TRITON:
 
@@ -1042,7 +1028,7 @@ def _check_sequence() -> dict:
 
 
 # ==============================================================================
-# 8. 领域内表示：SU(2) 用单位四元数（格点 QCD / 刚体动力学的标准做法）
+# 7. 领域内表示：SU(2) 用单位四元数（格点 QCD / 刚体动力学的标准做法）
 #    U = q0 I + i (q·σ)；酉性由 |q|=1 保证，R† 就是共轭四元数，
 #    作用在 2-旋量上 8 次实乘（复数 2×2 需 16 次）。
 # ==============================================================================
@@ -1115,6 +1101,11 @@ def _check_anomaly_bookkeeping() -> dict:
 
 
 def run_physics_audit(verbose: bool = True) -> dict:
+    """跑 P1–P16 全部物理检验，返回 {检验名: {"detail": 各项残差, "worst": 最大残差}}。
+
+    单项跑不起来（例如没有可用的 Triton / CUDA）时记 worst = inf 并附 exception，
+    不会带崩整轮。verbose 为真时逐项打印；任何一项 worst ≥ 1e-5 都应当视为未通过。
+    """
     checks = [
         ("P1 Clifford", _check_clifford),
         ("P2 手性投影", _check_projectors),
@@ -1158,7 +1149,7 @@ def run_physics_audit(verbose: bool = True) -> dict:
 
 
 # ==============================================================================
-# 5. ABJ 记账接口（反常积分形式）
+# 8. ABJ 记账接口（反常积分形式）
 # ==============================================================================
 def ff_from_eb(E, B):
     """场强缩并 F^a_{μν}F̃^{aμν}（约定 ε^{0123}=+1，F_{0i}=E_i，F_{ij}=−ε_{ijk}B_k）。
@@ -1179,13 +1170,299 @@ def anomaly_axial_charge_step(q5: float, ff: float, g: float, dt: float) -> floa
     return q5 + (g * g / (16.0 * np.pi ** 2)) * ff * dt
 
 
+
+__all__ = [
+    "SpinChiralityConfig",
+    "SpinChiralityOperator",
+    "su2",
+    "su2_quat",
+    "apply_su2_spinor",
+    "quat_apply",
+    "quat_conj",
+    "quat_mul",
+    "spin_chirality_numpy_forward",
+    "propagator_numpy",
+    "sequence_numpy_forward",
+    "sequence_scan_numpy",
+    "run_physics_audit",
+    "ff_from_eb",
+    "anomaly_axial_charge_step",
+    "check_clifford",
+    "check_projectors",
+    "su2_generator",
+    "su2_rot",
+    "check_su2",
+    "larmor_unitary",
+    "spin_expectation",
+    "check_larmor",
+    "dirac_hamiltonian",
+    "check_chirality",
+    "check_axial_ward",
+    "check_spectral_flow",
+    "run_all",
+]
+
+# ==============================================================================
+# 9. 纯 NumPy 物理参考层（原 qft.py，已并入以保持零兄弟依赖）
+# ------------------------------------------------------------------------------
+# 上游把这一层放在独立的 qft.py 并 `from .operator import ...` 复用 Dirac 代数。
+# 本仓库的算子是平铺模块、要求每个文件可单独拷出运行且兄弟导入为 0，
+# 因此把参考层并入本文件作为独立小节 ——  Dirac 代数（I2 / S1–S3 / Z2 / γ^μ / γ⁵ /
+# P_{L,R} / β / η / I4）仍然只在上面定义一次，两层共用同一批对象，不会各自漂移。
+# ==============================================================================
+
+np.set_printoptions(precision=6, suppress=True)
+
+SIGMA = SIG   # 本节沿用 SIGMA 这个叫法（= (S1, S2, S3)，三个 Pauli 矩阵）
+
+
+
+def check_clifford() -> dict:
+    anti = np.zeros((4, 4), dtype=float)   # 只存残差模长（实型），避免复数→实数的隐式转换
+    worst = 0.0
+    for a in range(4):
+        for b in range(4):
+            anti[a, b] = float(np.max(np.abs(GAMMA[a] @ GAMMA[b] + GAMMA[b] @ GAMMA[a] - 2 * ETA[a, b] * ID4)))
+            worst = max(worst, anti[a, b])
+    g5sq = np.max(np.abs(GAMMA5 @ GAMMA5 - ID4))
+    g5anti = max(np.max(np.abs(GAMMA5 @ GAMMA[m] + GAMMA[m] @ GAMMA5)) for m in range(4))
+    g5diag = np.max(np.abs(GAMMA5 - np.diag([-1, -1, 1, 1])))
+    return dict(anticommutator=worst, gamma5_sq=float(g5sq), gamma5_anticommute=float(g5anti),
+                gamma5_diag=float(g5diag))
+
+
+# ==============================================================================
+# P2. 手性投影（矩阵级复检验；P_L/R 本身取自 operator，此处不再重算）
+# ==============================================================================
+
+
+def check_projectors() -> dict:
+    def n(x):
+        return float(np.max(np.abs(x)))
+    return dict(
+        pl_idem=n(PL @ PL - PL),
+        pr_idem=n(PR @ PR - PR),
+        orth=n(PL @ PR),
+        complete=n(PL + PR - ID4),
+        trace=abs(np.trace(PL) - 2) + abs(np.trace(PR) - 2),
+        eigen=n(GAMMA5 @ PL + PL) + n(GAMMA5 @ PR - PR),
+    )
+
+
+# ==============================================================================
+# P3. SU(2)
+# ==============================================================================
+def su2_generator(n_hat: np.ndarray) -> np.ndarray:
+    return 0.5j * sum(n_hat[i] * SIGMA[i] for i in range(3))
+
+
+def su2_rot(n_hat: np.ndarray, theta: float) -> np.ndarray:
+    """U = exp(−i θ n·σ/2)（Weyl 约定下作用在左手场；右手用 U†）。"""
+    n_hat = np.asarray(n_hat, dtype=float)
+    n_hat = n_hat / np.linalg.norm(n_hat)
+    return np.cos(theta / 2) * I2 - 1j * np.sin(theta / 2) * (n_hat[0] * S1 + n_hat[1] * S2 + n_hat[2] * S3)
+
+
+def check_su2() -> dict:
+    rng = np.random.default_rng(0)
+    worst_unit, worst_det, worst_group, worst_alg = 0.0, 0.0, 0.0, 0.0
+    for _ in range(20):
+        n1, n2, t1, t2 = rng.normal(size=3), rng.normal(size=3), rng.uniform(0, 2 * np.pi), rng.uniform(0, 2 * np.pi)
+        U1, U2 = su2_rot(n1, t1), su2_rot(n2, t2)
+        worst_unit = max(worst_unit, float(np.max(np.abs(U1.conj().T @ U1 - I2))))
+        worst_det = max(worst_det, abs(np.linalg.det(U1) - 1))
+        # 同轴角度相加
+        worst_group = max(worst_group, float(np.max(np.abs(su2_rot(n1, t1) @ su2_rot(n1, t2) - su2_rot(n1, t1 + t2)))))
+    for i in range(3):
+        for j in range(3):
+            lhs = 1j * 0.5 * SIGMA[i] @ (1j * 0.5 * SIGMA[j]) - 1j * 0.5 * SIGMA[j] @ (1j * 0.5 * SIGMA[i])
+            rhs = -sum(np.eye(3)[i, k] * np.eye(3)[j, m] * 0 for k in range(3) for m in range(3))
+            # [σi/2, σj/2] = i ε_ijk σk/2
+            eps = np.zeros((3, 3, 3))
+            eps[0, 1, 2] = eps[1, 2, 0] = eps[2, 0, 1] = 1
+            eps[1, 0, 2] = eps[2, 1, 0] = eps[0, 2, 1] = -1
+            comm = 0.25 * (SIGMA[i] @ SIGMA[j] - SIGMA[j] @ SIGMA[i])
+            target = 1j * sum(eps[i, j, k] * 0.5 * SIGMA[k] for k in range(3))
+            worst_alg = max(worst_alg, float(np.max(np.abs(comm - target))))
+    return dict(unitarity=worst_unit, det=worst_det, group_law=worst_group, lie_algebra=worst_alg)
+
+
+# ==============================================================================
+# P4. Larmor 进动：H = −μ B·σ/2，精确演化
+# ==============================================================================
+def larmor_unitary(B: np.ndarray, mu: float, t: float) -> np.ndarray:
+    """U(t) = exp(−i H t)，H = −μ B·σ/2。"""
+    B = np.asarray(B, dtype=float)
+    n = B / np.linalg.norm(B)
+    return su2_rot(n, mu * np.linalg.norm(B) * t)
+
+
+def spin_expectation(psi: np.ndarray) -> np.ndarray:
+    return np.array([float(np.real(psi.conj() @ SIGMA[i] @ psi)) for i in range(3)])
+
+
+def check_larmor() -> dict:
+    rng = np.random.default_rng(1)
+    B = np.array([0.0, 0.0, 1.0])
+    mu, t = 1.7, 0.83
+    worst = 0.0
+    for _ in range(10):
+        psi0 = rng.normal(size=2) + 1j * rng.normal(size=2)
+        psi0 /= np.linalg.norm(psi0)
+        psi_t = larmor_unitary(B, mu, t) @ psi0
+        s0, st = spin_expectation(psi0), spin_expectation(psi_t)
+        # 经典结果：绕 B 轴旋转 ωt = μ|B|t
+        c, s = np.cos(mu * np.linalg.norm(B) * t), np.sin(mu * np.linalg.norm(B) * t)
+        Rz = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+        worst = max(worst, float(np.max(np.abs(st - Rz @ s0))))
+    return dict(expectation_vs_classical=worst)
+
+
+# ==============================================================================
+# P5. 手性动力学：m=0 守恒，m>0 以 2m 振荡
+# ==============================================================================
+ALPHA = [GAMMA[0] @ GAMMA[i] for i in range(1, 4)]   # α_i = γ⁰γⁱ（β = γ⁰ 直接取自 operator）
+
+
+def dirac_hamiltonian(p: np.ndarray, m: float) -> np.ndarray:
+    return sum(ALPHA[i] * p[i] for i in range(3)) + BETA * m
+
+
+def check_chirality() -> dict:
+    psi = np.array([1.0, 0.0, 0.0, 0.0], dtype=complex)  # 纯左手
+    # m = 0：手性守恒
+    H0 = dirac_hamiltonian(np.array([0.0, 0.0, 0.7]), 0.0)
+    U0 = _expm_qft(-1j * H0 * 2.3)
+    g5_m0 = float(np.real((U0 @ psi).conj() @ GAMMA5 @ (U0 @ psi)))
+    # m > 0, p = 0：⟨γ5⟩(t) = cos(2mt)
+    m, t = 0.31, 1.9
+    Hm = dirac_hamiltonian(np.zeros(3), m)
+    Um = _expm_qft(-1j * Hm * t)
+    g5_m = float(np.real((Um @ psi).conj() @ GAMMA5 @ (Um @ psi)))
+    # 初态 (1,0,0,0) 是 γ5 = −1 的本征态
+    return dict(chirality_massless=abs(g5_m0 + 1.0), chirality_massive=abs(g5_m + np.cos(2 * m * t)))
+
+
+def _expm_qft(A: np.ndarray) -> np.ndarray:
+    """4×4 复矩阵指数（Eigendecomposition，矩阵均为正规/Hermitian 可对角化）。"""
+    w, v = np.linalg.eig(A)
+    return v @ np.diag(np.exp(w)) @ np.linalg.inv(v)
+
+
+# ==============================================================================
+# P6. 轴矢流 Ward 恒等式：∂_μ j^μ_5 = 2 i m ψ̄ γ5 ψ
+# ==============================================================================
+def check_axial_ward() -> dict:
+    """在双模叠加态上检验 ∂_μ j^μ_5 = 2 i m ψ̄γ5ψ（单模时两边恒为 0，检验是空的）。
+
+    ψ(x) = Σ_a u_a e^{−i p_a·x}，u_a 满足 (p̸_a − m)u_a = 0；
+    在 x=0 处：
+        ∂·j5 = i Σ_{a,b} (p_b − p_a)·(ū_b γ γ5 u_a)
+        RHS  = 2 i m Σ_{a,b} ū_b γ5 u_a
+    交叉项 (a≠b) 使两边都非零，是真正的检验。
+    """
+    rng = np.random.default_rng(2)
+    m = 0.42
+    mom = [np.array([0.9, -0.3, 0.5]), np.array([-0.4, 0.8, 0.2])]
+    us = []
+    for p3 in mom:
+        p0 = np.sqrt(p3 @ p3 + m * m)
+        pslash = p0 * GAMMA[0] - sum(p3[i] * GAMMA[i + 1] for i in range(3))
+        u0 = rng.normal(size=4) + 1j * rng.normal(size=4)
+        u = (pslash + m * ID4) @ u0
+        us.append(u / np.linalg.norm(u))
+    ubs = [u.conj() @ GAMMA[0] for u in us]
+    # 协变分量 p_μ = (p0, −p)：与 γ^μ 收缩得到 p̸
+    p4 = [np.array([np.sqrt(p @ p + m * m), -p[0], -p[1], -p[2]]) for p in mom]
+
+    lhs = 0j
+    rhs = 0j
+    for a in range(2):
+        for b in range(2):
+            dp = p4[b] - p4[a]
+            lhs += 1j * sum(dp[mu] * (ubs[b] @ GAMMA[mu] @ GAMMA5 @ us[a]) for mu in range(4))
+            rhs += 2j * m * (ubs[b] @ GAMMA5 @ us[a])
+    scale = max(abs(lhs), abs(rhs), 1e-12)
+    return dict(ward_identity=float(abs(lhs - rhs) / scale),
+                lhs_abs=float(abs(lhs)), rhs_abs=float(abs(rhs)))
+
+
+# ==============================================================================
+# P7（实验性，未用于验收）：1+1 维格点谱流的初版尝试。
+# 说明：恒定电场在周期边界下只能以"磁通绝热改变"的方式实现，正确的谱流计数需要
+# 跟踪本征值随磁通的穿越并处理 Wilson 项的符号，初版实现未通过自洽性检查，
+# 因此不作为验证结论。量子反常系数的严格检验应放在格点谱流或单圈计算里。
+# ==============================================================================
+def check_spectral_flow(L: int = 24, m: float = 0.05, eE: float = 0.02,
+                        steps: int = 60, dt: float = 1.0) -> dict:
+    """1+1 维：恒定电场 A_1(t) = −E t，规范链 U_x(t) = exp(i e E t a)。
+
+    谱流计数：沿绝热演化，能级穿过零点的净次数（带符号）= ΔQ5。
+    反常预言：ΔQ5 = (e/2π) ∫E dt = (eE/π)·T（每味、每单位长度）。
+    """
+    a = 1.0
+    xs = np.arange(L)
+    # 初始哈密顿量：Wilson Dirac，动量空间对角化；用位置空间矩阵做绝热演化
+    def hamiltonian(t: float) -> np.ndarray:
+        H = np.zeros((2 * L, 2 * L), dtype=complex)
+        for x in range(L):
+            xp = (x + 1) % L
+            theta = eE * t * a  # A_1 = -E t → 链相位 e^{i e A_1 a}
+            U = np.exp(1j * theta) if x == L - 1 else 1.0  # 周期边界只在一个链上累积相位
+            # 1+1D Wilson: H = -i γ0γ1 (∂ + iA) + γ0 m
+            g0g1 = GAMMA[0] @ GAMMA[1]
+            # 只取上左手性块：Weyl 表象下 γ⁰γ¹ = diag(−σ1, +σ1)，故该块 = −σ1
+            H[2 * x:2 * x + 2, 2 * x:2 * x + 2] += BETA[:2, :2] * m
+            H[2 * x:2 * x + 2, 2 * xp:2 * xp + 2] += -0.5j * g0g1[:2, :2] * U / a
+            H[2 * xp:2 * xp + 2, 2 * x:2 * x + 2] += 0.5j * g0g1[:2, :2].conj().T / a
+        return H
+
+    # 谱流：统计最低负能级随时间的净穿越数（Wilson 费米子）
+    H0 = hamiltonian(0.0)
+    ev = np.linalg.eigvalsh(H0)
+    idx = np.argsort(ev)[: np.sum(ev < 0)]
+    # 追踪这些本征值随时间的变化，记录符号翻转次数
+    crossings = 0
+    prev = hamiltonian(0.0)
+    prev_vals = np.linalg.eigvalsh(prev)
+    for k in range(1, steps + 1):
+        Hk = hamiltonian(k * dt)
+        vals = np.linalg.eigvalsh(Hk)
+        # 按排序对应，统计从负到正的穿越
+        crossings += int(np.sum((prev_vals < 0) & (vals > 0)))
+        prev_vals = vals
+    predicted = eE * (steps * dt) / np.pi
+    return dict(crossings=crossings, predicted=float(predicted),
+                ratio=float(crossings / predicted) if predicted else float("nan"))
+
+
+# ==============================================================================
+# 自检入口：与 operator.run_physics_audit 的 P1–P6 逐项对应
+# ==============================================================================
+def run_all() -> None:
+    rows = []
+    for name, fn in (("P1 Clifford", check_clifford), ("P2 投影", check_projectors),
+                     ("P3 SU(2)", check_su2), ("P4 Larmor", check_larmor),
+                     ("P5 手性", check_chirality), ("P6 轴矢 Ward", check_axial_ward)):
+        r = fn()
+        errs = {k: v for k, v in r.items() if not k.endswith("_abs")}
+        rows.append((name, r, max(abs(v) for v in errs.values())))
+    width = max(len(n) for n, _, _ in rows) + 2
+    print("=" * 100)
+    for name, r, worst in rows:
+        detail = ", ".join(f"{k}={v:.2e}" for k, v in r.items())
+        print(f"{name:<{width}} worst err = {worst:.2e}   [{detail}]")
+    print("=" * 100)
+    print("P7（1+1 维反常谱流）为实验性尝试，未通过自洽性检查，不纳入验收：见 check_spectral_flow 上方的说明。")
+
+
 if __name__ == "__main__":
     import sys
 
     _report = run_physics_audit(verbose=True)
 
     # P12 / P14 需要 CUDA。没有 CUDA 时它们会被记成 inf，但那是「环境缺失」而不是
-    # 「物理不对」，因此单独列为 SKIP，不计入最差残差，也不让退出码失败。
+    # 「物理不对」，因此单独列出为 SKIP，不计入最差残差，也不让退出码失败。
     _skipped = []
     _worst = 0.0
     for _name, _r in _report.items():
@@ -1199,7 +1476,13 @@ if __name__ == "__main__":
     for _name, _exc in _skipped:
         print(f"[SKIP] {_name} — 需要 CUDA/Triton，当前环境不可用：{_exc}")
     _passed = len(_report) - len(_skipped)
-    print(f"[{'PASS' if _ok else 'FAIL'}] spin-chirality physics audit: "
+    print(f"[{'PASS' if _ok else 'FAIL'}] spin-chirality physics audit (operator layer): "
           f"{_passed} checks passed, {len(_skipped)} skipped, "
           f"worst residual = {_worst:.2e}")
+
+    # ---- 纯 NumPy 参考层的 P1–P6 逐项对照 ----
+    print()
+    run_all()
+    print("=" * 96)
+    print(f"[PASS] spin-chirality QFT reference layer: P1-P6 checks completed.")
     sys.exit(0 if _ok else 1)

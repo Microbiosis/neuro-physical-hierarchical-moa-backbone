@@ -1,6 +1,6 @@
 # Neuro-Physical Hierarchical MoA Backbone
 
-**Hybrid MoA Vision-Language & Tri-ISA Self-Bootstrapping Operator Suite** — 25 standalone
+**Hybrid MoA Vision-Language & Tri-ISA Self-Bootstrapping Operator Suite** — 24 standalone
 neural operator modules covering physical, neurobiological, computer-architecture,
 numerical and distributed domains. Each module is independently importable and runnable;
 there is no orchestrator layer — the operators are the deliverable.
@@ -48,7 +48,7 @@ from hybrid_moa_vl_operator_suite.moa_operators import CrossModalVisionLanguageF
 
 Import mode is selected with `if __package__:` (not `try/except ImportError`), so a
 missing-symbol `ImportError` surfaces with the real module and symbol name instead of
-being masked by the fallback branch. The 25 standalone modules have zero sibling
+being masked by the fallback branch. The 24 standalone modules have zero sibling
 dependencies — each one imports on its own in an empty directory
 (`smoke_test.py` verifies this; `operator_independence_verification.py` audits it
 together with four further independence dimensions).
@@ -80,7 +80,6 @@ together with four further independence dimensions).
 | `distributed_sequence_parallel_adjoint.py` | Ring/Ulysses 序列并行、伴随交接、计算-通信重叠 | 853 |
 | `llm_hierarchy_operators.py` | LLM 四层结构（Pre-RMSNorm+RoPE / 多头 QKV+KV-Cache / SwiGLU / QK 凝聚+Softcap） | 2,148 |
 | `spin_chirality_operators.py` | 左手/右手 Weyl 手性流 + SU(2) 泡利进动 + ABJ 手性反常门 | 1,990 |
-| `spin_chirality_qft.py` | 纯 NumPy 的 QFT 参考层（Clifford / 手性投影 / SU(2) / Larmor / 轴矢 Ward / 谱流），与算子层零交叉依赖 | 312 |
 | `nbsc_omega_operator.py` | 脉冲神经元 + 脊髓牵张反射 + 肌骨力学 + STDP（42 神经元 / 202 边 / 858 参数，独立模型） | 516 |
 | `viral_invasion_operator.py` | 病毒核酸侵入 DNA 状态机（7 状态 / 11 边 / 13 条 PMID 约束，独立模型） | 671 |
 
@@ -258,7 +257,7 @@ Result: **13/13 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 | Check | Result |
 |---|---|
 | package imports (14 modules, 64 exports) | 14/14 |
-| module isolation: 25 standalone modules import alone in an empty dir | 25/25 |
+| module isolation: 24 standalone modules import alone in an empty dir | 24/24 |
 | branch RMSNorm fwd/bwd + finite-difference gradient | fwd 1.8e-15, grad 2.7e-09 |
 | cross-modal anchor co-attention (zero decay, both attentions normalised) | 0.0e+00, head/tail = 1.003 |
 | VL Hadamard-bilinear fusion: closed form, β=0 degeneration, gate saturation, backward gradient | fwd 8.9e-16, grad 7.7e-11 |
@@ -298,14 +297,14 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 
   | Dimension | Result |
   |---|---|
-  | I · file & runtime isolation | **25/25 modules**: zero sibling imports, standalone run PASS |
+  | I · file & runtime isolation | **24/24 modules**: zero sibling imports, standalone run PASS |
   | II · forward-representation independence | joint subspace rank **14/14 full**; mean off-diag \|cos\| **0.0762**; max VIF **1.74** (< 2.0) |
   | III · input-gradient subspace independence | gradient matrix rank **14/14**; max gradient VIF < 5.0 |
   | IV · parameter cross-sensitivity Jacobian | off-diagonal cross-talk **exactly 0.00e+00**; all 14 active |
   | V · leave-one-operator-out (CV) | full-ensemble CV R² **0.9997**; every operator irreplaceable |
 
   五维独立性分析覆盖 **14 个领域算子**（新增 `14:QuantumResource_Phasing`）；文件隔离维度
-  已扩展到全部 25 个算子模块。Kaggle GPU kernel
+  已扩展到全部 24 个算子模块。Kaggle GPU kernel
   `redmingwei/hetero-moe-operator-independence-v8`，1.1 min 跑完，日志见
   `docs/operator_independence_audit.log`。
   Note: the script's header says "5-Fold CV" while its result line prints "4-Fold CV R²";

@@ -5,7 +5,7 @@
 同时支持整包导入 `import hybrid_moa_vl_operator_suite`。
 - **全路径 Triton GPU 内核防线与连续步幅保证**：所有 `@triton.jit` 前/反向核均强制使用 `memory_format=torch.contiguous_format`（根治 `einsum` 导致的 `(G, B, L, D_g)` 非连续步幅错位），标量原子归约统一经过 0D `tl.sum(..., axis=0)`（通过 Tesla T4 `tt.atomic_rmw` 类型校验），并配备 `try ... except` 无损降级回退。
 
-## 1. 25 个算子/内核模块映射表（14 个领域算子 + 10 个扩展/独立模型 + 1 个审计）
+## 1. 24 个算子/内核模块映射表（14 个领域算子 + 9 个扩展/独立模型 + 1 个审计）
 
 | 架构层级与阶段 | 序号 | 模块文件名 | 配置类 (`Config`) | 解析/模拟内核 (`Kernels`) | 核心神经网络算子 (`nn.Module`) | 融合 Autograd / Triton 内核 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -24,7 +24,7 @@
 | **Stratum III：硅基三指令集 CPU + SIMT GPU 自举协处理器**<br>Stage IV | 13 | `cpu_gpu_self_bootstrapping_operators.py` | `CPUGPUSelfBootstrappingConfig` | `CPUGPUSelfBootstrappingAnalyticalKernels`, `SelfBootstrappingCompilerEngine` | `CPUGPUSelfBootstrappingOp` | `FusedCPUGPUSelfBootstrappingFunction` |
 | **Stratum IV：多吸引子归因心智与慢波睡眠整合**<br>Stage V | 14 | `tulpa_neuro_operators.py` | `TulpaNeuroConfig` | `TulpaAnalyticalKernels` | `TulpaNeuroCognitiveOp` | `FusedTulpaCorollaryAgencyDialogueFunction` (7-output Triton backward) |
 | Stage VI | 15 | `sleep_subconscious_neuro_operators.py` | `SleepSubconsciousConfig` | `SleepSubconsciousAnalyticalKernels` | `SleepSubconsciousNeuroOp` | `FusedSleepSubconsciousSHYSWRPGOFunction` |
-| 5D Independence Audit | 24 | `operator_independence_verification.py` | - | `evaluate_all_14_domain_operators_independently` | - | 25 文件 `/tmp` 隔离 + 14 算子五维正交验证 |
+| 5D Independence Audit | 24 | `operator_independence_verification.py` | - | `evaluate_all_14_domain_operators_independently` | - | 24 文件 `/tmp` 隔离 + 14 算子五维正交验证 |
 | 扩展：物理波动力学 | 18 | `physical_wave_dynamics_operators.py` | `PhysicalWaveDynamicsConfig` | - | `SchwingerZPEWavePacketOp`, `SymplecticDampedHarmonicHamiltonianOp`, `ReactionDiffusionField2DOp`, `DBIGaugeMembraneDampingOp`, `UnifiedPhysicalWaveDynamicsLayer` | 10 个 `@triton.jit` |
 | 扩展：高阶 PDE/ODE | 19 | `high_order_pde_ode_megakernels.py` | - | - | `StormerVerletSymplecticMegakernelOp`, `CrankNicolsonIMEX2DMegakernelOp`, `RungeKuttaMidpointZPEWaveOp`, `DBIRelativisticVerletGaugeOp`, `UnifiedHighOrderPhysicsMegakernelLayer` | 5 个 `@triton.jit` + Roofline 分析器 |
 | 扩展：检查点伴随 | 20 | `adaptive_checkpointed_adjoint_megakernels.py` | - | - | `CheckpointedAdaptiveStormerVerletOp`, `AdaptiveCrankNicolsonIMEX2DOp`, `AdaptiveEmbeddedRK21ZPEWaveOp`, `AdaptiveDBIGaugeMembraneOp` | 3 个 `@triton.jit`，O(√L·D) 分段检查点 |
@@ -45,7 +45,7 @@
 
 ## 3. 五维算子独立性与全架构验证指标
 
-1. **Dimension I（25 模块 `/tmp` 物理隔离验证）**：25 个独立模块 `AST Sibling Deps = 0`，单文件复制到 `/tmp` 独立运行 `25/25 PASS`。
+1. **Dimension I（24 模块 `/tmp` 物理隔离验证）**：24 个独立模块 `AST Sibling Deps = 0`，单文件复制到 `/tmp` 独立运行 `24/24 PASS`。
 2. **Dimension II（14 算子前向非线性子空间满秩）**：联合子空间秩 `14/14 Full Rank`，平均非对角余弦相似度 `0.0762`，最大方差膨胀因子 `Max VIF = 1.74 < 2.0`。
 3. **Dimension III（14 算子反向输入雅可比满秩）**：联合输入梯度秩 `14/14 Full Rank`，`Max Gradient VIF = 1.91 < 5.0`。
 4. **Dimension IV（14×14 参数交叉灵敏度严格对角化）**：非对角项 $\max_{i \neq j} \|\partial Y_i / \partial \Theta_j\|_\infty = \mathbf{0.00 \times 10^0}$，对角自灵敏度 $\min_i \|\partial Y_i / \partial \Theta_i\|_\infty = 8.16 \times 10^{-2} > 0.08$。

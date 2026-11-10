@@ -1,6 +1,6 @@
 # 算子清单与区分
 
-本包共 **25 个算子/内核模块**（外加 1 个五维审计文件与 `__init__.py`，合计 27 个 .py，29,476 行）。
+本包共 **24 个算子/内核模块**（外加 1 个五维审计文件与 `__init__.py`，合计 26 个 .py，29,446 行）。
 
 编排层 `unified_hybrid_moa_architecture.py` 已于 2026-11-10 删除，**所有算子之间零依赖**，可单文件拷出独立运行，也可自行组合。
 
@@ -95,7 +95,6 @@
 |---|---|---|
 | `llm_hierarchy_operators.py` | 2,148 | RoPE / QKV+KV-Cache / SwiGLU / QK 凝聚 |
 | `spin_chirality_operators.py` | 1205 | 复旋量 / 真 SU(2) 手性规范 / 精确 Dirac 演化 / 轴矢流 j⁵ 与手性荷 Q5；P1–P16 物理自检 |
-| `spin_chirality_qft.py` | 312 | 纯 NumPy 的 QFT 参考层（Clifford / 手性投影 / SU(2) / Larmor / 轴矢 Ward / 谱流），与算子层零交叉依赖 |
 
 ---
 
@@ -145,4 +144,4 @@
 - **D 2 个 + E 1 个**：只做逐 token / 局部卷积变换。
 - **基础设施 5 个 + 扩展模型 2 个**：换实现方式或封装既有架构，不改 token 混合语义。
 
-> 审计口径：`operator_independence_verification.py` 的 **Dimension I 文件隔离覆盖全部 26 个模块**（25 个算子 + 审计自身），**Dimension II–V 的五维独立性分析覆盖 14 个领域算子**（扩展模型与基础设施不参与，因为它们没有统一的参数化接口）。
+> 审计口径：`operator_independence_verification.py` 的 **Dimension I 文件隔离覆盖全部 26 个模块**（24 个算子 + 审计自身），**Dimension II–V 的五维独立性分析覆盖 14 个领域算子**（扩展模型与基础设施不参与，因为它们没有统一的参数化接口）。
