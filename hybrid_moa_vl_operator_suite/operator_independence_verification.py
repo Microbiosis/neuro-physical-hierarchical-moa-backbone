@@ -460,7 +460,7 @@ def run_five_dimensional_operator_independence_verification() -> None:
     # ==========================================================================
     print("\n[Dimension I] Physical File & Runtime Isolation Audit (Zero Sibling Dependencies)")
     print("-" * 98)
-    local_stems = {f[:-3] for f in STANDALONE_OPERATOR_FILES} | {"unified_hybrid_moa_architecture"}
+    local_stems = {f[:-3] for f in STANDALONE_OPERATOR_FILES}
 
     for fname in STANDALONE_OPERATOR_FILES:
         fpath = os.path.join(cur_dir, fname)

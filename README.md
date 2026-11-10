@@ -1,21 +1,17 @@
 # Neuro-Physical Hierarchical MoA Backbone
 
-**Hybrid MoA Vision-Language & Tri-ISA Self-Bootstrapping Operator Suite** — 16-module
-neural operator library for Mixture-of-Architectures (MoA) backbones: 14 standalone
-operator/kernel modules covering 12 physical, neurobiological & computer-architecture
-domains, plus a unified orchestrator that wires them into a 7-stage ontological hierarchy
-(quantum vacuum → matter genesis → spacetime → sensorimotor → corticolimbic gating →
-neocortical columns → Tri-ISA CPU/SIMT-GPU self-bootstrapping → agency → sleep).
+**Hybrid MoA Vision-Language & Tri-ISA Self-Bootstrapping Operator Suite** — 25 standalone
+neural operator modules covering physical, neurobiological, computer-architecture,
+numerical and distributed domains. Each module is independently importable and runnable;
+there is no orchestrator layer — the operators are the deliverable.
 
 Every module ships four layers: a dataclass config, deterministic NumPy analytical
 kernels, `torch.nn.Module` operators, and fused `autograd.Function` / `@triton.jit`
 implementations — and every layer is importable even without torch installed
 (fallback stubs raise a clear `ImportError` only when instantiated).
 
-Totals: **15,526 lines** across the 15 standalone operator modules, plus the unified
-orchestrator (1,750 lines), the 5-dimensional independence audit (657 lines) and the
-package `__init__.py` (131 lines) — **18,064 lines of Python** in the package, plus a
-660-line clean-room smoke test.
+Totals: **25 operator modules** plus the 5-dimensional independence audit (657 lines)
+and the package `__init__.py` (131 lines); a clean-room smoke test covers 13 checks.
 
 ---
 
@@ -31,7 +27,6 @@ package `__init__.py` (131 lines) — **18,064 lines of Python** in the package,
     ├── README.md                     包内说明（原始版本文档）
     ├── quantum_resource_phasing_operators.py   量子资源相位（1,065 行）← 新增
     ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（2,285 行）
-    ├── unified_hybrid_moa_architecture.py   七阶段总装 + 验证引擎（1,517 行）
     ├── moa_operators.py              系统级 MoA + 跨模态图文融合（978 行）
     ├── sleep_subconscious_neuro_operators.py    睡眠/潜意识（1,007 行）
     ├── operator_independence_verification.py    五维独立性审计（609 行）
@@ -48,8 +43,7 @@ from hybrid_moa_vl_operator_suite import MoAOperatorConfig, NumpyMoAOperatorKern
 from hybrid_moa_vl_operator_suite.moa_operators import CrossModalVisionLanguageFusionSubOp
 
 # 2) 平目录 / 直接跑单个模块的验证套件
-#    python3 hybrid_moa_vl_operator_suite/unified_hybrid_moa_architecture.py
-#    sys.path.insert(0, "hybrid_moa_vl_operator_suite"); import unified_hybrid_moa_architecture
+#    python3 hybrid_moa_vl_operator_suite/moa_operators.py
 ```
 
 Import mode is selected with `if __package__:` (not `try/except ImportError`), so a
@@ -65,7 +59,6 @@ together with four further independence dimensions).
 |---|---|---|
 | `cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,285 |
 | `quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门 → **Stage I.C** | 1,065 |
-| `unified_hybrid_moa_architecture.py` | 七阶段十四算子四地层总装 `UnifiedInterdisciplinaryMoALayer` + 多层 `UnifiedHybridMoABackbone` + 可学习阶段间混合门 + 执行引擎 + LOSO 消融 + 非创伤解耦审计 | 1,750 |
 | `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献），覆盖 15 个独立模块 | 657 |
 | `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,007 |
 | `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,169 |
@@ -132,8 +125,6 @@ together with four further independence dimensions).
   （双向 2D 空间邻域卷积 + `R_anchor` 共享潜锚点共注意力 + Hadamard-Bilinear 门控合成）。
 - **零距离衰减**：任意图像 patch 与任意文本 token 通过 `R_anchor` 个共享锚点直接交互，
   复杂度 `O(L·R_anchor·D)`，没有指数衰减项。
-- **多层骨干** `UnifiedHybridMoABackbone`：堆叠 N 个 `UnifiedInterdisciplinaryMoALayer`
-  （残差 + final RMSNorm），返回逐层遥测。
 - **无 torch 也可 import**：每个模块在 `not HAS_TORCH` 时定义 stub 类，实例化时才抛
   `ImportError` 并提示改用 `AnalyticalKernels`；numpy 路径完全不依赖 torch。
 - **DeltaOja 的 launch-bound 修复（v8 → v9）**：v8 接上了前向分派
@@ -218,11 +209,6 @@ y = fusion(torch.randn(2, 64, 256))
 cfg = MoAOperatorConfig(d_model=256, num_proposers=8, top_k_proposers=3)
 proposals = HeterogeneousProposerOp(cfg)(torch.randn(2, 64, 256))
 
-# 7 阶段统一层 / 多层骨干
-from hybrid_moa_vl_operator_suite import UnifiedHybridArchitectureConfig, UnifiedHybridMoABackbone
-bcfg = UnifiedHybridArchitectureConfig(d_model=256, n_layers=4)
-out, aux, telemetries = UnifiedHybridMoABackbone(bcfg)(torch.randn(2, 64, 256))
-
 # 新增的两个领域算子
 from hybrid_moa_vl_operator_suite import SleepSubconsciousConfig, SleepSubconsciousNeuroOp
 from hybrid_moa_vl_operator_suite import VacuumZPEFluctuationConfig, VacuumZPEFluctuationOp
@@ -244,7 +230,7 @@ out, cache = k.cross_modal_vl_bilinear_fusion_forward(
 `__init__.py` is no longer a hand-written export table. It now:
 
 1. discovers every submodule via `pkgutil.iter_modules` (ordering standalone
-   operator/kernel modules before the unified-assembly and verification modules);
+   operator/kernel modules before the verification module);
 2. scans each submodule's `__all__` (each module now also generates its own
    `__all__` from its own namespace) and resolves every symbol through `getattr`
    with a fault-tolerant fallback into nested `*Kernels` / `*Simulator` /
@@ -279,8 +265,6 @@ Result: **16/16 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 | sparse top-k router | aux 0.0222 |
 | torch `CrossModalVisionLanguageFusionSubOp` fwd/bwd | 13.4K params, grad reaches input |
 | torch MoA stack (proposer + attention + 2 aggregator modes) | density 0.913 |
-| torch `UnifiedInterdisciplinaryMoALayer` (12 domains / 7 stages) | 387.2K params, grad 0.105, 19 telemetry keys |
-| torch `UnifiedHybridMoABackbone` (3 layers) | 1,096.5K params, grad reaches input |
 | torch new domain operators (sleep, vacuum ZPE, Tri-ISA CPU-GPU, quantum resource) | 13.2K / 13.2K / 21.6K / 45.4K params；诊断含 `bootstrap_fixed_point_verified`、三 ISA 分发权重、`mean_dqi_reliability` 等 |
 | torch domain operators (quantum tidal, neuro) | both return (out, diagnostics) |
 | upstream dissociative verification suite | 7 gradchecks PASS, shock output bounded |

@@ -1,4 +1,4 @@
-# Unified 13-Domain, 7-Stage (14-Operator) Interdisciplinary Hybrid MoA & Self-Bootstrapping Operator Suite
+# 25-Module Interdisciplinary Hybrid MoA & Self-Bootstrapping Operator Suite
 
 本算子包为 **13 域 7 阶段（14 核心算子、4 大层级 Stratum I–IV）跨学科深度学习底层混合架构与自举编译算子库（Vision-Language, Quantum-Resource Phasing & Tri-ISA CPU / SIMT GPU Self-Bootstrapping Edition）**。
 - **单算子 100% 独立可用 + 整包集成可用**：15 个独立算子/内核模块之间**零交叉耦合**（AST 兄弟导入数为 0），任意抽取单个 `.py` 文件放到 `/tmp` 空目录中均可直接 `import` 或 `python3 <module>.py` 运行内置验证套件；同时支持整包导入 `import hybrid_moa_vl_operator_suite`。
@@ -23,7 +23,6 @@
 | **Stratum III：硅基三指令集 CPU + SIMT GPU 自举协处理器**<br>Stage IV | 13 | `cpu_gpu_self_bootstrapping_operators.py` | `CPUGPUSelfBootstrappingConfig` | `CPUGPUSelfBootstrappingAnalyticalKernels`, `SelfBootstrappingCompilerEngine` | `CPUGPUSelfBootstrappingOp` | `FusedCPUGPUSelfBootstrappingFunction` |
 | **Stratum IV：多吸引子归因心智与慢波睡眠整合**<br>Stage V | 14 | `tulpa_neuro_operators.py` | `TulpaNeuroConfig` | `TulpaAnalyticalKernels` | `TulpaNeuroCognitiveOp` | `FusedTulpaCorollaryAgencyDialogueFunction` (7-output Triton backward) |
 | Stage VI | 15 | `sleep_subconscious_neuro_operators.py` | `SleepSubconsciousConfig` | `SleepSubconsciousAnalyticalKernels` | `SleepSubconsciousNeuroOp` | `FusedSleepSubconsciousSHYSWRPGOFunction` |
-| **统一总装与独立性验证**<br>All Stages | 16 | `unified_hybrid_moa_architecture.py` | `UnifiedHybridArchitectureConfig` | `UnifiedArchitectureExecutionEngine` | `UnifiedInterdisciplinaryMoALayer`, `UnifiedHybridMoABackbone` | 12 个可学习跨阶段混合门控 + 全链路解析反向 |
 | 5D Independence Audit | 17 | `operator_independence_verification.py` | - | `evaluate_all_14_domain_operators_independently` | - | 15 文件 `/tmp` 隔离 + 14 算子五维正交验证 |
 | 扩展：物理波动力学 | 18 | `physical_wave_dynamics_operators.py` | `PhysicalWaveDynamicsConfig` | - | `SchwingerZPEWavePacketOp`, `SymplecticDampedHarmonicHamiltonianOp`, `ReactionDiffusionField2DOp`, `DBIGaugeMembraneDampingOp`, `UnifiedPhysicalWaveDynamicsLayer` | 10 个 `@triton.jit` |
 | 扩展：高阶 PDE/ODE | 19 | `high_order_pde_ode_megakernels.py` | - | - | `StormerVerletSymplecticMegakernelOp`, `CrankNicolsonIMEX2DMegakernelOp`, `RungeKuttaMidpointZPEWaveOp`, `DBIRelativisticVerletGaugeOp`, `UnifiedHighOrderPhysicsMegakernelLayer` | 5 个 `@triton.jit` + Roofline 分析器 |
@@ -34,6 +33,9 @@
 | 扩展：自旋-手性 | 24 | `spin_chirality_operators.py` | `SpinChiralityConfig` | - | `SpinChiralityOperator` | `SpinChiralityAutogradFunction`，三后端 |
 | 独立模型：NBSC-Ω | 25 | `nbsc_omega_operator.py` | - | - | `NBSCOperator`, `NBSCState`, `NBSCOutput` | 42 神经元 / 202 延迟边 / 858 参数，脉冲 + 肌骨 |
 | 独立模型：病毒核酸侵入 | 26 | `viral_invasion_operator.py` | `CoupledViralInvasionConfig` | - | `TorchCoupledViralInvasionOperator`, `NumpyCoupledViralInvasionOperator` | 7 状态 / 11 边 / 13 条 PMID 约束 |
+
+每个模块可单文件拷到空目录直接 import / 运行内置验证套件；14 个领域算子之间零交叉耦合
+（AST 兄弟导入数为 0，五维审计实测），可按需自行组合，无强制编排层。
 
 ## 2. 前反向双持久化片上 SRAM Delta-Oja 融合核 (`local_self_modifying_operators.py`)
 

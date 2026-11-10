@@ -3,8 +3,7 @@
 """
 13 域 14 算子 7 阶段 4 地层 · 机制动画 —— 渲染器（按 4 地层组织）
 
-对齐 v12 unified_hybrid_moa_architecture.py 的权威结构：
-    Unified 13-Domain, 7-Stage (14-Operator, 4-Stratum)
+按 13 域 / 14 算子 / 7 阶段 / 4 地层的分层组织：
     Stratum I   — 宇宙学 / 相对论 / 量子资源时空发生基底（Stage 0 & I）
     Stratum II  — 皮质下控制轴 vs. 新皮层并行张量柱（Stage II & III）
     Stratum III — 异构硅基 Tri-ISA CPU + SIMT GPU 自举协处理器（Stage IV）

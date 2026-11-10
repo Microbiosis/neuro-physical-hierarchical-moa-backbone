@@ -17,7 +17,7 @@ Checks, in order:
   3. torch nn.Module operators run forward + backward
        (CrossModalVisionLanguageFusionSubOp, HeterogeneousProposerOp,
         CrossProposalAggregatorOp in both modes, MixtureOfAttentionOp,
-        UnifiedInterdisciplinaryMoALayer, two domain operators)
+        two domain operators)
   4. Triton tile simulators reproduce the analytical references
 
 Usage:
@@ -43,7 +43,6 @@ PKG = "hybrid_moa_vl_operator_suite"
 MODULES = [
     "moa_operators",
     "moa_triton_kernels",
-    "unified_hybrid_moa_architecture",
     "quantum_tidal_operators",
     "neuro_nonlinear_operators",
     "local_self_modifying_operators",
@@ -59,7 +58,7 @@ MODULES = [
     "quantum_resource_phasing_operators",
 ]
 # 独立算子模块（不含统一编排层，它按设计 import 全部兄弟模块）
-STANDALONE = [m for m in MODULES if m != "unified_hybrid_moa_architecture"]
+STANDALONE = list(MODULES)
 
 RESULTS: list[tuple[str, bool, str]] = []
 
@@ -375,58 +374,6 @@ def test_new_domain_ops():
         print(f"        · {name}: {n / 1e3:.1f}K params, diag keys={sorted(diag)[:4]}")
     return "sleep + vacuum_zpe + cpu_gpu_bootstrap + quantum_resource 前向/反向/诊断 ok"
 
-def test_torch_unified_layer():
-    import torch
-
-    U = importlib.import_module(f"{PKG}.unified_hybrid_moa_architecture")
-    if not getattr(U, "HAS_TORCH", False):
-        return "skipped (torch layer disabled upstream)"
-    torch.manual_seed(3)
-    cfg = U.UnifiedHybridArchitectureConfig(d_model=64, n_heads=4, n_layers=2,
-                                            num_proposers=3, top_k_proposers=2,
-                                            num_vacuum_modes=8, num_cross_modal_anchors=8,
-                                            num_local_groups=4, local_rank=2,
-                                            num_extra_dims=3, num_tulpas=2,
-                                            num_dream_anchors=8, num_isa_anchors=8)
-    layer = U.UnifiedInterdisciplinaryMoALayer(cfg)
-    x = torch.randn(2, 10, cfg.d_model, requires_grad=True)
-    out, aux, diag = layer(x)
-    assert out.shape == x.shape, f"unified out {tuple(out.shape)}"
-    assert torch.isfinite(out).all()
-    out.float().pow(2).mean().backward()
-    gnorm = float(x.grad.norm())
-    assert gnorm > 0.0, "no gradient through the unified layer"
-    n = sum(p.numel() for p in layer.parameters())
-    return f"13 域 14 算子 7 阶段 4 地层前向 ok, {n / 1e3:.1f}K params, |grad|={gnorm:.4f}, diag keys={len(diag)}"
-
-
-def test_torch_unified_backbone():
-    """多层骨干：UnifiedHybridMoABackbone 堆叠 N 层 + final norm。"""
-    import torch
-
-    U = importlib.import_module(f"{PKG}.unified_hybrid_moa_architecture")
-    if not getattr(U, "HAS_TORCH", False):
-        return "skipped (torch layer disabled upstream)"
-    torch.manual_seed(5)
-    cfg = U.UnifiedHybridArchitectureConfig(d_model=64, n_heads=4, n_layers=3,
-                                            num_proposers=3, top_k_proposers=2,
-                                            num_vacuum_modes=8, num_cross_modal_anchors=8,
-                                            num_local_groups=4, local_rank=2,
-                                            num_extra_dims=3, num_tulpas=2,
-                                            num_dream_anchors=8, num_isa_anchors=8)
-    backbone = U.UnifiedHybridMoABackbone(cfg)
-    x = torch.randn(2, 10, cfg.d_model, requires_grad=True)
-    out, aux, telemetries = backbone(x)
-    assert out.shape == x.shape, f"backbone out {tuple(out.shape)}"
-    assert torch.isfinite(out).all()
-    assert len(telemetries) == cfg.n_layers, f"telemetries {len(telemetries)} != n_layers {cfg.n_layers}"
-    (out.float().pow(2).mean() + aux).backward()
-    gnorm = float(x.grad.norm())
-    assert gnorm > 0.0, "no gradient through the backbone"
-    n = sum(p.numel() for p in backbone.parameters())
-    return f"{cfg.n_layers} 层堆叠 ok, {n / 1e3:.1f}K params, |grad|={gnorm:.4f}"
-
-
 def test_upstream_dissociative_suite():
     """跑包内自带的解离/创伤验证套件（7 变量 gradcheck + 极端冲击安全性）。"""
     import contextlib
@@ -442,64 +389,6 @@ def test_upstream_dissociative_suite():
     assert n_pass >= 7, f"只看到 {n_pass} 个 PASS（预期 ≥7）"
     assert "Bounded" in out, "缺少极端冲击有界性检查"
     return f"上游套件 {n_pass} 项 PASS，冲击输出有界"
-
-
-def test_mechanism_stage_decoupling():
-    """机制审计（v6）：Stage 0/III/IV/V 与干净感觉运动流对创伤参数严格零灵敏 + 互补门控。"""
-    U = importlib.import_module(f"{PKG}.unified_hybrid_moa_architecture")
-    rng = np.random.default_rng(11)
-    cfg = U.UnifiedHybridArchitectureConfig(d_model=64, n_heads=4, num_proposers=3,
-                                            top_k_proposers=2, num_vacuum_modes=8,
-                                            num_cross_modal_anchors=8, num_local_groups=4,
-                                            local_rank=2, num_extra_dims=3, num_tulpas=2,
-                                            num_dream_anchors=8, num_isa_anchors=8)
-    B, L, D = 2, 16, cfg.d_model
-    x = rng.standard_normal((B, L, D)) * 0.5
-    params = U.UnifiedArchitectureExecutionEngine.init_layer_parameters(D, cfg, seed=2026)
-    fwd = U.UnifiedArchitectureExecutionEngine.forward_unified_layer_exact
-
-    _, ctx = fwd(x, params, cfg, use_smooth_router=True)
-
-    # 1) 因果解耦：大幅扰动创伤参数，Stage 0/III/IV/V 与干净流必须逐位不变
-    pert = {k: v.copy() for k, v in params.items()}
-    pert["alpha_hyper"] += 10.0
-    pert["gamma_dpdr"] += 10.0
-    pert["theta_dissoc"] += 5.0
-    _, ctx_p = fwd(x, pert, cfg, use_smooth_router=True)
-
-    groups = {
-        "Stage0.A VacuumZPE": ("zpe_out",),
-        "Stage0.B Baryogenesis": ("baryon_out",),
-        "StageIII Cortex": ("h_cortex", "proposals_raw"),
-        "StageIV CPUGPU_TriISA": ("boot_out",),
-        "StageV Tulpa": ("tulpa_out",),
-        "StageVI Sleep": ("y_consolidated",),
-        "干净感觉运动流": ("reflex_bypass", "mega_syn"),
-    }
-    worst = 0.0
-    for name, keys in groups.items():
-        d = max(float(np.max(np.abs(ctx[k] - ctx_p[k]))) for k in keys)
-        worst = max(worst, d)
-        assert d == 0.0, f"{name} 对创伤参数有灵敏度 {d:.3e}"
-    # 对照：创伤通路本身必须确实变了（证明扰动生效，不是空操作）
-    d_trauma = float(np.max(np.abs(ctx["trauma_out"] - ctx_p["trauma_out"])))
-    assert d_trauma > 1.0, f"扰动未生效，创伤输出只变了 {d_trauma:.3e}"
-
-    # 2) 互补门控：常态 -> 意志/Tulpa/睡眠门占优；+50 冲击 -> 创伤防御门接管
-    g_norm = float(np.mean(ctx["g_shut_gate"]))
-    x_shock = x.copy()
-    x_shock[:, 0, :] += 50.0
-    _, ctx_s = fwd(x_shock, params, cfg, use_smooth_router=True)
-    g_shock = float(np.mean(ctx_s["g_shut_gate"][:, 0, :]))
-    assert g_norm > 0.70, f"常态门控 {g_norm:.4f} 未占优"
-    assert g_shock < 1e-10, f"冲击下意志门未关闭 {g_shock:.3e}"
-
-    # 3) 冲击触发 DPDR 感觉压缩（创伤表征被压小）
-    tr_norm = float(np.linalg.norm(ctx["trauma_out"][:, 0, :]))
-    tr_shock = float(np.linalg.norm(ctx_s["trauma_out"][:, 0, :]))
-    assert tr_shock < tr_norm, f"冲击未触发 DPDR 压缩 {tr_shock:.3f} vs {tr_norm:.3f}"
-    return (f"Stage0/III/IV/V/VI+干净流对创伤参数全部 = {worst:.1e}（创伤通路自身变了 {d_trauma:.1f}），"
-            f"G_shut {g_norm:.4f}→{g_shock:.2e}，DPDR 压缩 {tr_norm / max(tr_shock, 1e-12):.1f}×")
 
 
 def test_domain_ops():
@@ -590,13 +479,9 @@ def main() -> int:
     if not quick and torch_ok:
         check("torch CrossModalVisionLanguageFusionSubOp fwd/bwd", test_torch_vl_fusion)
         check("torch MoA stack (proposer + attention + 2 aggregators)", test_torch_moa_stack)
-        check("torch UnifiedInterdisciplinaryMoALayer (12 domains / 7 stages)", test_torch_unified_layer)
-        check("torch UnifiedHybridMoABackbone (3 layers)", test_torch_unified_backbone)
         check("torch new domain operators (sleep, vacuum ZPE, CPU-GPU, quantum resource)", test_new_domain_ops)
         check("torch domain operators (quantum tidal, neuro)", test_domain_ops)
         check("upstream dissociative verification suite", test_upstream_dissociative_suite)
-        check("mechanism: Stage 0/III/IV/V/VI vs Trauma decoupling + regime gates",
-              test_mechanism_stage_decoupling)
         check("triton tile simulators vs references", test_triton_simulators)
     elif not quick:
         print("  SKIP  torch / simulator sections (torch not installed)")
