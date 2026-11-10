@@ -6,7 +6,7 @@ automatically when torch is missing. No GPU and no Triton install required.
 
 Checks, in order:
 
-  1. the package imports and all 24 operator modules load under their
+  1. the package imports and all 25 operator modules load under their
      canonical names
   2. numpy analytical kernels
        - branch RMSNorm forward/backward (+ finite-difference gradient check)
@@ -63,10 +63,11 @@ MODULES = [
     "deepspeed_megatron_physics_plugin",
     "llm_hierarchy_operators",
     "spin_chirality_operators",
+    "spin_chirality_qft",
     "nbsc_omega_operator",
     "viral_invasion_operator",
 ]
-# 全部算子模块（编排层已于 2026-11-10 删除，这里是全部 24 个）
+# 全部算子模块（编排层已于 2026-11-10 删除，这里是全部 25 个）
 STANDALONE = list(MODULES)
 
 RESULTS: list[tuple[str, bool, str]] = []
@@ -477,8 +478,8 @@ def main() -> int:
           + (", torch available" if torch_ok else ", torch MISSING (torch checks skipped)"))
     print("-" * 74)
 
-    check("package imports (24 modules + package exports)", test_imports)
-    check("module isolation: 24 个独立模块单独可 import", test_module_isolation)
+    check("package imports (25 modules + package exports)", test_imports)
+    check("module isolation: 25 个独立模块单独可 import", test_module_isolation)
     check("numpy branch RMSNorm fwd/bwd + FD gradient", test_numpy_rmsnorm)
     check("numpy cross-modal anchor co-attention (zero decay)", test_numpy_cross_modal_anchor_co_attention)
     check("numpy VL Hadamard-bilinear fusion + gradient", test_numpy_vl_bilinear_fusion)
