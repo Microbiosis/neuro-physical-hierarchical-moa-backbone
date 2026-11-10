@@ -17,6 +17,7 @@ A 100% standalone, zero-dependency, self-contained module implementing:
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 import numpy as np
@@ -788,8 +789,13 @@ if HAS_TORCH:
                     ctx.save_for_backward(yb_c, ub_c, zp_c, eta_c, lam_c, alp_c)
                     ctx.used_triton = True
                     return out
-                except Exception:
-                    pass
+                except Exception as _triton_exc:  # noqa: BLE001
+                    warnings.warn(
+                        "fused_local_self_mod_weight_fwd_kernel failed; "
+                        f"falling back to the NumPy/Torch Path-A reference: "
+                        f"{type(_triton_exc).__name__}: {_triton_exc}",
+                        RuntimeWarning, stacklevel=2,
+                    )
 
             ctx.used_triton = False
             eta_b = eta.unsqueeze(0).unsqueeze(0)
@@ -856,7 +862,13 @@ if HAS_TORCH:
                         d_lambda_oja.to(lam_c.dtype),
                         d_alpha_mod.to(alp_c.dtype),
                     )
-                except Exception:
+                except Exception as _triton_exc:  # noqa: BLE001
+                    warnings.warn(
+                        "fused_local_self_mod_weight_bwd_kernel failed; "
+                        f"falling back to the analytical backward: "
+                        f"{type(_triton_exc).__name__}: {_triton_exc}",
+                        RuntimeWarning, stacklevel=2,
+                    )
                     y_base, u_basis, z_proj, eta, lambda_oja, alpha_mod = ctx.saved_tensors
                     eta_b = eta.unsqueeze(0).unsqueeze(0)
                     lam_b = lambda_oja.view(1, 1, -1, 1)
@@ -965,8 +977,13 @@ if HAS_TORCH:
                         ctx.save_for_backward(q_c, k_c, v_c, eta_c, gam_c, w_hist)
                     ctx.used_triton = True
                     return y_out, w_final
-                except Exception:
-                    pass
+                except Exception as _triton_exc:  # noqa: BLE001
+                    warnings.warn(
+                        "persistent_delta_oja_sram_fused_fwd_kernel failed; "
+                        f"falling back to the explicit PyTorch Path-B loop: "
+                        f"{type(_triton_exc).__name__}: {_triton_exc}",
+                        RuntimeWarning, stacklevel=2,
+                    )
 
             ctx.used_triton = False
             w_fast = w_base.unsqueeze(0).expand(B, -1, -1, -1).clone()
@@ -1043,8 +1060,13 @@ if HAS_TORCH:
                         d_gam.to(gamma_forget.dtype),
                         None,
                     )
-                except Exception:
-                    pass
+                except Exception as _triton_exc:  # noqa: BLE001
+                    warnings.warn(
+                        "persistent_delta_oja_sram_fused_bwd_kernel failed; "
+                        f"falling back to the explicit reverse-time loop "
+                        f"(~256x slower): {type(_triton_exc).__name__}: {_triton_exc}",
+                        RuntimeWarning, stacklevel=2,
+                    )
 
             # Analytical explicit reverse-time backward (zero torch.enable_grad graph overhead)
             dq = torch.empty_like(q)
