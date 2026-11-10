@@ -13,8 +13,15 @@ Core Architecture & Audit-Hardened Guarantees:
    - Bridges visual patches and text tokens globally with ZERO distance attenuation
      via `R_anchor` shared cross-modal latent bottlenecks.
 3. Fused Hadamard-Bilinear Cross-Modal Gated Synthesis (`FusedCrossModalBilinearGateFunction`):
-   - Dispatches directly to `@triton.jit` `fused_cross_modal_vl_bilinear_fwd_kernel` and
-     6-output `fused_cross_modal_vl_bilinear_bwd_kernel` when on CUDA with Triton.
+   - Dispatches directly to **this module's own private** `@triton.jit`
+     `_moa_vl_bilinear_fwd_kernel` and the 6-output `_moa_vl_bilinear_bwd_kernel`
+     (outputs: GradVVis, GradTTxt, GradCAlign, GradAlphaVis, GradAlphaTxt, GradBetaBilin)
+     when on CUDA with Triton; falls back to the NumPy analytical path otherwise.
+   - Note: `moa_triton_kernels.py` separately publishes *simulation-verified* kernels
+     (`fused_cross_modal_vl_bilinear_fwd/bwd_kernel`) plus `TritonTileSimulator` and
+     `KernelOptimizationReport`. That module is verification tooling, not a runtime
+     dependency of this one — the two never import each other, which keeps both at
+     zero sibling imports.
 4. Tie-Aware Symmetric Sparse Top-K Router & `top_k <= N` Safety:
    - Clamps `k_eff = min(max(int(top_k), 1), N)` so `top_k > N` never raises `ValueError`.
    - Resolves tied router logits symmetrically (`selection_mask = strict_mask + tie_mask * (rem_k / num_tie)`),
