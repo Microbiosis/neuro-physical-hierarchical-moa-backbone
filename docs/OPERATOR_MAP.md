@@ -93,7 +93,7 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `llm_hierarchy_operators.py` | 2,148 | RoPE / QKV+KV-Cache / SwiGLU / QK 凝聚 |
+| `llm_hierarchy_operators.py` | 2384 | 完整 LLM 计算层次六算子 × 六空间（Embedding / RMSNorm+RoPE / 因果 GQA / SwiGLU / 残差流 / 词表头），含 KV-Cache、generate、7 个 Triton 核 |
 | `spin_chirality_operators.py` | 1205 | 复旋量 / 真 SU(2) 手性规范 / 精确 Dirac 演化 / 轴矢流 j⁵ 与手性荷 Q5；P1–P16 物理自检 |
 
 ---
@@ -117,7 +117,7 @@
 | 7 | deepspeed_megatron_plugin |
 | 6 | quantum_tidal |
 | 5 | baryogenesis / supermembrane / spinal / corticospinal / neuro_nonlinear / local_self_modifying / high_order_pde / moa_triton_kernels |
-| 4 | vacuum_zpe / moa_operators / sleep / llm_hierarchy |
+| 7 | **llm_hierarchy**（FlashAttention fwd/bwd、norm+RoPE fwd/bwd、SwiGLU fwd/bwd、RoPE 表）|
 | 3 | dissociative_trauma / cpu_gpu_bootstrap / adaptive_checkpointed |
 | 2 | quantum_resource |
 | 0 | distributed_sequence_parallel / **nbsc_omega** / viral_invasion / spin_chirality_qft |

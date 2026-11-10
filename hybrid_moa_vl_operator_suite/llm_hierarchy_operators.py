@@ -1,2149 +1,2384 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-LLM-Hierarchy Standalone Neural Operator (完整 LLM 算子层次独立新算子)
-================================================================================
+LLM-Hierarchy Operator — 现代大语言模型完整计算层次的单文件可微算子模块
+==========================================================================
 
-零同级依赖（0 Sibling Imports）、自包含、可微分的深度学习底层独立新算子模块。
-将现代大型语言模型（Large Language Model, LLM）的完整计算层次——即：
-  [Layer 1] Pre-RMSNorm 均方根归一化与旋转位置编码 (RoPE, Rotary Position Embedding)
-  [Layer 2] 多头自注意力查询-键-值投射与上下文聚合 (Multi-Head QKV Attention & KV-Cache)
-  [Layer 3] SwiGLU 双线性门控前馈网络 (SwiGLU Gated Feed-Forward Network / MoE FFN)
-  [Layer 4] 残差高速公路门控、QK 点积凝聚与 Logit Softcapping 输出头 (Residual & Logit Head)
-浓缩并正交解耦为一个单文件、零外部同级依赖、具备解析反向传播与 @triton.jit GPU 融合核的
-底层张量算子 `LLMHierarchyOperator`。
+零同级依赖（0 sibling imports）、自包含、可微分的深度学习底层独立算子。每个算子
+独占自己的**张量空间**，层次沿真实数据流串联，而不是把整条 LLM 压进一个残差通道：
 
-核心物理/数学架构（四通道正交解耦，D = 4 * G）：
-将输入特征张量 X in R^{B x L x D} 按四通道注意力头组 G = D // 4 重塑为 (u_1, u_2, v_1, v_2)，
-其中 q = (u_1, u_2)^T 为查询/键子流 (Query/Key Stream)，v = (v_1, v_2)^T 为价值/上下文子流
-(Value/Context Stream)：
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │ 算子                    入空间            出空间            中间空间     │
+    │ L0 EmbeddingOp          token (B,L)       stream D          —          │
+    │ L1 RMSNormPositionOp    stream D          norm   D          —          │
+    │ L2 CausalAttentionOp    norm   D          stream D          head H×d_h │
+    │ L3 SwiGLUFFNOp          norm   D          stream D          ffn  F     │
+    │ L4 ResidualStreamOp     stream D + D      stream D          —          │
+    │ L5 VocabHeadOp          stream D          logit  V          —          │
+    └──────────────────────────────────────────────────────────────────────┘
 
-1. 子算子 I — Pre-RMSNorm 与旋转位置编码算子 (O_rope, RMSNorm + RoPE Sub-Operator):
-   引入序列归一化位置坐标 pos_l = (l + 1) / L，构造位置相关的 SO(2) 旋转相位
-   phi_{l,g} = pos_l * theta_{rope,g}，结合带真空零点能下界的 RMS 能量归一化包络
-   D_rms = 1 / sqrt(1 + kappa_{rms,eff} * (u_1^2 + u_2^2))，实现位置感知的表示调制。
+    计算图（真正的 LLM 层次，顺序组合）：
+        x = Embedding(ids)                                   # V → D
+        for block in range(n_layers):
+            x = Residual(x, Attention(Norm(x)))               # D → H×d_h → D
+            x = Residual(x, SwiGLU(Norm(x)))                  # D → F → D
+        logits = VocabHead(Norm_final(x))                     # D → V, softcap
 
-2. 子算子 II — 多头注意力价值投射与能量缩放算子 (O_qkv, Multi-Head Value & Attention Scaling):
-   在正交价值子空间 (v_1, v_2)^T 上施加多头注意力相位投射 theta_{qkv,g}、头权重 w_{qkv,g}
-   以及有理注意力分母包络 D_qkv = 1 / sqrt(1 + kappa_{qkv,eff} * (v_1^2 + v_2^2))。
+四个可微算子类别（O1 归一化-位置、O2 因果注意力、O3 门控前馈、O4 残差流）加上
+两个空间算子（O0 词嵌入、O5 词表头），共六个参数块**互不相交**的独立算子：
 
-3. 子算子 III — SwiGLU 双线性门控前馈网络算子 (O_swiglu, SwiGLU Gated FFN Sub-Operator):
-   构造跨子流双线性反对称门控特征 G_glu = u_1 v_2 - u_2 v_1，将上投射分支 (w_up) 与
-   门控投射分支 (w_gate * G_glu) 融合，并施加全通道 FFN 有理阻尼包络
-   D_ffn = 1 / (1 + kappa_{ffn,eff} * E_tot)。
+  · 每个算子单独可导入、单独可微、单独可测（`numpy` / `torch` / `triton` 三套实现）；
+  · 扰动任一算子的参数，其余算子的输出在输入固定时**精确不变**（交叉灵敏度非对角元严格 0）；
+  · 每个算子在**自己的空间**里满秩：注意力在 H×d_h 头空间、SwiGLU 在 F 中间空间、
+    词表头在 V 词表空间、嵌入在 V×D 表空间——不做 D 维塌缩；
+  · 层次串联后仍共享同一条残差流（stream D），这是 LLM 的真实结构，不是并联混合。
 
-4. 子算子 IV — QK 点积注意力凝聚、残差门控与 Softcap 输出头算子 (O_head, QK-Inner & Logit Softcap):
-   显式计算缩放点积注意力内积 I_qk = <q, k> = u_1 v_1 + u_2 v_2 与子空间能量裕度
-   Delta_E = (v_1^2 + v_2^2) - (u_1^2 + u_2^2)，通过有理 Logit 软截断门
-   G_cap = Delta_E / sqrt(1 + kappa_{head,eff} * Delta_E^2) 与有界残差门
-   alpha_{res,eff} = sigmoid(alpha_res) in (0, 1) 完成最终表示合成。
+三套实现，互为标尺
+------------------
+1. `np_*`          — 双精度 NumPy 解析引擎：前向与**手推解析反向**（不依赖任何自动微分）。
+2. `torch.nn`      — PyTorch 引擎：`nn.Module` + autograd，训练与推理主路径。
+3. `@triton.jit`   — GPU 融合核（前向 + 反向，均以 `torch.autograd.Function` 接入）：
+                     · RMSNorm+RoPE 单核融合（含 cos/sin 表生成）；
+                     · SwiGLU 门控融合；
+                     · FlashAttention 式因果注意力（QK^T → softmax → PV 全在核内，
+                       不落 L×L 矩阵，支持 GQA 与 fp16/bf16/fp32/fp64）。
 
-此外，模块内建完整 LLM 算子级推理接口：
-- `forward_with_kv_cache(x, kv_cache=None)`: 支持自回归增量解码的因果 KV-Cache 状态更新与上下文门控。
-- `compute_logits(hidden_states, vocab_weight=None)`: 含 RMSNorm 与有理 Logit Softcapping 的词表投射头。
+自检
+----
+`python llm_hierarchy_operator.py`            三套引擎逐算子对拍 + Gradcheck + 六算子正交审计
+`python -m llm_hierarchy_operator`            同上（以包形式安装后）
+`python llm_hierarchy_operator.py --json`     输出机器可读报告
+`python llm_hierarchy_operator.py --bench`    融合核基准（需 GPU）
 
-验证标准（全面通过）：
-- 三套引擎（双精度 NumPy 解析引擎、PyTorch Autograd 引擎、@triton.jit 融合 GPU 核）前向最大绝对误差 < 1e-14。
-- 输入张量与全部 12 组可学参数的解析反向梯度对比中心有限差分 (eps = 1e-6) 最大相对误差 < 1e-8。
-- 五维正交独立性形式化审计（0 同级依赖、前向 4/4 与 D/D 满秩、反向雅可比 Max VIF < 2.0、
-  4x4 参数交叉灵敏度非对角精确 0.00e+00 且对角 > 0.08、留一法 LOOO CV 全模型 R^2 > 0.999 且 Delta R^2 > +0.02）。
+依赖：numpy（必需）；torch / triton（可选，缺失时自动退化为 NumPy 路径）。
+
+实测（RTX 5070 Laptop，torch 2.14.1+cu132，triton 3.9.0，2026-11-10）
+--------------------------------------------------------------------
+审计配置：D=128 H=4 H_kv=2 F=320 V=128 layers=2，六空间 token 128 / stream 128 /
+head 128 / kv 64 / ffn 320 / logit 128。
+- 逐算子 NumPy ↔ PyTorch：前向 max|Δ| ≤ 1.8e-15，全部参数与输入梯度相对误差 ≤ 1e-15。
+- 整模型：前向 1.2e-15，梯度 2.4e-15；KV-Cache 逐 token 与整序列 1.3e-15。
+- Triton fp64：norm+rope、swiglu 与 attention 融合核（含反向、含位置偏移、L 非块对齐）≈ 1e-15；
+  fp32 注意力核 ≈ 2e-7（IEEE 点积）。
+- 融合注意力基准（B=8, H=8, L=1024, D=64）：fp16 前向 14.1×、前向+反向 6.3×；
+  fp32 前向 3.7×、前向+反向 2.5×（对比 materialize L×L 的 eager 路径）。
+  块级（B=32, H=6, D=384）前向+反向：L=128 约 1.0×、L=256 1.47×、L=512 1.69×，
+  因此 `flash_min_len=192` 以下自动回落 PyTorch 路径。
+- Gradcheck（eps=1e-6）：参数 1.6e-8，嵌入表 4.2e-10。
+- 五维审计：六个算子在各自空间满秩（head 320/320、ffn 320/320、attention 128/128、
+  logit 128/128），反向 5/5 算子 Max VIF 1.09，6×6 交叉灵敏度 30/30 非对角精确 0，
+  留一法消融 Δrel 1.00–1.27。
+- 融合核（rows=8192，D=1024，fp32）：RMSNorm+RoPE 6.9×，SwiGLU 门控 1.70×。
+- 字符级 LM（`demo_train_llm_hierarchy.py`）：9.50M 参数（D=384，6 层，F=1024），
+  400 步 val loss 1.69（PPL 5.4），54 ms/step，76k tok/s。
 """
 
 from __future__ import annotations
 
+import argparse
 import ast
+import copy
+import json
 import math
+import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-# ==============================================================================
-# 可选依赖自适应导入（PyTorch & Triton GPU Kernel）
-# ==============================================================================
-try:
+try:  # PyTorch 可选
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
 
     HAS_TORCH = True
-except ImportError:
+except ImportError:  # pragma: no cover - 无 torch 环境
     HAS_TORCH = False
     torch = None  # type: ignore
     nn = None  # type: ignore
     F = None  # type: ignore
 
-try:
+try:  # Triton 可选
     import triton
     import triton.language as tl
+    import triton.language.extra.libdevice as tld
 
     HAS_TRITON = True
-except ImportError:
+except ImportError:  # pragma: no cover - 无 triton 环境
     HAS_TRITON = False
     triton = None  # type: ignore
     tl = None  # type: ignore
+    tld = None  # type: ignore
 
-
-# ==============================================================================
-# 1. 算子配置结构体 (LLMHierarchyConfig)
-# ==============================================================================
+__version__ = "0.1.0"
 
 __all__ = [
+    "__version__",
     "LLMHierarchyConfig",
+    "EmbeddingOp",
+    "RMSNormPositionOp",
+    "CausalAttentionOp",
+    "SwiGLUFFNOp",
+    "ResidualStreamOp",
+    "VocabHeadOp",
+    "LLMHierarchyBlock",
     "LLMHierarchyOperator",
-    "LLMHierarchyAutogradFunction",
+    "LLMHierarchyModel",
+    "np_embedding_forward",
+    "np_embedding_backward",
+    "np_rmsnorm_position_forward",
+    "np_rmsnorm_position_backward",
+    "np_causal_attention_forward",
+    "np_causal_attention_backward",
+    "np_swiglu_forward",
+    "np_swiglu_backward",
+    "np_residual_forward",
+    "np_residual_backward",
+    "np_vocab_head_forward",
+    "np_vocab_head_backward",
+    "np_block_forward",
+    "np_block_backward",
+    "np_model_forward",
+    "np_model_backward",
+    "run_verification",
+    "benchmark_fusion",
+    "benchmark_attention",
+    "triton_flash_attention",
+    "triton_norm_rope_forward",
+    "triton_swiglu_forward",
+    "main",
 ]
 
+
+# ==============================================================================
+# 1. 配置
+# ==============================================================================
 @dataclass
 class LLMHierarchyConfig:
-    """完整 LLM 层次独立算子配置类。
+    """LLM 全层次算子的结构配置（各算子空间的尺度在此一次性声明）。
 
     Attributes:
-        dim: 隐藏层特征维度 D，必须为 4 的正整数倍（对应 G = D // 4 个四通道注意力/FFN 头组）。
-        vocab_size: 词表维度（用于可选的 compute_logits 词表投射头，默认 64）。
-        eps_zpe: 有理分母正性安全下界常量（默认 1e-4）。
-        logit_softcap: 词表 Logit 软截断上界（默认 30.0，仿 Gemma-2 软截断机制）。
-        kv_decay: 增量推理 KV-Cache 指数移动衰减系数（默认 0.85）。
-        sub_op_weights: 四个正交 LLM 子算子 (O_rope, O_qkv, O_swiglu, O_head) 的合成权重。
-        use_triton: 在 GPU 可用时是否优先调度 @triton.jit 融合核。
-        block_size: Triton 核或 Tile 级融合引擎的线程块大小（默认 64）。
+        dim:            残差流空间 D（必须被 n_heads 整除，head_dim 为偶数）。
+        n_heads:        注意力头空间 H。
+        n_kv_heads:     KV 头数 H_kv（GQA；等于 n_heads 即 MHA）。
+        ffn_dim:        SwiGLU 中间空间 F。
+        vocab_size:     词表空间 V（嵌入表与词表头）。
+        n_layers:       层次深度（块数）。
+        rope_base:      RoPE 基底。
+        logit_softcap:  词表 logit 软截断上界（<= 0 表示关闭）。
+        eps:            RMSNorm 分母安全下界。
+        tie_embeddings: 词表头是否与嵌入表共享（V×D 空间绑定）。
+        use_triton:     有 GPU 时是否调度融合核。
+        flash_min_len:  融合注意力核的最短序列长度（更短走 PyTorch，实测交汇点约 192）。
+        block:          Triton 线程块大小。
+        seed:           参数初始化种子。
     """
 
-    dim: int = 16
-    vocab_size: int = 64
-    eps_zpe: float = 1e-4
+    dim: int = 384
+    n_heads: int = 6
+    n_kv_heads: int = 2
+    ffn_dim: int = 1024
+    vocab_size: int = 512
+    n_layers: int = 6
+    rope_base: float = 10000.0
     logit_softcap: float = 30.0
-    kv_decay: float = 0.85
-    sub_op_weights: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    eps: float = 1e-6
+    tie_embeddings: bool = False
     use_triton: bool = True
-    block_size: int = 64
+    flash_min_len: int = 192
+    block: int = 128
+    seed: int = 2026
 
     def __post_init__(self) -> None:
-        if self.dim <= 0 or self.dim % 4 != 0:
-            raise ValueError(
-                f"LLMHierarchyConfig.dim 必须为 4 的正整数倍（四通道 QKV/FFN 头组），当前为 {self.dim}"
-            )
-        if self.eps_zpe <= 0.0:
-            raise ValueError(f"eps_zpe 必须严格大于 0，当前为 {self.eps_zpe}")
-        if len(self.sub_op_weights) != 4:
-            raise ValueError("sub_op_weights 必须包含 4 个子算子权重 (w_rope, w_qkv, w_swiglu, w_head)")
+        if self.dim <= 0 or self.n_heads <= 0:
+            raise ValueError("dim 与 n_heads 必须为正")
+        if self.dim % self.n_heads != 0:
+            raise ValueError(f"dim={self.dim} 必须被 n_heads={self.n_heads} 整除")
+        if self.head_dim % 2 != 0:
+            raise ValueError(f"head_dim={self.head_dim} 必须为偶数（RoPE 成对旋转）")
+        if self.n_kv_heads <= 0 or self.n_heads % self.n_kv_heads != 0:
+            raise ValueError("n_kv_heads 必须为正且整除 n_heads（GQA 分组）")
+        if self.ffn_dim <= 0 or self.vocab_size <= 0:
+            raise ValueError("ffn_dim 与 vocab_size 必须为正")
+        if self.n_layers <= 0:
+            raise ValueError("n_layers 必须为正")
+        if self.eps <= 0.0:
+            raise ValueError("eps 必须为正（RMSNorm 分母安全下界）")
+        if self.flash_min_len < 1:
+            raise ValueError("flash_min_len 必须为正")
 
+    @property
+    def head_dim(self) -> int:
+        return self.dim // self.n_heads
+
+    @property
+    def pair_dim(self) -> int:
+        return self.head_dim // 2
+
+    @property
+    def kv_dim(self) -> int:
+        return self.n_kv_heads * self.head_dim
+
+    @property
+    def n_rep(self) -> int:
+        """每个 KV 头服务的查询头数（GQA 组宽）。"""
+        return self.n_heads // self.n_kv_heads
+
+    def spaces(self) -> Dict[str, int]:
+        """本配置下各算子实际占用的空间维度。"""
+        return {
+            "token": self.vocab_size,
+            "stream": self.dim,
+            "norm": self.dim,
+            "head": self.n_heads * self.head_dim,
+            "kv": self.kv_dim,
+            "ffn": self.ffn_dim,
+            "logit": self.vocab_size,
+        }
 
 # ==============================================================================
-# 2. 数值安全原语 (Softplus / Sigmoid)
+# 2. 双精度 NumPy 解析引擎
+#    每个子算子给出 f(x; θ) 与手推的 ∂L/∂x, ∂L/∂θ（反向模式），
+#    作为 PyTorch 与 Triton 两套实现的数值标尺。
 # ==============================================================================
-def _np_softplus(x: np.ndarray) -> np.ndarray:
-    """数值稳定的双精度 Softplus: log(1 + exp(-|x|)) + max(x, 0)."""
-    return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
-
-
 def _np_sigmoid(x: np.ndarray) -> np.ndarray:
-    """数值稳定的双精度 Sigmoid."""
-    return np.where(x >= 0.0, 1.0 / (1.0 + np.exp(-x)), np.exp(x) / (1.0 + np.exp(x)))
+    return 1.0 / (1.0 + np.exp(-x))
 
 
-# ==============================================================================
-# 3. 确定性双精度 NumPy 解析前向与反向传播引擎
-# ==============================================================================
-def llm_hierarchy_numpy_forward(
+def _np_softplus(x: np.ndarray) -> np.ndarray:
+    """数值稳定的 softplus：log(1 + e^x) = logaddexp(0, x)。"""
+    return np.logaddexp(0.0, x)
+
+
+def _np_rms_scale(x: np.ndarray, eps: float) -> np.ndarray:
+    """RMSNorm 分母 s = sqrt(mean_d(x^2) + eps)，形状 (..., 1)。"""
+    return np.sqrt(np.mean(x * x, axis=-1, keepdims=True) + eps)
+
+
+def _np_rope_theta(cfg: LLMHierarchyConfig, omega: Optional[np.ndarray]) -> np.ndarray:
+    """RoPE 角频率 θ_i = base^(-2i/d) * exp(ω_i)，形状 (d/2,)。"""
+    idx = np.arange(cfg.pair_dim, dtype=np.float64)
+    theta = np.power(float(cfg.rope_base), -2.0 * idx / float(cfg.head_dim))
+    if omega is not None:
+        theta = theta * np.exp(omega)
+    return theta
+
+
+def _np_rope_tables(
+    cfg: LLMHierarchyConfig,
+    omega: Optional[np.ndarray],
+    length: int,
+    offset: int = 0,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """构造 (1, L, 1, d/2) 的 cos/sin 表，可直接广播到 (B, L, H, d/2)。"""
+    theta = _np_rope_theta(cfg, omega)
+    pos = np.arange(length, dtype=np.float64) + float(offset)
+    phi = pos[:, None] * theta[None, :]
+    cos = np.cos(phi)[None, :, None, :]
+    sin = np.sin(phi)[None, :, None, :]
+    return cos, sin, theta, pos
+
+
+def _np_rope_apply(t: np.ndarray, cos: np.ndarray, sin: np.ndarray) -> np.ndarray:
+    """对最后一维成对施加 SO(2) 旋转：y_even = a c - b s, y_odd = a s + b c。"""
+    even = t[..., 0::2]
+    odd = t[..., 1::2]
+    out = np.empty_like(t)
+    out[..., 0::2] = even * cos - odd * sin
+    out[..., 1::2] = even * sin + odd * cos
+    return out
+
+
+def _np_rope_apply_t(gy: np.ndarray, cos: np.ndarray, sin: np.ndarray) -> np.ndarray:
+    """旋转的转置（反向）：ga = gy_a c + gy_b s, gb = -gy_a s + gy_b c。"""
+    ga = gy[..., 0::2]
+    gb = gy[..., 1::2]
+    out = np.empty_like(gy)
+    out[..., 0::2] = ga * cos + gb * sin
+    out[..., 1::2] = -ga * sin + gb * cos
+    return out
+
+
+def _np_rope_phase_grad(gy: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """dL/dphi（对 batch 与 head 求和），返回 (L, d/2)。
+
+    y_a = a c - b s, y_b = a s + b c  =>  dy_a/dphi = -y_b, dy_b/dphi = y_a
+    故 dL/dphi = gy_b y_a - gy_a y_b。
+    """
+    return (gy[..., 1::2] * y[..., 0::2] - gy[..., 0::2] * y[..., 1::2]).sum(axis=(0, 2))
+
+
+# ------------------------------------------------------------------------------
+# 2.1 L0 — 词嵌入算子 O0（token 空间 V → 残差流空间 D）
+# ------------------------------------------------------------------------------
+def np_embedding_forward(
+    ids: np.ndarray, table: np.ndarray, cfg: LLMHierarchyConfig
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """O0: x = E[ids] * sqrt(D)，把 token 空间提升到残差流空间。"""
+    scale = math.sqrt(float(cfg.dim))
+    x = table[ids] * scale
+    return x, {"ids": ids, "scale": scale}
+
+
+def np_embedding_backward(
+    gx: np.ndarray, cache: Dict[str, Any], table: np.ndarray
+) -> np.ndarray:
+    """O0 反向：同一 token 的多次出现累加到同一行（scatter-add）。"""
+    g_table = np.zeros_like(table)
+    np.add.at(g_table, cache["ids"], gx * cache["scale"])
+    return g_table
+
+
+# ------------------------------------------------------------------------------
+# 2.2 L1 — 归一化-位置算子 O1（Pre-RMSNorm + RoPE 相位调制）
+# ------------------------------------------------------------------------------
+def np_rmsnorm_position_forward(
     x: np.ndarray,
-    theta_rope: np.ndarray,
-    gamma_rms: np.ndarray,
-    kappa_rms: np.ndarray,
-    theta_qkv: np.ndarray,
-    w_qkv: np.ndarray,
-    kappa_qkv: np.ndarray,
-    w_up: np.ndarray,
-    w_gate: np.ndarray,
-    kappa_ffn: np.ndarray,
-    alpha_res: np.ndarray,
-    beta_qk: np.ndarray,
-    kappa_head: np.ndarray,
-    eps_zpe: float = 1e-4,
-    sub_op_weights: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
-    return_sub_ops: bool = False,
-    return_diagnostics: bool = False,
-) -> Union[np.ndarray, Tuple[np.ndarray, ...]]:
-    """完整 LLM 算子层次双精度 NumPy 解析前向传播。
+    gamma: np.ndarray,
+    omega: np.ndarray,
+    cfg: LLMHierarchyConfig,
+    positional: bool = True,
+    offset: int = 0,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """O1: y = RoPE_θ⊙exp(ω)( gamma ⊙ x / sqrt(mean(x^2)+eps) )。
 
     Args:
-        x: 输入 Token 特征张量，形状为 (B, L, D)，其中 D = 4 * G。
-        theta_rope, gamma_rms, kappa_rms: 子算子 I (Pre-RMSNorm & RoPE) 可学参数，形状均为 (G,)。
-        theta_qkv, w_qkv, kappa_qkv: 子算子 II (Multi-Head QKV Value Projection) 可学参数，形状均为 (G,)。
-        w_up, w_gate, kappa_ffn: 子算子 III (SwiGLU Gated FFN) 可学参数，形状均为 (G,)。
-        alpha_res, beta_qk, kappa_head: 子算子 IV (QK Dot-Product & Softcap Logit Head) 可学参数，形状均为 (G,)。
-        eps_zpe: 有理分母正性安全下界常量（默认 1e-4）。
-        sub_op_weights: 四个子算子的合成掩码权重。
-        return_sub_ops: 若为 True，额外返回四个正交子算子的独立输出元组 (op_rope, op_qkv, op_swiglu, op_head)。
-        return_diagnostics: 若为 True，额外返回内部门控与注意力诊断字典。
+        x: (B, L, D) 残差流输入。
+        gamma: (D,) 归一化增益。
+        omega: (d/2,) 可学对数频率尺度（positional=False 时忽略）。
+        positional: 是否施加旋转变换。
+        offset: 起始绝对位置（KV-Cache 解码时 > 0）。
+
+    Returns:
+        (y, cache)。y 形状 (B, L, D)。
     """
-    x_arr = np.asarray(x, dtype=np.float64)
-    if x_arr.ndim != 3 or x_arr.shape[-1] % 4 != 0:
-        raise ValueError(f"输入 x 形状必须为 (B, L, 4*G)，当前为 {x_arr.shape}")
-
-    B, L, D = x_arr.shape
-    G = D // 4
-    xg = x_arr.reshape(B, L, G, 4)
-    u1 = xg[..., 0]
-    u2 = xg[..., 1]
-    v1 = xg[..., 2]
-    v2 = xg[..., 3]
-
-    # 正性有理分母与有界门控参数重参数化
-    kappa_rms_eff = _np_softplus(np.asarray(kappa_rms, dtype=np.float64)) + eps_zpe
-    kappa_qkv_eff = _np_softplus(np.asarray(kappa_qkv, dtype=np.float64)) + eps_zpe
-    kappa_ffn_eff = _np_softplus(np.asarray(kappa_ffn, dtype=np.float64)) + eps_zpe
-    alpha_res_eff = _np_sigmoid(np.asarray(alpha_res, dtype=np.float64))
-    kappa_head_eff = _np_softplus(np.asarray(kappa_head, dtype=np.float64)) + eps_zpe
-
-    theta_rope_arr = np.asarray(theta_rope, dtype=np.float64)
-    gamma_rms_arr = np.asarray(gamma_rms, dtype=np.float64)
-    theta_qkv_arr = np.asarray(theta_qkv, dtype=np.float64)
-    w_qkv_arr = np.asarray(w_qkv, dtype=np.float64)
-    w_up_arr = np.asarray(w_up, dtype=np.float64)
-    w_gate_arr = np.asarray(w_gate, dtype=np.float64)
-    beta_qk_arr = np.asarray(beta_qk, dtype=np.float64)
-
-    # 序列位置编码坐标 pos_l = (l + 1) / L, 形状为 (1, L, 1)
-    pos_l = (np.arange(1, L + 1, dtype=np.float64) / float(L)).reshape(1, L, 1)
-
-    # ------------------------------------------------------------------
-    # 子算子 I: Pre-RMSNorm 与旋转位置编码流 (O_rope)
-    # ------------------------------------------------------------------
-    E_Q = u1 * u1 + u2 * u2
-    Q_rms = 1.0 + kappa_rms_eff * E_Q
-    D_rms = 1.0 / np.sqrt(Q_rms)
-    phi_rope = pos_l * theta_rope_arr.reshape(1, 1, G)
-    cos_rope = np.cos(phi_rope)
-    sin_rope = np.sin(phi_rope)
-    r_Q1 = cos_rope * u1 - sin_rope * u2
-    r_Q2 = sin_rope * u1 + cos_rope * u2
-    op_rope = np.stack(
-        [
-            gamma_rms_arr * D_rms * r_Q1,
-            gamma_rms_arr * D_rms * r_Q2,
-            np.zeros_like(u1),
-            np.zeros_like(u2),
-        ],
-        axis=-1,
-    )
-
-    # ------------------------------------------------------------------
-    # 子算子 II: 多头注意力价值投射与能量缩放流 (O_qkv)
-    # ------------------------------------------------------------------
-    E_V = v1 * v1 + v2 * v2
-    Q_qkv = 1.0 + kappa_qkv_eff * E_V
-    D_qkv = 1.0 / np.sqrt(Q_qkv)
-    cos_qkv = np.cos(theta_qkv_arr)
-    sin_qkv = np.sin(theta_qkv_arr)
-    r_V1 = cos_qkv * v1 + sin_qkv * v2
-    r_V2 = -sin_qkv * v1 + cos_qkv * v2
-    op_qkv = np.stack(
-        [
-            np.zeros_like(v1),
-            np.zeros_like(v2),
-            w_qkv_arr * D_qkv * r_V1,
-            w_qkv_arr * D_qkv * r_V2,
-        ],
-        axis=-1,
-    )
-
-    # ------------------------------------------------------------------
-    # 子算子 III: SwiGLU 双线性门控前馈网络流 (O_swiglu)
-    # ------------------------------------------------------------------
-    E_tot = E_Q + E_V
-    Q_ffn = 1.0 + kappa_ffn_eff * E_tot
-    D_ffn = 1.0 / Q_ffn
-    G_glu = u1 * v2 - u2 * v1
-    m0 = w_up_arr * v1 + w_gate_arr * G_glu * v2
-    m1 = w_up_arr * v2 - w_gate_arr * G_glu * v1
-    m2 = w_up_arr * u1 - w_gate_arr * G_glu * u2
-    m3 = w_up_arr * u2 + w_gate_arr * G_glu * u1
-    op_swiglu = D_ffn[..., None] * np.stack([m0, m1, m2, m3], axis=-1)
-
-    # ------------------------------------------------------------------
-    # 子算子 IV: QK 点积凝聚、残差门控与 Softcap 输出头 (O_head)
-    # ------------------------------------------------------------------
-    Delta_E = E_V - E_Q
-    Q_cap = 1.0 + kappa_head_eff * (Delta_E * Delta_E)
-    D_cap = 1.0 / np.sqrt(Q_cap)
-    G_cap = Delta_E * D_cap
-    I_qk = u1 * v1 + u2 * v2
-    Q_head = 1.0 + kappa_head_eff * E_tot
-    D_head = 1.0 / Q_head
-    C_qk = D_head * I_qk
-
-    A0 = -u1 + G_cap * v2
-    A1 = u2 - G_cap * v1
-    A2 = v1 + G_cap * u2
-    A3 = -v2 - G_cap * u1
-    op_head = np.stack(
-        [
-            alpha_res_eff * A0 + beta_qk_arr * C_qk * v1,
-            alpha_res_eff * A1 - beta_qk_arr * C_qk * v2,
-            alpha_res_eff * A2 + beta_qk_arr * C_qk * u1,
-            alpha_res_eff * A3 - beta_qk_arr * C_qk * u2,
-        ],
-        axis=-1,
-    )
-
-    m1_w, m2_w, m3_w, m4_w = sub_op_weights
-    y_group = m1_w * op_rope + m2_w * op_qkv + m3_w * op_swiglu + m4_w * op_head
-    y = y_group.reshape(B, L, D)
-
-    sub_ops_tuple = (
-        op_rope.reshape(B, L, D),
-        op_qkv.reshape(B, L, D),
-        op_swiglu.reshape(B, L, D),
-        op_head.reshape(B, L, D),
-    )
-
-    if return_sub_ops and return_diagnostics:
-        diag = {
-            "D_rms": D_rms,
-            "D_qkv": D_qkv,
-            "D_ffn": D_ffn,
-            "G_glu": G_glu,
-            "G_cap": G_cap,
-            "I_qk": I_qk,
-        }
-        return y, sub_ops_tuple, diag
-    if return_sub_ops:
-        return y, sub_ops_tuple
-    if return_diagnostics:
-        diag = {
-            "D_rms": D_rms,
-            "D_qkv": D_qkv,
-            "D_ffn": D_ffn,
-            "G_glu": G_glu,
-            "G_cap": G_cap,
-            "I_qk": I_qk,
-        }
-        return y, diag
-    return y
+    b, l, d = x.shape
+    s = _np_rms_scale(x, cfg.eps)
+    n = x / s
+    h = n * gamma
+    cache: Dict[str, Any] = {"n": n, "s": s, "d": d, "positional": positional}
+    if positional:
+        t = h.reshape(b, l, cfg.n_heads, cfg.head_dim)
+        cos, sin, theta, pos = _np_rope_tables(cfg, omega, l, offset)
+        y = _np_rope_apply(t, cos, sin).reshape(b, l, d)
+        cache.update(cos=cos, sin=sin, theta=theta, pos=pos, y=y)
+    else:
+        y = h
+        cache.update(cos=None, sin=None, theta=None, pos=None, y=None)
+    return y, cache
 
 
-def llm_hierarchy_numpy_backward(
-    grad_out: np.ndarray,
+def np_rmsnorm_position_backward(
+    gy: np.ndarray,
+    cache: Dict[str, Any],
+    gamma: np.ndarray,
+    cfg: LLMHierarchyConfig,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """O1 反向：返回 (gx, g_gamma, g_omega)。"""
+    n, s, d = cache["n"], cache["s"], cache["d"]
+    b, l, _ = n.shape
+    if cache["positional"]:
+        cos, sin, theta, pos = cache["cos"], cache["sin"], cache["theta"], cache["pos"]
+        t_y = cache["y"].reshape(b, l, cfg.n_heads, cfg.head_dim)
+        t_gy = gy.reshape(b, l, cfg.n_heads, cfg.head_dim)
+        dphi = _np_rope_phase_grad(t_gy, t_y)                 # (L, d/2)
+        g_rot = _np_rope_apply_t(t_gy, cos, sin).reshape(b, l, d)
+        # phi = pos * theta_i, theta_i = base^(-2i/d) * exp(omega_i) => dphi/domega = pos * theta
+        g_omega = (dphi * pos[:, None] * theta[None, :]).sum(axis=0)
+    else:
+        g_rot = gy
+        g_omega = np.zeros(cfg.pair_dim, dtype=gy.dtype)
+    g_gamma = (g_rot * n).sum(axis=(0, 1))
+    gn = g_rot * gamma
+    c = (gn * n).sum(axis=-1, keepdims=True)
+    gx = (gn - c * n / float(d)) / s
+    return gx, g_gamma, g_omega
+
+
+# ------------------------------------------------------------------------------
+# 2.3 L2 — 因果注意力算子 O2（QKV 投射 + RoPE + 因果 softmax + GQA + KV-Cache）
+# ------------------------------------------------------------------------------
+def np_causal_attention_forward(
     x: np.ndarray,
-    theta_rope: np.ndarray,
-    gamma_rms: np.ndarray,
-    kappa_rms: np.ndarray,
-    theta_qkv: np.ndarray,
-    w_qkv: np.ndarray,
-    kappa_qkv: np.ndarray,
-    w_up: np.ndarray,
+    w_q: np.ndarray,
+    w_k: np.ndarray,
+    w_v: np.ndarray,
+    w_o: np.ndarray,
+    cfg: LLMHierarchyConfig,
+    kv_cache: Optional[Dict[str, np.ndarray]] = None,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """O2: 多头因果缩放点积注意力。
+
+    Args:
+        x: (B, L, D)。
+        w_q: (D, D)；w_k / w_v: (D, H_kv*d)；w_o: (D, D)。
+        kv_cache: 可选，{"k": (B, Lc, H_kv, d), "v": (B, Lc, H_kv, d)}，已旋转的 KV。
+
+    Returns:
+        (y, cache)。cache["k"]/["v"] 为更新后的 KV 状态（k 已旋转）。
+    """
+    b, l, d = x.shape
+    h, hk, hd, rep = cfg.n_heads, cfg.n_kv_heads, cfg.head_dim, cfg.n_rep
+    q = (x @ w_q).reshape(b, l, h, hd)
+    k = (x @ w_k).reshape(b, l, hk, hd)
+    v = (x @ w_v).reshape(b, l, hk, hd)
+
+    offset = 0 if kv_cache is None else int(kv_cache["k"].shape[1])
+    cos, sin, _, _ = _np_rope_tables(cfg, None, l, offset)
+    q_r = _np_rope_apply(q, cos, sin)
+    k_r = _np_rope_apply(k, cos, sin)
+
+    if kv_cache is None:
+        k_all, v_all = k_r, v
+    else:
+        k_all = np.concatenate([kv_cache["k"], k_r], axis=1)
+        v_all = np.concatenate([kv_cache["v"], v], axis=1)
+    lc = k_all.shape[1]
+
+    qpos = np.arange(l) + offset
+    mpos = np.arange(lc)
+    causal = mpos[None, :] > qpos[:, None]          # (L, Lc) True 即屏蔽
+    scale = 1.0 / math.sqrt(float(hd))
+
+    ps: List[np.ndarray] = []
+    outs: List[np.ndarray] = []
+    for hi in range(h):
+        kvh = hi // rep
+        scores = np.einsum("bld,bmd->blm", q_r[:, :, hi], k_all[:, :, kvh]) * scale
+        scores = np.where(causal[None], -np.inf, scores)
+        mx = np.max(scores, axis=-1, keepdims=True)
+        e = np.exp(scores - mx)
+        p = e / np.sum(e, axis=-1, keepdims=True)
+        outs.append(np.einsum("blm,bmd->bld", p, v_all[:, :, kvh]))
+        ps.append(p)
+    a = np.stack(outs, axis=2)                       # (B, L, H, d)
+    y = a.reshape(b, l, d) @ w_o
+
+    cache = {
+        "x": x, "q_r": q_r, "k_all": k_all, "v_all": v_all,
+        "k": k_all, "v": v_all,                    # 供 KV-Cache 增量解码续接
+        "p": ps, "a": a, "cos": cos, "sin": sin, "scale": scale,
+        "offset": offset, "new_len": l, "length": lc,
+        "w_q": w_q, "w_k": w_k, "w_v": w_v, "w_o": w_o,
+    }
+    return y, cache
+
+
+def np_causal_attention_backward(
+    gy: np.ndarray, cache: Dict[str, Any], cfg: LLMHierarchyConfig
+) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+    """O2 反向：返回 (gx, {"w_q","w_k","w_v","w_o"})。"""
+    x, q_r, k_all, v_all = cache["x"], cache["q_r"], cache["k_all"], cache["v_all"]
+    ps, a, cos, sin, scale = cache["p"], cache["a"], cache["cos"], cache["sin"], cache["scale"]
+    w_q, w_k, w_v, w_o = cache["w_q"], cache["w_k"], cache["w_v"], cache["w_o"]
+    b, l, d = x.shape
+    h, hk, hd, rep = cfg.n_heads, cfg.n_kv_heads, cfg.head_dim, cfg.n_rep
+
+    g_a = (gy @ w_o.T).reshape(b, l, h, hd)
+    g_w_o = a.reshape(-1, d).T @ gy.reshape(-1, d)
+
+    g_q_r = np.zeros_like(q_r)
+    g_k_r = np.zeros_like(k_all)
+    g_v_all = np.zeros_like(v_all)
+    for hi in range(h):
+        kvh = hi // rep
+        p = ps[hi]
+        da = g_a[:, :, hi]
+        gp = np.einsum("bld,bmd->blm", da, v_all[:, :, kvh])
+        g_v_all[:, :, kvh] += np.einsum("blm,bld->bmd", p, da)
+        gs = p * (gp - np.sum(gp * p, axis=-1, keepdims=True))
+        gs = gs * scale
+        g_q_r[:, :, hi] = np.einsum("blm,bmd->bld", gs, k_all[:, :, kvh])
+        g_k_r[:, :, kvh] += np.einsum("blm,bld->bmd", gs, q_r[:, :, hi])
+
+    gq = _np_rope_apply_t(g_q_r, cos, sin)
+    gk = _np_rope_apply_t(g_k_r, cos, sin)
+    gv = g_v_all
+    # 只有本步新增的 token 会写回投影；缓存部分是常量。
+    gk_new = gk[:, -l:]
+    gv_new = gv[:, -l:]
+
+    g_w_q = x.reshape(-1, d).T @ gq.reshape(-1, d)
+    g_w_k = x.reshape(-1, d).T @ gk_new.reshape(-1, hk * hd)
+    g_w_v = x.reshape(-1, d).T @ gv_new.reshape(-1, hk * hd)
+    gx = (
+        gq.reshape(b, l, d) @ w_q.T
+        + gk_new.reshape(b, l, hk * hd) @ w_k.T
+        + gv_new.reshape(b, l, hk * hd) @ w_v.T
+    )
+    return gx, {"w_q": g_w_q, "w_k": g_w_k, "w_v": g_w_v, "w_o": g_w_o}
+
+
+# ------------------------------------------------------------------------------
+# 2.4 L3 — SwiGLU 门控前馈算子 O3
+# ------------------------------------------------------------------------------
+def np_swiglu_forward(
+    x: np.ndarray,
     w_gate: np.ndarray,
-    kappa_ffn: np.ndarray,
-    alpha_res: np.ndarray,
-    beta_qk: np.ndarray,
-    kappa_head: np.ndarray,
-    eps_zpe: float = 1e-4,
-    sub_op_weights: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
-    return_sub_grads: bool = False,
-) -> Tuple[np.ndarray, ...]:
-    """完整 LLM 算子层次双精度 NumPy 解析反向传播。"""
-    x_arr = np.asarray(x, dtype=np.float64)
-    g_arr = np.asarray(grad_out, dtype=np.float64)
-    B, L, D = x_arr.shape
-    G = D // 4
-    xg = x_arr.reshape(B, L, G, 4)
-    gg = g_arr.reshape(B, L, G, 4)
+    w_up: np.ndarray,
+    w_down: np.ndarray,
+    cfg: LLMHierarchyConfig,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """O3: y = ( silu(x W_gate) ⊙ (x W_up) ) W_down。"""
+    gate = x @ w_gate
+    up = x @ w_up
+    sig = _np_sigmoid(gate)
+    act = gate * sig                       # silu(gate)
+    h = act * up
+    y = h @ w_down
+    return y, {
+        "x": x, "gate": gate, "sig": sig, "act": act, "up": up, "h": h,
+        "w_gate": w_gate, "w_up": w_up, "w_down": w_down,
+    }
 
-    u1, u2, v1, v2 = xg[..., 0], xg[..., 1], xg[..., 2], xg[..., 3]
-    g0_raw, g1_raw, g2_raw, g3_raw = gg[..., 0], gg[..., 1], gg[..., 2], gg[..., 3]
-    m1_w, m2_w, m3_w, m4_w = sub_op_weights
 
-    theta_rope_arr = np.asarray(theta_rope, dtype=np.float64)
-    gamma_rms_arr = np.asarray(gamma_rms, dtype=np.float64)
-    kappa_rms_arr = np.asarray(kappa_rms, dtype=np.float64)
-    sig_kappa_rms = _np_sigmoid(kappa_rms_arr)
-    kappa_rms_eff = _np_softplus(kappa_rms_arr) + eps_zpe
-
-    theta_qkv_arr = np.asarray(theta_qkv, dtype=np.float64)
-    w_qkv_arr = np.asarray(w_qkv, dtype=np.float64)
-    kappa_qkv_arr = np.asarray(kappa_qkv, dtype=np.float64)
-    sig_kappa_qkv = _np_sigmoid(kappa_qkv_arr)
-    kappa_qkv_eff = _np_softplus(kappa_qkv_arr) + eps_zpe
-
-    w_up_arr = np.asarray(w_up, dtype=np.float64)
-    w_gate_arr = np.asarray(w_gate, dtype=np.float64)
-    kappa_ffn_arr = np.asarray(kappa_ffn, dtype=np.float64)
-    sig_kappa_ffn = _np_sigmoid(kappa_ffn_arr)
-    kappa_ffn_eff = _np_softplus(kappa_ffn_arr) + eps_zpe
-
-    alpha_res_arr = np.asarray(alpha_res, dtype=np.float64)
-    alpha_res_eff = _np_sigmoid(alpha_res_arr)
-    d_alpha_res = alpha_res_eff * (1.0 - alpha_res_eff)
-    beta_qk_arr = np.asarray(beta_qk, dtype=np.float64)
-    kappa_head_arr = np.asarray(kappa_head, dtype=np.float64)
-    sig_kappa_head = _np_sigmoid(kappa_head_arr)
-    kappa_head_eff = _np_softplus(kappa_head_arr) + eps_zpe
-
-    pos_l = (np.arange(1, L + 1, dtype=np.float64) / float(L)).reshape(1, L, 1)
-
-    # ------------------------------------------------------------------
-    # 1. 子算子 I (O_rope) 反向传播
-    # ------------------------------------------------------------------
-    g0_L, g1_L = m1_w * g0_raw, m1_w * g1_raw
-    E_Q = u1 * u1 + u2 * u2
-    Q_rms = 1.0 + kappa_rms_eff * E_Q
-    D_rms = 1.0 / np.sqrt(Q_rms)
-    phi_rope = pos_l * theta_rope_arr.reshape(1, 1, G)
-    cos_rope = np.cos(phi_rope)
-    sin_rope = np.sin(phi_rope)
-    r_Q1 = cos_rope * u1 - sin_rope * u2
-    r_Q2 = sin_rope * u1 + cos_rope * u2
-
-    S_rQ = g0_L * r_Q1 + g1_L * r_Q2
-    S_phi_Q = g0_L * (-r_Q2) + g1_L * r_Q1
-    grad_gamma_rms = np.sum(D_rms * S_rQ, axis=(0, 1))
-    grad_theta_rope = np.sum(gamma_rms_arr * D_rms * S_phi_Q * pos_l, axis=(0, 1))
-    dQ_rms = -0.5 * gamma_rms_arr * (D_rms * D_rms * D_rms) * S_rQ
-    grad_kappa_rms = sig_kappa_rms * np.sum(dQ_rms * E_Q, axis=(0, 1))
-
-    du1_rope = gamma_rms_arr * D_rms * (g0_L * cos_rope + g1_L * sin_rope) + 2.0 * kappa_rms_eff * u1 * dQ_rms
-    du2_rope = gamma_rms_arr * D_rms * (-g0_L * sin_rope + g1_L * cos_rope) + 2.0 * kappa_rms_eff * u2 * dQ_rms
-
-    # ------------------------------------------------------------------
-    # 2. 子算子 II (O_qkv) 反向传播
-    # ------------------------------------------------------------------
-    g2_R, g3_R = m2_w * g2_raw, m2_w * g3_raw
-    E_V = v1 * v1 + v2 * v2
-    Q_qkv = 1.0 + kappa_qkv_eff * E_V
-    D_qkv = 1.0 / np.sqrt(Q_qkv)
-    cos_qkv = np.cos(theta_qkv_arr)
-    sin_qkv = np.sin(theta_qkv_arr)
-    r_V1 = cos_qkv * v1 + sin_qkv * v2
-    r_V2 = -sin_qkv * v1 + cos_qkv * v2
-
-    S_rV = g2_R * r_V1 + g3_R * r_V2
-    S_theta_V = g2_R * r_V2 + g3_R * (-r_V1)
-    grad_w_qkv = np.sum(D_qkv * S_rV, axis=(0, 1))
-    grad_theta_qkv = np.sum(w_qkv_arr * D_qkv * S_theta_V, axis=(0, 1))
-    dQ_qkv = -0.5 * w_qkv_arr * (D_qkv * D_qkv * D_qkv) * S_rV
-    grad_kappa_qkv = sig_kappa_qkv * np.sum(dQ_qkv * E_V, axis=(0, 1))
-
-    dv1_qkv = w_qkv_arr * D_qkv * (g2_R * cos_qkv - g3_R * sin_qkv) + 2.0 * kappa_qkv_eff * v1 * dQ_qkv
-    dv2_qkv = w_qkv_arr * D_qkv * (g2_R * sin_qkv + g3_R * cos_qkv) + 2.0 * kappa_qkv_eff * v2 * dQ_qkv
-
-    # ------------------------------------------------------------------
-    # 3. 子算子 III (O_swiglu) 反向传播
-    # ------------------------------------------------------------------
-    g0_s, g1_s, g2_s, g3_s = m3_w * g0_raw, m3_w * g1_raw, m3_w * g2_raw, m3_w * g3_raw
-    E_tot = E_Q + E_V
-    Q_ffn = 1.0 + kappa_ffn_eff * E_tot
-    D_ffn = 1.0 / Q_ffn
-    G_glu = u1 * v2 - u2 * v1
-    m0 = w_up_arr * v1 + w_gate_arr * G_glu * v2
-    m1 = w_up_arr * v2 - w_gate_arr * G_glu * v1
-    m2 = w_up_arr * u1 - w_gate_arr * G_glu * u2
-    m3 = w_up_arr * u2 + w_gate_arr * G_glu * u1
-
-    tg0, tg1, tg2, tg3 = D_ffn * g0_s, D_ffn * g1_s, D_ffn * g2_s, D_ffn * g3_s
-    dD_ffn = g0_s * m0 + g1_s * m1 + g2_s * m2 + g3_s * m3
-    dE_tot_ffn = -kappa_ffn_eff * (D_ffn * D_ffn) * dD_ffn
-    grad_kappa_ffn = sig_kappa_ffn * np.sum(-(D_ffn * D_ffn) * E_tot * dD_ffn, axis=(0, 1))
-    grad_w_up = np.sum(tg0 * v1 + tg1 * v2 + tg2 * u1 + tg3 * u2, axis=(0, 1))
-    glu_term = tg0 * v2 - tg1 * v1 - tg2 * u2 + tg3 * u1
-    grad_w_gate = np.sum(G_glu * glu_term, axis=(0, 1))
-    dG_glu = w_gate_arr * glu_term
-
-    du1_swiglu = w_up_arr * tg2 + w_gate_arr * G_glu * tg3 + dG_glu * v2 + 2.0 * u1 * dE_tot_ffn
-    du2_swiglu = w_up_arr * tg3 - w_gate_arr * G_glu * tg2 - dG_glu * v1 + 2.0 * u2 * dE_tot_ffn
-    dv1_swiglu = w_up_arr * tg0 - w_gate_arr * G_glu * tg1 - dG_glu * u2 + 2.0 * v1 * dE_tot_ffn
-    dv2_swiglu = w_up_arr * tg1 + w_gate_arr * G_glu * tg0 + dG_glu * u1 + 2.0 * v2 * dE_tot_ffn
-
-    # ------------------------------------------------------------------
-    # 4. 子算子 IV (O_head) 反向传播
-    # ------------------------------------------------------------------
-    g0_a, g1_a, g2_a, g3_a = m4_w * g0_raw, m4_w * g1_raw, m4_w * g2_raw, m4_w * g3_raw
-    Delta_E = E_V - E_Q
-    Q_cap = 1.0 + kappa_head_eff * (Delta_E * Delta_E)
-    D_cap = 1.0 / np.sqrt(Q_cap)
-    G_cap = Delta_E * D_cap
-    I_qk = u1 * v1 + u2 * v2
-    Q_head = 1.0 + kappa_head_eff * E_tot
-    D_head = 1.0 / Q_head
-    C_qk = D_head * I_qk
-
-    A0 = -u1 + G_cap * v2
-    A1 = u2 - G_cap * v1
-    A2 = v1 + G_cap * u2
-    A3 = -v2 - G_cap * u1
-
-    S_A = g0_a * A0 + g1_a * A1 + g2_a * A2 + g3_a * A3
-    grad_alpha_res = d_alpha_res * np.sum(S_A, axis=(0, 1))
-
-    S_B = g0_a * v1 - g1_a * v2 + g2_a * u1 - g3_a * u2
-    grad_beta_qk = np.sum(C_qk * S_B, axis=(0, 1))
-
-    dC_qk = beta_qk_arr * S_B
-    dI_qk = D_head * dC_qk
-    dD_head = I_qk * dC_qk
-    dE_tot_head = -kappa_head_eff * (D_head * D_head) * dD_head
-
-    dG_cap = alpha_res_eff * (g0_a * v2 - g1_a * v1 + g2_a * u2 - g3_a * u1)
-    dDelta_E = dG_cap * (D_cap * D_cap * D_cap)
-
-    grad_kappa_head = sig_kappa_head * np.sum(
-        -0.5 * (Delta_E * Delta_E * Delta_E) * (D_cap * D_cap * D_cap) * dG_cap
-        - (D_head * D_head) * E_tot * dD_head,
-        axis=(0, 1),
+def np_swiglu_backward(
+    gy: np.ndarray, cache: Dict[str, Any], cfg: LLMHierarchyConfig
+) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+    """O3 反向：silu'(z) = σ(z) (1 + z (1 - σ(z)))。"""
+    x, gate, sig, act, up, h = (
+        cache["x"], cache["gate"], cache["sig"], cache["act"], cache["up"], cache["h"],
     )
+    d = x.shape[-1]
+    g_w_down = h.reshape(-1, h.shape[-1]).T @ gy.reshape(-1, d)
+    dh = gy @ cache["w_down"].T
+    d_act = dh * up
+    d_up = dh * act
+    d_gate = d_act * (sig * (1.0 + gate * (1.0 - sig)))
+    g_w_up = x.reshape(-1, d).T @ d_up.reshape(-1, d_up.shape[-1])
+    g_w_gate = x.reshape(-1, d).T @ d_gate.reshape(-1, d_gate.shape[-1])
+    gx = d_up @ cache["w_up"].T + d_gate @ cache["w_gate"].T
+    return gx, {"w_gate": g_w_gate, "w_up": g_w_up, "w_down": g_w_down}
 
-    du1_head = (
-        alpha_res_eff * (-g0_a - G_cap * g3_a)
-        + beta_qk_arr * C_qk * g2_a
-        + dI_qk * v1
-        - 2.0 * u1 * dDelta_E
-        + 2.0 * u1 * dE_tot_head
+
+# ------------------------------------------------------------------------------
+
+
+
+# ------------------------------------------------------------------------------
+# 2.5 L4 — 残差流算子 O4（stream D ⊗ stream D → stream D）
+# ------------------------------------------------------------------------------
+def np_residual_forward(
+    stream: np.ndarray, update: np.ndarray, gate: np.ndarray
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """O4: y = stream + gate ⊙ update，逐通道可学的高速公路增益。"""
+    y = stream + gate * update
+    return y, {"stream": stream, "update": update, "gate": gate}
+
+
+def np_residual_backward(
+    gy: np.ndarray, cache: Dict[str, Any]
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """O4 反向：返回 (g_stream, g_update, g_gate)。"""
+    g_stream = gy
+    g_update = gy * cache["gate"]
+    g_gate = (gy * cache["update"]).sum(axis=tuple(range(gy.ndim - 1)))
+    return g_stream, g_update, g_gate
+
+
+# ------------------------------------------------------------------------------
+# 2.6 L5 — 词表头算子 O5（残差流空间 D → 词表空间 V）
+# ------------------------------------------------------------------------------
+def np_vocab_head_forward(
+    h: np.ndarray, w_vocab: np.ndarray, cfg: LLMHierarchyConfig
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """O5: logits = c · tanh(h W_vocab^T / c)，c 为 logit softcap。"""
+    cap = float(cfg.logit_softcap)
+    z = h @ w_vocab.T
+    y = cap * np.tanh(z / cap) if cap > 0 else z
+    return y, {"h": h, "z": z, "cap": cap, "w_vocab": w_vocab}
+
+
+def np_vocab_head_backward(
+    gy: np.ndarray, cache: Dict[str, Any], cfg: LLMHierarchyConfig
+) -> Tuple[np.ndarray, np.ndarray]:
+    """O5 反向：softcap 的导数为 1 - tanh²；返回 (g_h, g_w_vocab)。"""
+    cap, z, h = cache["cap"], cache["z"], cache["h"]
+    gz = gy * (1.0 - np.tanh(z / cap) ** 2) if cap > 0 else gy
+    g_w = gz.reshape(-1, cfg.vocab_size).T @ h.reshape(-1, cfg.dim)
+    g_h = gz @ cache["w_vocab"]
+    return g_h, g_w
+
+
+# ------------------------------------------------------------------------------
+# 2.7 块与整模型：真正的层次串联（顺序组合，不是并联混合）
+# ------------------------------------------------------------------------------
+def np_block_forward(
+    x: np.ndarray,
+    params: Dict[str, np.ndarray],
+    cfg: LLMHierarchyConfig,
+    kv_cache: Optional[Dict[str, np.ndarray]] = None,
+    offset: int = 0,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """一个 pre-norm 块：x = Residual(x, Attn(Norm(x))); x = Residual(x, FFN(Norm(x)))。"""
+    h1, c1 = np_rmsnorm_position_forward(x, params["gamma"], params["omega"], cfg, True, offset)
+    a, c2 = np_causal_attention_forward(
+        h1, params["attn_w_q"], params["attn_w_k"], params["attn_w_v"], params["attn_w_o"], cfg, kv_cache
     )
-    du2_head = (
-        alpha_res_eff * (g1_a + G_cap * g2_a)
-        - beta_qk_arr * C_qk * g3_a
-        + dI_qk * v2
-        - 2.0 * u2 * dDelta_E
-        + 2.0 * u2 * dE_tot_head
+    x1, c3 = np_residual_forward(x, a, params["res_attn_gate"])
+    h2, c4 = np_rmsnorm_position_forward(
+        x1, params["ffn_gamma"], params["ffn_omega"], cfg, positional=False, offset=offset
     )
-    dv1_head = (
-        alpha_res_eff * (-G_cap * g1_a + g2_a)
-        + beta_qk_arr * C_qk * g0_a
-        + dI_qk * u1
-        + 2.0 * v1 * dDelta_E
-        + 2.0 * v1 * dE_tot_head
+    f, c5 = np_swiglu_forward(
+        h2, params["ffn_w_gate"], params["ffn_w_up"], params["ffn_w_down"], cfg
     )
-    dv2_head = (
-        alpha_res_eff * (G_cap * g0_a - g3_a)
-        - beta_qk_arr * C_qk * g1_a
-        + dI_qk * u2
-        + 2.0 * v2 * dDelta_E
-        + 2.0 * v2 * dE_tot_head
+    x2, c6 = np_residual_forward(x1, f, params["res_ffn_gate"])
+    cache = {"c1": c1, "c2": c2, "c3": c3, "c4": c4, "c5": c5, "c6": c6}
+    return x2, cache
+
+
+def np_block_backward(
+    gx2: np.ndarray, cache: Dict[str, Any], params: Dict[str, np.ndarray], cfg: LLMHierarchyConfig
+) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+    """块反向：残差分流 → 归一化 → 子层，逐层回传到块输入。"""
+    g_f = gx2 * params["res_ffn_gate"]
+    g_h2, g_ffn = np_swiglu_backward(g_f, cache["c5"], cfg)
+    g_x1, g_n1, g_om1 = np_rmsnorm_position_backward(g_h2, cache["c4"], params["ffn_gamma"], cfg)
+    g_x1 = g_x1 + gx2                                   # 残差直通
+    g_a = g_x1 * params["res_attn_gate"]
+    g_h1, g_attn = np_causal_attention_backward(g_a, cache["c2"], cfg)
+    g_x0, g_n0, g_om0 = np_rmsnorm_position_backward(g_h1, cache["c1"], params["gamma"], cfg)
+    g_x0 = g_x0 + g_x1
+    grads = {
+        "gamma": g_n0, "omega": g_om0, "ffn_gamma": g_n1, "ffn_omega": g_om1,
+        "attn_w_q": g_attn["w_q"], "attn_w_k": g_attn["w_k"],
+        "attn_w_v": g_attn["w_v"], "attn_w_o": g_attn["w_o"],
+        "ffn_w_gate": g_ffn["w_gate"], "ffn_w_up": g_ffn["w_up"], "ffn_w_down": g_ffn["w_down"],
+        "res_attn_gate": (g_x1 * cache["c3"]["update"]).sum(axis=tuple(range(g_x1.ndim - 1))),
+        "res_ffn_gate": (gx2 * cache["c6"]["update"]).sum(axis=tuple(range(gx2.ndim - 1))),
+    }
+    return g_x0, grads
+
+
+def np_model_forward(
+    ids: np.ndarray,
+    params: Dict[str, Any],
+    cfg: LLMHierarchyConfig,
+    caches: Optional[List[Dict[str, Any]]] = None,
+    return_cache: bool = False,
+) -> Any:
+    """整模型前向：Embedding → N × Block → FinalNorm → VocabHead(softcap)。"""
+    if ids.ndim != 2:
+        raise ValueError("ids 必须为 (B, L) 的整数张量")
+    x, c0 = np_embedding_forward(ids, params["embed"], cfg)
+    offset = 0 if caches is None else int(caches[0]["c2"]["length"])
+    new_caches: List[Dict[str, Any]] = []
+    for i, blk in enumerate(params["blocks"]):
+        kv = None if caches is None else caches[i]["c2"]
+        x, c = np_block_forward(x, blk, cfg, kv, offset)
+        new_caches.append(c)
+    x, c_norm = np_rmsnorm_position_forward(
+        x, params["final_gamma"], np.zeros(cfg.pair_dim), cfg, positional=False
     )
+    logits, c_head = np_vocab_head_forward(x, params["lm_head"], cfg)
+    cache = {
+        "ids": ids, "c0": c0, "blocks": new_caches, "norm": c_norm, "head": c_head,
+        "hidden": x, "logits": logits,
+    }
+    return (logits, cache) if return_cache else logits
 
-    grad_x = np.stack(
-        [
-            du1_rope + du1_swiglu + du1_head,
-            du2_rope + du2_swiglu + du2_head,
-            dv1_qkv + dv1_swiglu + dv1_head,
-            dv2_qkv + dv2_swiglu + dv2_head,
-        ],
-        axis=-1,
-    ).reshape(B, L, D)
 
-    base_grads = (
-        grad_x,
-        grad_theta_rope,
-        grad_gamma_rms,
-        grad_kappa_rms,
-        grad_theta_qkv,
-        grad_w_qkv,
-        grad_kappa_qkv,
-        grad_w_up,
-        grad_w_gate,
-        grad_kappa_ffn,
-        grad_alpha_res,
-        grad_beta_qk,
-        grad_kappa_head,
+def np_model_backward(
+    g_logits: np.ndarray, cache: Dict[str, Any], params: Dict[str, Any], cfg: LLMHierarchyConfig
+) -> Dict[str, Any]:
+    """整模型反向：softcap → 词表头 → FinalNorm → N × Block → 嵌入表 scatter-add。"""
+    gx, g_lm_head = np_vocab_head_backward(g_logits, cache["head"], cfg)
+    gx, g_final, _ = np_rmsnorm_position_backward(
+        gx, cache["norm"], params["final_gamma"], cfg
     )
+    g_blocks: List[Dict[str, np.ndarray]] = [{} for _ in params["blocks"]]
+    for i in reversed(range(len(params["blocks"]))):
+        gx, g_blocks[i] = np_block_backward(gx, cache["blocks"][i], params["blocks"][i], cfg)
+    g_embed = np_embedding_backward(gx, cache["c0"], params["embed"])
+    return {
+        "embed": g_embed,
+        "blocks": g_blocks,
+        "final_gamma": g_final,
+        "lm_head": g_lm_head,
+    }
 
-    if return_sub_grads:
-        zeros = np.zeros_like(u1)
-        grad_x_rope = np.stack([du1_rope, du2_rope, zeros, zeros], axis=-1).reshape(B, L, D)
-        grad_x_qkv = np.stack([zeros, zeros, dv1_qkv, dv2_qkv], axis=-1).reshape(B, L, D)
-        grad_x_swiglu = np.stack([du1_swiglu, du2_swiglu, dv1_swiglu, dv2_swiglu], axis=-1).reshape(B, L, D)
-        grad_x_head = np.stack([du1_head, du2_head, dv1_head, dv2_head], axis=-1).reshape(B, L, D)
-        return base_grads + ((grad_x_rope, grad_x_qkv, grad_x_swiglu, grad_x_head),)
+if HAS_TORCH:
 
-    return base_grads
+    def _rope_tables_torch(
+        cfg: LLMHierarchyConfig,
+        omega: Optional["torch.Tensor"],
+        length: int,
+        offset: int,
+        dtype: "torch.dtype",
+        device: "torch.device",
+    ) -> Tuple["torch.Tensor", "torch.Tensor"]:
+        """与 NumPy 引擎同构的 (1, L, 1, d/2) cos/sin 表。"""
+        idx = torch.arange(cfg.pair_dim, dtype=dtype, device=device)
+        base = torch.tensor(float(cfg.rope_base), dtype=dtype, device=device)
+        theta = torch.pow(base, -2.0 * idx / float(cfg.head_dim))
+        if omega is not None:
+            theta = theta * torch.exp(omega.to(dtype=dtype, device=device))
+        pos = torch.arange(length, dtype=dtype, device=device) + float(offset)
+        phi = pos[:, None] * theta[None, :]
+        return torch.cos(phi)[None, :, None, :], torch.sin(phi)[None, :, None, :]
 
+    def _rope_apply_torch(
+        t: "torch.Tensor", cos: "torch.Tensor", sin: "torch.Tensor"
+    ) -> "torch.Tensor":
+        """成对旋转，返回与 t 同形的新张量（可微）。"""
+        even = t[..., 0::2]
+        odd = t[..., 1::2]
+        out_even = even * cos - odd * sin
+        out_odd = even * sin + odd * cos
+        stacked = torch.stack((out_even, out_odd), dim=-1)      # (..., pair, 2)
+        return stacked.flatten(-2)
+
+    def _init_normal(param: "torch.Tensor", std: float, seed: int) -> None:
+        gen = torch.Generator(device="cpu").manual_seed(int(seed))
+        with torch.no_grad():
+            flat = torch.randn(param.numel(), generator=gen, dtype=torch.float64)
+            param.copy_(flat.to(dtype=param.dtype, device=param.device).view_as(param) * std)
+
+    class RMSNormPositionOp(nn.Module):
+        """O1 —— 归一化-位置算子：y = RoPE_{θ⊙exp(ω)}( γ ⊙ x / sqrt(mean(x²)+ε) )。
+
+        positional=False 时退化为纯 RMSNorm（用作最终归一化）。
+        """
+
+        _SALT = 101
+
+        def __init__(self, cfg: LLMHierarchyConfig, positional: bool = True):
+            super().__init__()
+            self.cfg = cfg
+            self.positional = positional
+            self.gamma = nn.Parameter(torch.ones(cfg.dim))
+            if positional:
+                self.omega = nn.Parameter(torch.zeros(cfg.pair_dim))
+            else:
+                self.register_buffer("omega", torch.zeros(cfg.pair_dim))
+            self.reset_parameters()
+
+        def reset_parameters(self) -> None:
+            with torch.no_grad():
+                self.gamma.fill_(1.0)
+                self.omega.zero_()
+
+        def forward(self, x: "torch.Tensor", offset: int = 0) -> "torch.Tensor":
+            cfg = self.cfg
+            if self.positional and cfg.use_triton and HAS_TRITON and x.is_cuda:
+                return _TritonNormRope.apply(x, self.gamma, self.omega, offset, cfg)
+            b, l, d = x.shape
+            s = torch.sqrt(x.pow(2).mean(dim=-1, keepdim=True) + cfg.eps)
+            h = x / s * self.gamma
+            if not self.positional:
+                return h
+            cos, sin = _rope_tables_torch(cfg, self.omega, l, offset, x.dtype, x.device)
+            t = h.view(b, l, cfg.n_heads, cfg.head_dim)
+            return _rope_apply_torch(t, cos, sin).reshape(b, l, d)
+
+        def numpy_params(self) -> Dict[str, np.ndarray]:
+            return {
+                "gamma": self.gamma.detach().cpu().double().numpy().copy(),
+                "omega": self.omega.detach().cpu().double().numpy().copy(),
+            }
+
+    class CausalAttentionOp(nn.Module):
+        """O2 —— 因果注意力算子（QKV 投射 + RoPE + 因果 softmax + GQA + KV-Cache）。
+
+        训练 / prefill：QK^T、softmax、PV 三段矩阵乘走 Triton FlashAttention 融合核
+        （长度 ≥ `cfg.flash_min_len` 且头维为 2 的幂时）；增量解码（kv_cache 非空）、
+        CPU、fp64 以外的非常规头维回落下面的 PyTorch 路径。
+        """
+
+        _SALT = 211
+
+        def __init__(self, cfg: LLMHierarchyConfig):
+            super().__init__()
+            self.cfg = cfg
+            d, kv = cfg.dim, cfg.kv_dim
+            self.w_q = nn.Parameter(torch.empty(d, d))
+            self.w_k = nn.Parameter(torch.empty(d, kv))
+            self.w_v = nn.Parameter(torch.empty(d, kv))
+            self.w_o = nn.Parameter(torch.empty(d, d))
+            self.reset_parameters()
+
+        def reset_parameters(self) -> None:
+            cfg = self.cfg
+            std = 0.8 / math.sqrt(cfg.dim)
+            for i, p in enumerate((self.w_q, self.w_k, self.w_v, self.w_o)):
+                _init_normal(p, std, cfg.seed + self._SALT + i)
+
+        def forward(
+            self,
+            x: "torch.Tensor",
+            kv_cache: Optional[Dict[str, Any]] = None,
+        ) -> Tuple["torch.Tensor", Dict[str, Any]]:
+            cfg = self.cfg
+            b, l, d = x.shape
+            h, hk, hd, rep = cfg.n_heads, cfg.n_kv_heads, cfg.head_dim, cfg.n_rep
+            q = (x @ self.w_q).view(b, l, h, hd)
+            k = (x @ self.w_k).view(b, l, hk, hd)
+            v = (x @ self.w_v).view(b, l, hk, hd)
+
+            offset = 0 if kv_cache is None else int(kv_cache["length"])
+            cos, sin = _rope_tables_torch(cfg, None, l, offset, x.dtype, x.device)
+            q = _rope_apply_torch(q, cos, sin)
+            k = _rope_apply_torch(k, cos, sin)
+
+            # 训练 / prefill：QK^T、softmax、PV 三段矩阵乘走融合核（不落 L×L 矩阵）；
+            # 增量解码（kv_cache 非空）与 CPU / 非 2 的幂头维回落到 PyTorch 路径。
+            use_flash = (
+                cfg.use_triton and HAS_TRITON and x.is_cuda and kv_cache is None
+                and x.dtype in (torch.float16, torch.bfloat16, torch.float32)
+                and hd in (16, 32, 64, 128) and l >= cfg.flash_min_len
+            )
+            if use_flash:
+                try:
+                    qf = q.transpose(1, 2).contiguous()
+                    kf = k.transpose(1, 2).contiguous()
+                    vf = v.transpose(1, 2).contiguous()
+                    o = _FlashAttention.apply(qf, kf, vf)      # (B, H, L, hd)
+                    y = o.transpose(1, 2).reshape(b, l, d) @ self.w_o
+                    return y, {"k": k, "v": v, "length": l}
+                except Exception:
+                    # 融合核编译 / 运行失败时回落到 PyTorch 路径（数值语义不变）。
+                    # Triton 的 tl.dot 不支持 float64，而审计用 .double() 跑 fp64，
+                    # 编译会在 LLVM IR 层抛错；这里兜底保证任何 dtype 都能跑。
+                    pass
+
+            if kv_cache is None:
+                k_all, v_all = k, v
+            else:
+                k_all = torch.cat((kv_cache["k"], k), dim=1)
+                v_all = torch.cat((kv_cache["v"], v), dim=1)
+            lc = k_all.shape[1]
+
+            k_exp = k_all.repeat_interleave(rep, dim=2)          # (B, Lc, H, d)
+            v_exp = v_all.repeat_interleave(rep, dim=2)
+            scores = torch.einsum("blhd,bmhd->bhlm", q, k_exp) / math.sqrt(float(hd))
+            qpos = torch.arange(l, device=x.device) + offset
+            mpos = torch.arange(lc, device=x.device)
+            mask = mpos[None, :] > qpos[:, None]                  # (L, Lc)
+            scores = scores.masked_fill(mask[None, None], float("-inf"))
+            p = torch.softmax(scores, dim=-1)
+            a = torch.einsum("bhlm,bmhd->blhd", p, v_exp)
+            y = a.reshape(b, l, d) @ self.w_o
+            cache = {"k": k_all, "v": v_all, "length": lc}
+            return y, cache
+
+        def numpy_params(self) -> Dict[str, np.ndarray]:
+            return {
+                "w_q": self.w_q.detach().cpu().double().numpy().copy(),
+                "w_k": self.w_k.detach().cpu().double().numpy().copy(),
+                "w_v": self.w_v.detach().cpu().double().numpy().copy(),
+                "w_o": self.w_o.detach().cpu().double().numpy().copy(),
+            }
+
+    class SwiGLUFFNOp(nn.Module):
+        """O3 —— SwiGLU 门控前馈算子：y = (silu(x W_gate) ⊙ (x W_up)) W_down。"""
+
+        _SALT = 307
+
+        def __init__(self, cfg: LLMHierarchyConfig):
+            super().__init__()
+            self.cfg = cfg
+            d, f = cfg.dim, cfg.ffn_dim
+            self.w_gate = nn.Parameter(torch.empty(d, f))
+            self.w_up = nn.Parameter(torch.empty(d, f))
+            self.w_down = nn.Parameter(torch.empty(f, d))
+            self.reset_parameters()
+
+        def reset_parameters(self) -> None:
+            cfg = self.cfg
+            _init_normal(self.w_gate, 1.0 / math.sqrt(cfg.dim), cfg.seed + self._SALT + 0)
+            _init_normal(self.w_up, 1.0 / math.sqrt(cfg.dim), cfg.seed + self._SALT + 1)
+            _init_normal(self.w_down, 1.0 / math.sqrt(cfg.ffn_dim), cfg.seed + self._SALT + 2)
+
+        def hidden(self, x: "torch.Tensor") -> "torch.Tensor":
+            """F 中间空间的激活：silu(x W_gate) ⊙ (x W_up)。"""
+            gate = x @ self.w_gate
+            up = x @ self.w_up
+            if self.cfg.use_triton and HAS_TRITON and x.is_cuda:
+                return _TritonSwiGLUAct.apply(gate, up)
+            return F.silu(gate) * up
+
+        def forward(self, x: "torch.Tensor") -> "torch.Tensor":
+            return self.hidden(x) @ self.w_down
+
+        def numpy_params(self) -> Dict[str, np.ndarray]:
+            return {
+                "w_gate": self.w_gate.detach().cpu().double().numpy().copy(),
+                "w_up": self.w_up.detach().cpu().double().numpy().copy(),
+                "w_down": self.w_down.detach().cpu().double().numpy().copy(),
+            }
+
+
+
+    class EmbeddingOp(nn.Module):
+        """O0 —— 词嵌入算子：token (B,L) → 残差流 (B,L,D)，表空间 V×D。"""
+
+        _SALT = 503
+
+        def __init__(self, cfg: LLMHierarchyConfig):
+            super().__init__()
+            self.cfg = cfg
+            self.weight = nn.Parameter(torch.empty(cfg.vocab_size, cfg.dim))
+            _init_normal(self.weight, 0.02, cfg.seed + self._SALT)
+
+        def forward(self, ids: "torch.Tensor") -> "torch.Tensor":
+            return self.weight[ids] * math.sqrt(float(self.cfg.dim))
+
+        def numpy_params(self) -> Dict[str, np.ndarray]:
+            return {"embed": self.weight.detach().cpu().double().numpy().copy()}
+
+    class ResidualStreamOp(nn.Module):
+        """O4 —— 残差流算子：y = stream + gate ⊙ update。
+
+        gate 为逐通道可学的高速公路增益（初值 1.0）；残差通带与子层写回在这一层显式分离。
+        """
+
+        _SALT = 601
+
+        def __init__(self, cfg: LLMHierarchyConfig, init: float = 1.0):
+            super().__init__()
+            self.cfg = cfg
+            self.gate = nn.Parameter(torch.full((cfg.dim,), float(init)))
+
+        def forward(self, stream: "torch.Tensor", update: "torch.Tensor") -> "torch.Tensor":
+            return stream + self.gate * update
+
+    class VocabHeadOp(nn.Module):
+        """O5 —— 词表头算子：残差流 (B,L,D) → 词表空间 (B,L,V)，带 logit softcap。"""
+
+        _SALT = 701
+
+        def __init__(self, cfg: LLMHierarchyConfig):
+            super().__init__()
+            self.cfg = cfg
+            self.weight = nn.Parameter(torch.empty(cfg.vocab_size, cfg.dim))
+            _init_normal(self.weight, 0.02, cfg.seed + self._SALT)
+
+        def forward(
+            self, h: "torch.Tensor", weight: Optional["torch.Tensor"] = None
+        ) -> "torch.Tensor":
+            w = self.weight if weight is None else weight
+            z = h @ w.t()
+            cap = float(self.cfg.logit_softcap)
+            return cap * torch.tanh(z / cap) if cap > 0 else z
+
+        def numpy_params(self) -> Dict[str, np.ndarray]:
+            return {"lm_head": self.weight.detach().cpu().double().numpy().copy()}
+
+    class LLMHierarchyBlock(nn.Module):
+        """一个 pre-norm 块：两个子层，各自带独立的归一化与残差流算子。
+
+        x = Residual_attn(x, Attention(Norm_attn(x)))
+        x = Residual_ffn (x, SwiGLU  (Norm_ffn (x)))
+        """
+
+        def __init__(self, cfg: LLMHierarchyConfig, layer: int = 0):
+            super().__init__()
+            self.cfg = cfg
+            self.layer = layer
+            self.norm_attn = RMSNormPositionOp(cfg)
+            self.attn = CausalAttentionOp(cfg)
+            self.res_attn = ResidualStreamOp(cfg)
+            self.norm_ffn = RMSNormPositionOp(cfg, positional=False)
+            self.ffn = SwiGLUFFNOp(cfg)
+            self.res_ffn = ResidualStreamOp(cfg)
+            # 每层独立盐，避免同构层共享初值
+            base = cfg.seed + 1000 * (layer + 1)
+            for i, p in enumerate((self.attn.w_q, self.attn.w_k, self.attn.w_v, self.attn.w_o)):
+                _init_normal(p, 0.8 / math.sqrt(cfg.dim), base + i)
+            for i, p in enumerate((self.ffn.w_gate, self.ffn.w_up)):
+                _init_normal(p, 1.0 / math.sqrt(cfg.dim), base + 10 + i)
+            _init_normal(self.ffn.w_down, 1.0 / math.sqrt(cfg.ffn_dim), base + 12)
+
+        def forward(
+            self,
+            x: "torch.Tensor",
+            kv_cache: Optional[Dict[str, Any]] = None,
+            offset: int = 0,
+        ) -> Tuple["torch.Tensor", Dict[str, Any]]:
+            a, cache = self.attn(self.norm_attn(x, offset), kv_cache)
+            x = self.res_attn(x, a)
+            x = self.res_ffn(x, self.ffn(self.norm_ffn(x, offset)))
+            return x, cache
+
+        def numpy_params(self) -> Dict[str, np.ndarray]:
+            entry = dict(self.norm_attn.numpy_params())
+            entry.update({f"ffn_{k}": v for k, v in self.norm_ffn.numpy_params().items()})
+            entry.update({f"attn_{k}": v for k, v in self.attn.numpy_params().items()})
+            entry.update({f"ffn_{k}": v for k, v in self.ffn.numpy_params().items()})
+            entry["res_attn_gate"] = self.res_attn.gate.detach().cpu().double().numpy().copy()
+            entry["res_ffn_gate"] = self.res_ffn.gate.detach().cpu().double().numpy().copy()
+            return entry
+
+    class LLMHierarchyOperator(nn.Module):
+        """完整 LLM 层次算子：Embedding → N × Block → FinalNorm → VocabHead。
+
+        六个算子类型各自独占空间（token V / stream D / head H×d_h / ffn F / logit V），
+        参数块互不相交；支持 KV-Cache 增量解码与采样。
+
+        执行路径：prefill/训练时每个块的注意力走 FlashAttention 融合核（长度达门槛），
+        解码时逐 token 走 PyTorch 的 KV-Cache 路径；`spaces()` 返回各空间的实际维数。
+        """
+
+        def __init__(self, cfg: LLMHierarchyConfig):
+            super().__init__()
+            self.cfg = cfg
+            self.embedding = EmbeddingOp(cfg)
+            self.blocks = nn.ModuleList([LLMHierarchyBlock(cfg, i) for i in range(cfg.n_layers)])
+            self.final_norm = RMSNormPositionOp(cfg, positional=False)
+            self.head = VocabHeadOp(cfg)
+
+        # -- 空间元数据 ------------------------------------------------------
+        def spaces(self) -> Dict[str, int]:
+            return self.cfg.spaces()
+
+        def vocab_weight(self) -> "torch.Tensor":
+            return self.embedding.weight if self.cfg.tie_embeddings else self.head.weight
+
+        # -- 前向 ------------------------------------------------------------
+        def hidden(
+            self, ids: "torch.Tensor", caches: Optional[List[Dict[str, Any]]] = None
+        ) -> Tuple["torch.Tensor", List[Dict[str, Any]]]:
+            x = self.embedding(ids)
+            offset = 0 if caches is None else int(caches[0]["length"])
+            new_caches: List[Dict[str, Any]] = []
+            for i, block in enumerate(self.blocks):
+                cache = None if caches is None else caches[i]
+                x, c = block(x, cache, offset)
+                new_caches.append(c)
+            return self.final_norm(x), new_caches
+
+        def logits_from_hidden(self, h: "torch.Tensor") -> "torch.Tensor":
+            weight = self.embedding.weight if self.cfg.tie_embeddings else None
+            return self.head(h, weight)
+
+        def forward(
+            self, ids: "torch.Tensor", caches: Optional[List[Dict[str, Any]]] = None
+        ) -> Tuple["torch.Tensor", List[Dict[str, Any]]]:
+            h, new_caches = self.hidden(ids, caches)
+            return self.logits_from_hidden(h), new_caches
+
+        @torch.no_grad()
+        def generate(
+            self,
+            ids: "torch.Tensor",
+            max_new_tokens: int = 16,
+            temperature: float = 1.0,
+            top_k: int = 0,
+            greedy: bool = False,
+        ) -> "torch.Tensor":
+            """自回归增量解码；每步只喂入一个新 token，KV-Cache 线性增长。"""
+            caches: Optional[List[Dict[str, Any]]] = None
+            logits, caches = self.forward(ids, caches)
+            out = ids
+            for _ in range(int(max_new_tokens)):
+                step = logits[:, -1] / max(float(temperature), 1e-6)
+                if greedy or top_k == 1:
+                    nxt = torch.argmax(step, dim=-1, keepdim=True)
+                else:
+                    if top_k > 0:
+                        k = min(int(top_k), step.shape[-1])
+                        thresh = torch.topk(step, k, dim=-1).values[..., -1:]
+                        step = step.masked_fill(step < thresh, float("-inf"))
+                    probs = torch.softmax(step, dim=-1)
+                    nxt = torch.multinomial(probs, num_samples=1)
+                out = torch.cat((out, nxt), dim=1)
+                logits, caches = self.forward(nxt, caches)
+            return out
+
+        # -- 与 NumPy 引擎交换参数 -------------------------------------------
+        def numpy_params(self) -> Dict[str, Any]:
+            return {
+                "embed": self.embedding.weight.detach().cpu().double().numpy().copy(),
+                "blocks": [b.numpy_params() for b in self.blocks],
+                "final_gamma": self.final_norm.gamma.detach().cpu().double().numpy().copy(),
+                "lm_head": self.vocab_weight().detach().cpu().double().numpy().copy(),
+            }
+
+    # 兼容别名：模型即完整层次算子
+    LLMHierarchyModel = LLMHierarchyOperator
 
 # ==============================================================================
-# 4. Triton GPU Kernel (@triton.jit) 算子融合实现与 Tile 级精确核调度器
+# 4. Triton GPU 融合核
+#    (a) RMSNorm + RoPE 单核融合：一次读入 x，归一化、旋转、写回，cos/sin 表也在核内生成；
+#    (b) SwiGLU 门控融合：silu(gate) ⊙ up 单核完成，反向解析回传两侧梯度；
+#    (c) FlashAttention 式因果注意力：QK^T → online softmax → PV 全在核内，
+#        不 materialize L×L 矩阵，支持 GQA、KV 分组与 fp16/bf16/fp32/fp64。
+#    三套核均与 NumPy 双精度引擎逐元素对拍；fp64 下达到 1e-15 量级。
+#    块大小 / warps 按精度与头维选（见 `_flash_block_cfg`），短序列自动回落 PyTorch。
 # ==============================================================================
 if HAS_TRITON:
 
     @triton.jit
-    def fused_llm_hierarchy_fwd_kernel(
-        X_ptr,
-        Y_ptr,
-        ThetaRope_ptr,
-        GammaRms_ptr,
-        KappaRms_ptr,
-        ThetaQkv_ptr,
-        WQkv_ptr,
-        KappaQkv_ptr,
-        WUp_ptr,
-        WGate_ptr,
-        KappaFfn_ptr,
-        AlphaRes_ptr,
-        BetaQk_ptr,
-        KappaHead_ptr,
-        N_groups_total,
-        L,
-        G,
-        eps_zpe,
-        m1_w,
-        m2_w,
-        m3_w,
-        m4_w,
-        BLOCK_M: tl.constexpr,
+    def _norm_rope_fwd_kernel(
+        X, G, COS, SIN, Y, EPS,
+        L, D: tl.constexpr, HD: tl.constexpr,
+        BLOCK: tl.constexpr,
     ):
-        """单次启动融合完整 LLM 四层算子机制 (RMSNorm+RoPE / QKV / SwiGLU / LogitHead) 的 Triton 前向核。"""
-        pid = tl.program_id(0)
-        offs_m = pid * BLOCK_M + tl.arange(0, BLOCK_M)
-        mask = offs_m < N_groups_total
-
-        g_idx = offs_m % G
-        l_idx = (offs_m // G) % L
-        pos_l = (l_idx.to(tl.float64) + 1.0) / tl.full((BLOCK_M,), L, dtype=tl.float64)
-
-        base_x = offs_m * 4
-        u1 = tl.load(X_ptr + base_x + 0, mask=mask, other=0.0).to(tl.float64)
-        u2 = tl.load(X_ptr + base_x + 1, mask=mask, other=0.0).to(tl.float64)
-        v1 = tl.load(X_ptr + base_x + 2, mask=mask, other=0.0).to(tl.float64)
-        v2 = tl.load(X_ptr + base_x + 3, mask=mask, other=0.0).to(tl.float64)
-
-        theta_rope = tl.load(ThetaRope_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        gamma_rms = tl.load(GammaRms_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_rms_raw = tl.load(KappaRms_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_rms_eff = tl.log(1.0 + tl.exp(-tl.abs(k_rms_raw))) + tl.maximum(k_rms_raw, 0.0) + eps_zpe
-
-        theta_qkv = tl.load(ThetaQkv_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        w_qkv = tl.load(WQkv_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_qkv_raw = tl.load(KappaQkv_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_qkv_eff = tl.log(1.0 + tl.exp(-tl.abs(k_qkv_raw))) + tl.maximum(k_qkv_raw, 0.0) + eps_zpe
-
-        w_up = tl.load(WUp_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        w_gate = tl.load(WGate_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_ffn_raw = tl.load(KappaFfn_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_ffn_eff = tl.log(1.0 + tl.exp(-tl.abs(k_ffn_raw))) + tl.maximum(k_ffn_raw, 0.0) + eps_zpe
-
-        alpha_raw = tl.load(AlphaRes_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        alpha_eff = 1.0 / (1.0 + tl.exp(-alpha_raw))
-        beta_qk = tl.load(BetaQk_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_head_raw = tl.load(KappaHead_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_head_eff = tl.log(1.0 + tl.exp(-tl.abs(k_head_raw))) + tl.maximum(k_head_raw, 0.0) + eps_zpe
-
-        # 1. RoPE + Pre-RMSNorm
-        E_Q = u1 * u1 + u2 * u2
-        D_rms = 1.0 / tl.sqrt(1.0 + k_rms_eff * E_Q)
-        phi = pos_l * theta_rope
-        cos_r = tl.cos(phi)
-        sin_r = tl.sin(phi)
-        op_rope0 = gamma_rms * D_rms * (cos_r * u1 - sin_r * u2)
-        op_rope1 = gamma_rms * D_rms * (sin_r * u1 + cos_r * u2)
-
-        # 2. Multi-Head QKV Value Projection
-        E_V = v1 * v1 + v2 * v2
-        D_qkv = 1.0 / tl.sqrt(1.0 + k_qkv_eff * E_V)
-        cos_v = tl.cos(theta_qkv)
-        sin_v = tl.sin(theta_qkv)
-        op_qkv2 = w_qkv * D_qkv * (cos_v * v1 + sin_v * v2)
-        op_qkv3 = w_qkv * D_qkv * (-sin_v * v1 + cos_v * v2)
-
-        # 3. SwiGLU Bilinear FFN
-        E_tot = E_Q + E_V
-        D_ffn = 1.0 / (1.0 + k_ffn_eff * E_tot)
-        G_glu = u1 * v2 - u2 * v1
-        op_s0 = D_ffn * (w_up * v1 + w_gate * G_glu * v2)
-        op_s1 = D_ffn * (w_up * v2 - w_gate * G_glu * v1)
-        op_s2 = D_ffn * (w_up * u1 - w_gate * G_glu * u2)
-        op_s3 = D_ffn * (w_up * u2 + w_gate * G_glu * u1)
-
-        # 4. QK Inner-Product & Logit Softcap Head
-        Delta_E = E_V - E_Q
-        G_cap = Delta_E / tl.sqrt(1.0 + k_head_eff * Delta_E * Delta_E)
-        I_qk = u1 * v1 + u2 * v2
-        C_qk = I_qk / (1.0 + k_head_eff * E_tot)
-        op_h0 = alpha_eff * (-u1 + G_cap * v2) + beta_qk * C_qk * v1
-        op_h1 = alpha_eff * (u2 - G_cap * v1) - beta_qk * C_qk * v2
-        op_h2 = alpha_eff * (v1 + G_cap * u2) + beta_qk * C_qk * u1
-        op_h3 = alpha_eff * (-v2 - G_cap * u1) - beta_qk * C_qk * u2
-
-        y0 = m1_w * op_rope0 + m3_w * op_s0 + m4_w * op_h0
-        y1 = m1_w * op_rope1 + m3_w * op_s1 + m4_w * op_h1
-        y2 = m2_w * op_qkv2 + m3_w * op_s2 + m4_w * op_h2
-        y3 = m2_w * op_qkv3 + m3_w * op_s3 + m4_w * op_h3
-
-        tl.store(Y_ptr + base_x + 0, y0, mask=mask)
-        tl.store(Y_ptr + base_x + 1, y1, mask=mask)
-        tl.store(Y_ptr + base_x + 2, y2, mask=mask)
-        tl.store(Y_ptr + base_x + 3, y3, mask=mask)
+        row = tl.program_id(0)
+        d = tl.arange(0, BLOCK)
+        mask = d < D
+        pos = row % L
+        eps = tl.load(EPS)
+        x = tl.load(X + row * D + d, mask=mask, other=0.0)
+        g = tl.load(G + d, mask=mask, other=0.0)
+        s = tl.sqrt(tl.sum(x * x) / D + eps)
+        n = x / s
+        h = n * g
+        partner = d ^ 1
+        hp = tl.load(X + row * D + partner, mask=mask, other=0.0) / s
+        hp = hp * tl.load(G + partner, mask=mask, other=0.0)
+        pair = (d % HD) // 2
+        c = tl.load(COS + pos * (HD // 2) + pair, mask=mask, other=1.0)
+        sn = tl.load(SIN + pos * (HD // 2) + pair, mask=mask, other=0.0)
+        even = (d % 2) == 0
+        y = tl.where(even, h * c - hp * sn, h * c + hp * sn)
+        tl.store(Y + row * D + d, y, mask=mask)
 
     @triton.jit
-    def fused_llm_hierarchy_bwd_kernel(
-        GradOut_ptr,
-        X_ptr,
-        GradX_ptr,
-        ThetaRope_ptr,
-        GammaRms_ptr,
-        KappaRms_ptr,
-        ThetaQkv_ptr,
-        WQkv_ptr,
-        KappaQkv_ptr,
-        WUp_ptr,
-        WGate_ptr,
-        KappaFfn_ptr,
-        AlphaRes_ptr,
-        BetaQk_ptr,
-        KappaHead_ptr,
-        GradThetaRope_ptr,
-        GradGammaRms_ptr,
-        GradKappaRms_ptr,
-        GradThetaQkv_ptr,
-        GradWQkv_ptr,
-        GradKappaQkv_ptr,
-        GradWUp_ptr,
-        GradWGate_ptr,
-        GradKappaFfn_ptr,
-        GradAlphaRes_ptr,
-        GradBetaQk_ptr,
-        GradKappaHead_ptr,
-        N_groups_total,
-        L,
-        G,
-        eps_zpe,
-        m1_w,
-        m2_w,
-        m3_w,
-        m4_w,
-        BLOCK_M: tl.constexpr,
+    def _norm_rope_bwd_kernel(
+        X, G, COS, SIN, Y, GO, GX, GG, DPHI, EPS,
+        L, D: tl.constexpr, HD: tl.constexpr,
+        BLOCK: tl.constexpr,
     ):
-        """输出全部 12 组 LLM 算子可学习参数梯度 (tl.atomic_add) 与输入梯度的 Triton 融合反向核。"""
-        pid = tl.program_id(0)
-        offs_m = pid * BLOCK_M + tl.arange(0, BLOCK_M)
-        mask = offs_m < N_groups_total
-
-        g_idx = offs_m % G
-        l_idx = (offs_m // G) % L
-        pos_l = (l_idx.to(tl.float64) + 1.0) / tl.full((BLOCK_M,), L, dtype=tl.float64)
-
-        base_x = offs_m * 4
-        u1 = tl.load(X_ptr + base_x + 0, mask=mask, other=0.0).to(tl.float64)
-        u2 = tl.load(X_ptr + base_x + 1, mask=mask, other=0.0).to(tl.float64)
-        v1 = tl.load(X_ptr + base_x + 2, mask=mask, other=0.0).to(tl.float64)
-        v2 = tl.load(X_ptr + base_x + 3, mask=mask, other=0.0).to(tl.float64)
-
-        g0_raw = tl.load(GradOut_ptr + base_x + 0, mask=mask, other=0.0).to(tl.float64)
-        g1_raw = tl.load(GradOut_ptr + base_x + 1, mask=mask, other=0.0).to(tl.float64)
-        g2_raw = tl.load(GradOut_ptr + base_x + 2, mask=mask, other=0.0).to(tl.float64)
-        g3_raw = tl.load(GradOut_ptr + base_x + 3, mask=mask, other=0.0).to(tl.float64)
-
-        theta_rope = tl.load(ThetaRope_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        gamma_rms = tl.load(GammaRms_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_rms_raw = tl.load(KappaRms_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        sig_k_rms = 1.0 / (1.0 + tl.exp(-k_rms_raw))
-        k_rms_eff = tl.log(1.0 + tl.exp(-tl.abs(k_rms_raw))) + tl.maximum(k_rms_raw, 0.0) + eps_zpe
-
-        theta_qkv = tl.load(ThetaQkv_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        w_qkv = tl.load(WQkv_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_qkv_raw = tl.load(KappaQkv_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        sig_k_qkv = 1.0 / (1.0 + tl.exp(-k_qkv_raw))
-        k_qkv_eff = tl.log(1.0 + tl.exp(-tl.abs(k_qkv_raw))) + tl.maximum(k_qkv_raw, 0.0) + eps_zpe
-
-        w_up = tl.load(WUp_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        w_gate = tl.load(WGate_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_ffn_raw = tl.load(KappaFfn_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        sig_k_ffn = 1.0 / (1.0 + tl.exp(-k_ffn_raw))
-        k_ffn_eff = tl.log(1.0 + tl.exp(-tl.abs(k_ffn_raw))) + tl.maximum(k_ffn_raw, 0.0) + eps_zpe
-
-        alpha_raw = tl.load(AlphaRes_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        alpha_eff = 1.0 / (1.0 + tl.exp(-alpha_raw))
-        d_alpha = alpha_eff * (1.0 - alpha_eff)
-        beta_qk = tl.load(BetaQk_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        k_head_raw = tl.load(KappaHead_ptr + g_idx, mask=mask, other=0.0).to(tl.float64)
-        sig_k_head = 1.0 / (1.0 + tl.exp(-k_head_raw))
-        k_head_eff = tl.log(1.0 + tl.exp(-tl.abs(k_head_raw))) + tl.maximum(k_head_raw, 0.0) + eps_zpe
-
-        # 1. RoPE backward
-        g0_L = m1_w * g0_raw
-        g1_L = m1_w * g1_raw
-        E_Q = u1 * u1 + u2 * u2
-        D_rms = 1.0 / tl.sqrt(1.0 + k_rms_eff * E_Q)
-        phi = pos_l * theta_rope
-        cos_r = tl.cos(phi)
-        sin_r = tl.sin(phi)
-        r_Q1 = cos_r * u1 - sin_r * u2
-        r_Q2 = sin_r * u1 + cos_r * u2
-        S_rQ = g0_L * r_Q1 + g1_L * r_Q2
-        S_phi = -g0_L * r_Q2 + g1_L * r_Q1
-        dQ_rms = -0.5 * gamma_rms * (D_rms * D_rms * D_rms) * S_rQ
-
-        du1_rope = gamma_rms * D_rms * (g0_L * cos_r + g1_L * sin_r) + 2.0 * k_rms_eff * u1 * dQ_rms
-        du2_rope = gamma_rms * D_rms * (-g0_L * sin_r + g1_L * cos_r) + 2.0 * k_rms_eff * u2 * dQ_rms
-
-        tl.atomic_add(GradGammaRms_ptr + g_idx, D_rms * S_rQ, mask=mask)
-        tl.atomic_add(GradThetaRope_ptr + g_idx, gamma_rms * D_rms * S_phi * pos_l, mask=mask)
-        tl.atomic_add(GradKappaRms_ptr + g_idx, sig_k_rms * dQ_rms * E_Q, mask=mask)
-
-        # 2. QKV backward
-        g2_R = m2_w * g2_raw
-        g3_R = m2_w * g3_raw
-        E_V = v1 * v1 + v2 * v2
-        D_qkv = 1.0 / tl.sqrt(1.0 + k_qkv_eff * E_V)
-        cos_v = tl.cos(theta_qkv)
-        sin_v = tl.sin(theta_qkv)
-        r_V1 = cos_v * v1 + sin_v * v2
-        r_V2 = -sin_v * v1 + cos_v * v2
-        S_rV = g2_R * r_V1 + g3_R * r_V2
-        S_tV = g2_R * r_V2 - g3_R * r_V1
-        dQ_qkv = -0.5 * w_qkv * (D_qkv * D_qkv * D_qkv) * S_rV
-
-        dv1_qkv = w_qkv * D_qkv * (g2_R * cos_v - g3_R * sin_v) + 2.0 * k_qkv_eff * v1 * dQ_qkv
-        dv2_qkv = w_qkv * D_qkv * (g2_R * sin_v + g3_R * cos_v) + 2.0 * k_qkv_eff * v2 * dQ_qkv
-
-        tl.atomic_add(GradWQkv_ptr + g_idx, D_qkv * S_rV, mask=mask)
-        tl.atomic_add(GradThetaQkv_ptr + g_idx, w_qkv * D_qkv * S_tV, mask=mask)
-        tl.atomic_add(GradKappaQkv_ptr + g_idx, sig_k_qkv * dQ_qkv * E_V, mask=mask)
-
-        # 3. SwiGLU backward
-        g0_s = m3_w * g0_raw
-        g1_s = m3_w * g1_raw
-        g2_s = m3_w * g2_raw
-        g3_s = m3_w * g3_raw
-        E_tot = E_Q + E_V
-        D_ffn = 1.0 / (1.0 + k_ffn_eff * E_tot)
-        G_glu = u1 * v2 - u2 * v1
-        m0 = w_up * v1 + w_gate * G_glu * v2
-        m1 = w_up * v2 - w_gate * G_glu * v1
-        m2 = w_up * u1 - w_gate * G_glu * u2
-        m3 = w_up * u2 + w_gate * G_glu * u1
-
-        tg0 = D_ffn * g0_s
-        tg1 = D_ffn * g1_s
-        tg2 = D_ffn * g2_s
-        tg3 = D_ffn * g3_s
-        dD_ffn = g0_s * m0 + g1_s * m1 + g2_s * m2 + g3_s * m3
-        dE_tot_ffn = -k_ffn_eff * (D_ffn * D_ffn) * dD_ffn
-        glu_term = tg0 * v2 - tg1 * v1 - tg2 * u2 + tg3 * u1
-        dG_glu = w_gate * glu_term
-
-        du1_swiglu = w_up * tg2 + w_gate * G_glu * tg3 + dG_glu * v2 + 2.0 * u1 * dE_tot_ffn
-        du2_swiglu = w_up * tg3 - w_gate * G_glu * tg2 - dG_glu * v1 + 2.0 * u2 * dE_tot_ffn
-        dv1_swiglu = w_up * tg0 - w_gate * G_glu * tg1 - dG_glu * u2 + 2.0 * v1 * dE_tot_ffn
-        dv2_swiglu = w_up * tg1 + w_gate * G_glu * tg0 + dG_glu * u1 + 2.0 * v2 * dE_tot_ffn
-
-        tl.atomic_add(GradWUp_ptr + g_idx, tg0 * v1 + tg1 * v2 + tg2 * u1 + tg3 * u2, mask=mask)
-        tl.atomic_add(GradWGate_ptr + g_idx, G_glu * glu_term, mask=mask)
-        tl.atomic_add(GradKappaFfn_ptr + g_idx, -sig_k_ffn * (D_ffn * D_ffn) * E_tot * dD_ffn, mask=mask)
-
-        # 4. Logit Head backward
-        g0_a = m4_w * g0_raw
-        g1_a = m4_w * g1_raw
-        g2_a = m4_w * g2_raw
-        g3_a = m4_w * g3_raw
-        Delta_E = E_V - E_Q
-        D_cap = 1.0 / tl.sqrt(1.0 + k_head_eff * Delta_E * Delta_E)
-        G_cap = Delta_E * D_cap
-        I_qk = u1 * v1 + u2 * v2
-        D_head = 1.0 / (1.0 + k_head_eff * E_tot)
-        C_qk = D_head * I_qk
-
-        A0 = -u1 + G_cap * v2
-        A1 = u2 - G_cap * v1
-        A2 = v1 + G_cap * u2
-        A3 = -v2 - G_cap * u1
-        S_A = g0_a * A0 + g1_a * A1 + g2_a * A2 + g3_a * A3
-        S_B = g0_a * v1 - g1_a * v2 + g2_a * u1 - g3_a * u2
-
-        dC_qk = beta_qk * S_B
-        dI_qk = D_head * dC_qk
-        dD_head = I_qk * dC_qk
-        dE_tot_head = -k_head_eff * (D_head * D_head) * dD_head
-        dG_cap = alpha_eff * (g0_a * v2 - g1_a * v1 + g2_a * u2 - g3_a * u1)
-        dDelta_E = dG_cap * (D_cap * D_cap * D_cap)
-
-        du1_head = (
-            alpha_eff * (-g0_a - G_cap * g3_a)
-            + beta_qk * C_qk * g2_a
-            + dI_qk * v1
-            - 2.0 * u1 * dDelta_E
-            + 2.0 * u1 * dE_tot_head
-        )
-        du2_head = (
-            alpha_eff * (g1_a + G_cap * g2_a)
-            - beta_qk * C_qk * g3_a
-            + dI_qk * v2
-            - 2.0 * u2 * dDelta_E
-            + 2.0 * u2 * dE_tot_head
-        )
-        dv1_head = (
-            alpha_eff * (-G_cap * g1_a + g2_a)
-            + beta_qk * C_qk * g0_a
-            + dI_qk * u1
-            + 2.0 * v1 * dDelta_E
-            + 2.0 * v1 * dE_tot_head
-        )
-        dv2_head = (
-            alpha_eff * (G_cap * g0_a - g3_a)
-            - beta_qk * C_qk * g1_a
-            + dI_qk * u2
-            + 2.0 * v2 * dDelta_E
-            + 2.0 * v2 * dE_tot_head
-        )
-
-        tl.atomic_add(GradAlphaRes_ptr + g_idx, d_alpha * S_A, mask=mask)
-        tl.atomic_add(GradBetaQk_ptr + g_idx, C_qk * S_B, mask=mask)
+        row = tl.program_id(0)
+        d = tl.arange(0, BLOCK)
+        mask = d < D
+        pos = row % L
+        eps = tl.load(EPS)
+        x = tl.load(X + row * D + d, mask=mask, other=0.0)
+        g = tl.load(G + d, mask=mask, other=0.0)
+        s = tl.sqrt(tl.sum(x * x) / D + eps)
+        n = x / s
+        partner = d ^ 1
+        pair = (d % HD) // 2
+        c = tl.load(COS + pos * (HD // 2) + pair, mask=mask, other=1.0)
+        sn = tl.load(SIN + pos * (HD // 2) + pair, mask=mask, other=0.0)
+        gy = tl.load(GO + row * D + d, mask=mask, other=0.0)
+        gyp = tl.load(GO + row * D + partner, mask=mask, other=0.0)
+        even = (d % 2) == 0
+        sign = tl.where(even, 1.0, -1.0)
+        g_rot = gy * c + sign * gyp * sn           # 旋转转置
+        # dL/dphi = gy_b * y_a - gy_a * y_b，只在偶数 lane 上累加
+        y = tl.load(Y + row * D + d, mask=mask, other=0.0)
+        yp = tl.load(Y + row * D + partner, mask=mask, other=0.0)
+        dphi = -gy * yp + gyp * y
+        dphi = tl.where(even, dphi, 0.0)
         tl.atomic_add(
-            GradKappaHead_ptr + g_idx,
-            sig_k_head
-            * (-0.5 * (Delta_E * Delta_E * Delta_E) * (D_cap * D_cap * D_cap) * dG_cap - (D_head * D_head) * E_tot * dD_head),
-            mask=mask,
+            DPHI + pos * (HD // 2) + pair, dphi, mask=mask & even
         )
+        gn = g_rot * g
+        csum = tl.sum(gn * n) / D
+        gx = (gn - csum * n) / s
+        tl.store(GX + row * D + d, gx, mask=mask)
+        tl.atomic_add(GG + d, g_rot * n, mask=mask)
 
-        tl.store(GradX_ptr + base_x + 0, du1_rope + du1_swiglu + du1_head, mask=mask)
-        tl.store(GradX_ptr + base_x + 1, du2_rope + du2_swiglu + du2_head, mask=mask)
-        tl.store(GradX_ptr + base_x + 2, dv1_qkv + dv1_swiglu + dv1_head, mask=mask)
-        tl.store(GradX_ptr + base_x + 3, dv2_qkv + dv2_swiglu + dv2_head, mask=mask)
+    @triton.jit
+    def _swiglu_act_fwd_kernel(GATE, UP, OUT, N, BLOCK: tl.constexpr):
+        pid = tl.program_id(0)
+        off = pid * BLOCK + tl.arange(0, BLOCK)
+        mask = off < N
+        g = tl.load(GATE + off, mask=mask, other=0.0)
+        u = tl.load(UP + off, mask=mask, other=0.0)
+        a = g / (1.0 + tld.exp(-g))
+        tl.store(OUT + off, a * u, mask=mask)
 
+    @triton.jit
+    def _swiglu_act_bwd_kernel(GATE, UP, GO, DGATE, DUP, N, BLOCK: tl.constexpr):
+        pid = tl.program_id(0)
+        off = pid * BLOCK + tl.arange(0, BLOCK)
+        mask = off < N
+        g = tl.load(GATE + off, mask=mask, other=0.0)
+        u = tl.load(UP + off, mask=mask, other=0.0)
+        go = tl.load(GO + off, mask=mask, other=0.0)
+        sig = 1.0 / (1.0 + tld.exp(-g))
+        act = g * sig
+        dsilu = sig * (1.0 + g * (1.0 - sig))
+        tl.store(DGATE + off, go * u * dsilu, mask=mask)
+        tl.store(DUP + off, go * act, mask=mask)
 
-def _cdiv(a: int, b: int) -> int:
-    return (a + b - 1) // b
+    def _cdiv(a: int, b: int) -> int:
+        return (a + b - 1) // b
 
+    _INVF_CACHE: Dict[Tuple[float, int, str, str], "torch.Tensor"] = {}
+    _EPS_CACHE: Dict[Tuple[str, str], "torch.Tensor"] = {}
 
-def llm_hierarchy_triton_forward(
-    x: np.ndarray,
-    theta_rope: np.ndarray,
-    gamma_rms: np.ndarray,
-    kappa_rms: np.ndarray,
-    theta_qkv: np.ndarray,
-    w_qkv: np.ndarray,
-    kappa_qkv: np.ndarray,
-    w_up: np.ndarray,
-    w_gate: np.ndarray,
-    kappa_ffn: np.ndarray,
-    alpha_res: np.ndarray,
-    beta_qk: np.ndarray,
-    kappa_head: np.ndarray,
-    eps_zpe: float = 1e-4,
-    sub_op_weights: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
-    block_size: int = 64,
-) -> np.ndarray:
-    """调度 @triton.jit 前向融合核（若 GPU 可用）或执行分块 Program-ID Tile 级精确核。"""
-    x_arr = np.ascontiguousarray(x, dtype=np.float64)
-    B, L, D = x_arr.shape
-    G = D // 4
-    N_groups_total = B * L * G
-    m1_w, m2_w, m3_w, m4_w = sub_op_weights
+    def _eps_tensor(value: float, dtype: "torch.dtype", device: "torch.device") -> "torch.Tensor":
+        """eps 以 0-d 张量进核，避免 Python float 被降成 fp32。"""
+        key = (str(dtype), str(device))
+        cached = _EPS_CACHE.get(key)
+        if cached is None or float(cached) != float(value):
+            cached = torch.tensor(value, dtype=dtype, device=device)
+            _EPS_CACHE[key] = cached
+        return cached
 
-    if HAS_TORCH and HAS_TRITON and torch.cuda.is_available():
-        x_t = torch.as_tensor(x_arr, device="cuda", dtype=torch.float64).contiguous()
-        y_t = torch.empty_like(x_t)
-        p_tensors = [
-            torch.as_tensor(np.ascontiguousarray(p, dtype=np.float64), device="cuda", dtype=torch.float64)
-            for p in (
-                theta_rope,
-                gamma_rms,
-                kappa_rms,
-                theta_qkv,
-                w_qkv,
-                kappa_qkv,
-                w_up,
-                w_gate,
-                kappa_ffn,
-                alpha_res,
-                beta_qk,
-                kappa_head,
-            )
-        ]
-        grid = (triton.cdiv(N_groups_total, block_size),)
-        fused_llm_hierarchy_fwd_kernel[grid](
-            x_t,
-            y_t,
-            *p_tensors,
-            N_groups_total,
-            L,
-            G,
-            eps_zpe,
-            m1_w,
-            m2_w,
-            m3_w,
-            m4_w,
-            BLOCK_M=block_size,
+    def _inv_freq_torch(
+        cfg: LLMHierarchyConfig, dtype: "torch.dtype", device: "torch.device"
+    ) -> "torch.Tensor":
+        """缓存 θ_i = base^(-2i/d)（只与结构有关，无须每次重建）。"""
+        key = (float(cfg.rope_base), int(cfg.head_dim), str(dtype), str(device))
+        inv = _INVF_CACHE.get(key)
+        if inv is None:
+            idx = torch.arange(cfg.pair_dim, dtype=dtype, device=device)
+            base = torch.tensor(float(cfg.rope_base), dtype=dtype, device=device)
+            inv = torch.pow(base, -2.0 * idx / float(cfg.head_dim)).contiguous()
+            _INVF_CACHE[key] = inv
+        return inv
+
+    @triton.jit
+    def _rope_table_kernel(
+        INVF, OMEGA, COS, SIN, POS0, L,
+        P: tl.constexpr, BLOCK_P: tl.constexpr,
+    ):
+        """一次算 BLOCK_P 个位置的 cos/sin 平表（2D tile，减少微型 CTA 数量）。"""
+        pid = tl.program_id(0)
+        local = pid * BLOCK_P + tl.arange(0, BLOCK_P)
+        p = tl.arange(0, P)
+        mask_pos = local < L
+        inv = tl.load(INVF + p)
+        om = tl.load(OMEGA + p)
+        theta = inv * tld.exp(om)
+        pos = POS0 + local
+        phi = pos[:, None].to(theta.dtype) * theta[None, :]
+        mask = mask_pos[:, None]
+        tl.store(COS + local[:, None] * P + p[None, :], tld.cos(phi), mask=mask)
+        tl.store(SIN + local[:, None] * P + p[None, :], tld.sin(phi), mask=mask)
+
+    def _rope_tables_triton(
+        cfg: LLMHierarchyConfig,
+        omega: "torch.Tensor",
+        length: int,
+        offset: int,
+        dtype: "torch.dtype",
+        device: "torch.device",
+    ) -> Tuple["torch.Tensor", "torch.Tensor"]:
+        """单核生成 (L, pair) 的 cos/sin 平表，位置从 offset 起算。"""
+        inv = _inv_freq_torch(cfg, dtype, device)
+        cos = torch.empty(length, cfg.pair_dim, dtype=dtype, device=device)
+        sin = torch.empty(length, cfg.pair_dim, dtype=dtype, device=device)
+        block_p = 16
+        _rope_table_kernel[(triton.cdiv(length, block_p),)](
+            inv, omega, cos, sin, int(offset), int(length),
+            P=triton.next_power_of_2(cfg.pair_dim), BLOCK_P=block_p,
         )
-        return y_t.cpu().numpy()
+        return cos, sin
 
-    x_flat = x_arr.reshape(N_groups_total, 4)
-    y_flat = np.empty_like(x_flat)
-    num_programs = _cdiv(N_groups_total, block_size)
-
-    for pid in range(num_programs):
-        offs_m = pid * block_size + np.arange(block_size)
-        mask = offs_m < N_groups_total
-        valid_offs = offs_m[mask]
-        g_idx = valid_offs % G
-        l_idx = (valid_offs // G) % L
-        pos_l = (l_idx.astype(np.float64) + 1.0) / float(L)
-
-        u1 = x_flat[valid_offs, 0]
-        u2 = x_flat[valid_offs, 1]
-        v1 = x_flat[valid_offs, 2]
-        v2 = x_flat[valid_offs, 3]
-
-        t_rope = theta_rope[g_idx]
-        g_rms = gamma_rms[g_idx]
-        k_rms_eff = _np_softplus(kappa_rms[g_idx]) + eps_zpe
-
-        t_qkv = theta_qkv[g_idx]
-        w_v = w_qkv[g_idx]
-        k_qkv_eff = _np_softplus(kappa_qkv[g_idx]) + eps_zpe
-
-        w_u = w_up[g_idx]
-        w_g = w_gate[g_idx]
-        k_ffn_eff = _np_softplus(kappa_ffn[g_idx]) + eps_zpe
-
-        al_eff = _np_sigmoid(alpha_res[g_idx])
-        bt_qk = beta_qk[g_idx]
-        k_head_eff = _np_softplus(kappa_head[g_idx]) + eps_zpe
-
-        E_Q = u1 * u1 + u2 * u2
-        D_rms = 1.0 / np.sqrt(1.0 + k_rms_eff * E_Q)
-        phi = pos_l * t_rope
-        cos_r, sin_r = np.cos(phi), np.sin(phi)
-        op_rope0 = g_rms * D_rms * (cos_r * u1 - sin_r * u2)
-        op_rope1 = g_rms * D_rms * (sin_r * u1 + cos_r * u2)
-
-        E_V = v1 * v1 + v2 * v2
-        D_qkv = 1.0 / np.sqrt(1.0 + k_qkv_eff * E_V)
-        cos_v, sin_v = np.cos(t_qkv), np.sin(t_qkv)
-        op_qkv2 = w_v * D_qkv * (cos_v * v1 + sin_v * v2)
-        op_qkv3 = w_v * D_qkv * (-sin_v * v1 + cos_v * v2)
-
-        E_tot = E_Q + E_V
-        D_ffn = 1.0 / (1.0 + k_ffn_eff * E_tot)
-        G_glu = u1 * v2 - u2 * v1
-        op_s0 = D_ffn * (w_u * v1 + w_g * G_glu * v2)
-        op_s1 = D_ffn * (w_u * v2 - w_g * G_glu * v1)
-        op_s2 = D_ffn * (w_u * u1 - w_g * G_glu * u2)
-        op_s3 = D_ffn * (w_u * u2 + w_g * G_glu * u1)
-
-        Delta_E = E_V - E_Q
-        G_cap = Delta_E / np.sqrt(1.0 + k_head_eff * Delta_E * Delta_E)
-        I_qk = u1 * v1 + u2 * v2
-        C_qk = I_qk / (1.0 + k_head_eff * E_tot)
-        op_h0 = al_eff * (-u1 + G_cap * v2) + bt_qk * C_qk * v1
-        op_h1 = al_eff * (u2 - G_cap * v1) - bt_qk * C_qk * v2
-        op_h2 = al_eff * (v1 + G_cap * u2) + bt_qk * C_qk * u1
-        op_h3 = al_eff * (-v2 - G_cap * u1) - bt_qk * C_qk * u2
-
-        y_flat[valid_offs, 0] = m1_w * op_rope0 + m3_w * op_s0 + m4_w * op_h0
-        y_flat[valid_offs, 1] = m1_w * op_rope1 + m3_w * op_s1 + m4_w * op_h1
-        y_flat[valid_offs, 2] = m2_w * op_qkv2 + m3_w * op_s2 + m4_w * op_h2
-        y_flat[valid_offs, 3] = m2_w * op_qkv3 + m3_w * op_s3 + m4_w * op_h3
-
-    return y_flat.reshape(B, L, D)
-
-
-def llm_hierarchy_triton_backward(
-    grad_out: np.ndarray,
-    x: np.ndarray,
-    theta_rope: np.ndarray,
-    gamma_rms: np.ndarray,
-    kappa_rms: np.ndarray,
-    theta_qkv: np.ndarray,
-    w_qkv: np.ndarray,
-    kappa_qkv: np.ndarray,
-    w_up: np.ndarray,
-    w_gate: np.ndarray,
-    kappa_ffn: np.ndarray,
-    alpha_res: np.ndarray,
-    beta_qk: np.ndarray,
-    kappa_head: np.ndarray,
-    eps_zpe: float = 1e-4,
-    sub_op_weights: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
-    block_size: int = 64,
-) -> Tuple[np.ndarray, ...]:
-    """调度 @triton.jit 全参数梯度反向融合核（含 tl.atomic_add 归约）或 Tile 级精确核。"""
-    x_arr = np.ascontiguousarray(x, dtype=np.float64)
-    g_arr = np.ascontiguousarray(grad_out, dtype=np.float64)
-    B, L, D = x_arr.shape
-    G = D // 4
-    N_groups_total = B * L * G
-    m1_w, m2_w, m3_w, m4_w = sub_op_weights
-
-    if HAS_TORCH and HAS_TRITON and torch.cuda.is_available():
-        x_t = torch.as_tensor(x_arr, device="cuda", dtype=torch.float64).contiguous()
-        go_t = torch.as_tensor(g_arr, device="cuda", dtype=torch.float64).contiguous()
-        gx_t = torch.empty_like(x_t)
-        p_tensors = [
-            torch.as_tensor(np.ascontiguousarray(p, dtype=np.float64), device="cuda", dtype=torch.float64)
-            for p in (
-                theta_rope,
-                gamma_rms,
-                kappa_rms,
-                theta_qkv,
-                w_qkv,
-                kappa_qkv,
-                w_up,
-                w_gate,
-                kappa_ffn,
-                alpha_res,
-                beta_qk,
-                kappa_head,
-            )
-        ]
-        gp_tensors = [torch.zeros(G, device="cuda", dtype=torch.float64) for _ in range(12)]
-        grid = (triton.cdiv(N_groups_total, block_size),)
-        fused_llm_hierarchy_bwd_kernel[grid](
-            go_t,
-            x_t,
-            gx_t,
-            *p_tensors,
-            *gp_tensors,
-            N_groups_total,
-            L,
-            G,
-            eps_zpe,
-            m1_w,
-            m2_w,
-            m3_w,
-            m4_w,
-            BLOCK_M=block_size,
-        )
-        return (gx_t.cpu().numpy(),) + tuple(gp.cpu().numpy() for gp in gp_tensors)
-
-    x_flat = x_arr.reshape(N_groups_total, 4)
-    g_flat = g_arr.reshape(N_groups_total, 4)
-    gx_flat = np.empty_like(x_flat)
-
-    grad_theta_rope = np.zeros(G, dtype=np.float64)
-    grad_gamma_rms = np.zeros(G, dtype=np.float64)
-    grad_kappa_rms = np.zeros(G, dtype=np.float64)
-    grad_theta_qkv = np.zeros(G, dtype=np.float64)
-    grad_w_qkv = np.zeros(G, dtype=np.float64)
-    grad_kappa_qkv = np.zeros(G, dtype=np.float64)
-    grad_w_up = np.zeros(G, dtype=np.float64)
-    grad_w_gate = np.zeros(G, dtype=np.float64)
-    grad_kappa_ffn = np.zeros(G, dtype=np.float64)
-    grad_alpha_res = np.zeros(G, dtype=np.float64)
-    grad_beta_qk = np.zeros(G, dtype=np.float64)
-    grad_kappa_head = np.zeros(G, dtype=np.float64)
-
-    num_programs = _cdiv(N_groups_total, block_size)
-    for pid in range(num_programs):
-        offs_m = pid * block_size + np.arange(block_size)
-        mask = offs_m < N_groups_total
-        valid_offs = offs_m[mask]
-        g_idx = valid_offs % G
-        l_idx = (valid_offs // G) % L
-        pos_l = (l_idx.astype(np.float64) + 1.0) / float(L)
-
-        u1, u2, v1, v2 = (
-            x_flat[valid_offs, 0],
-            x_flat[valid_offs, 1],
-            x_flat[valid_offs, 2],
-            x_flat[valid_offs, 3],
-        )
-        g0_raw, g1_raw, g2_raw, g3_raw = (
-            g_flat[valid_offs, 0],
-            g_flat[valid_offs, 1],
-            g_flat[valid_offs, 2],
-            g_flat[valid_offs, 3],
-        )
-
-        t_rope, g_rms, k_rms_raw = theta_rope[g_idx], gamma_rms[g_idx], kappa_rms[g_idx]
-        sig_k_rms = _np_sigmoid(k_rms_raw)
-        k_rms_eff = _np_softplus(k_rms_raw) + eps_zpe
-
-        t_qkv, w_v, k_qkv_raw = theta_qkv[g_idx], w_qkv[g_idx], kappa_qkv[g_idx]
-        sig_k_qkv = _np_sigmoid(k_qkv_raw)
-        k_qkv_eff = _np_softplus(k_qkv_raw) + eps_zpe
-
-        w_u, w_g, k_ffn_raw = w_up[g_idx], w_gate[g_idx], kappa_ffn[g_idx]
-        sig_k_ffn = _np_sigmoid(k_ffn_raw)
-        k_ffn_eff = _np_softplus(k_ffn_raw) + eps_zpe
-
-        al_raw, bt_qk, k_head_raw = alpha_res[g_idx], beta_qk[g_idx], kappa_head[g_idx]
-        al_eff = _np_sigmoid(al_raw)
-        d_al = al_eff * (1.0 - al_eff)
-        sig_k_head = _np_sigmoid(k_head_raw)
-        k_head_eff = _np_softplus(k_head_raw) + eps_zpe
-
-        # 1. RoPE
-        g0_L, g1_L = m1_w * g0_raw, m1_w * g1_raw
-        E_Q = u1 * u1 + u2 * u2
-        D_rms = 1.0 / np.sqrt(1.0 + k_rms_eff * E_Q)
-        phi = pos_l * t_rope
-        cos_r, sin_r = np.cos(phi), np.sin(phi)
-        r_Q1 = cos_r * u1 - sin_r * u2
-        r_Q2 = sin_r * u1 + cos_r * u2
-        S_rQ = g0_L * r_Q1 + g1_L * r_Q2
-        S_phi = -g0_L * r_Q2 + g1_L * r_Q1
-        dQ_rms = -0.5 * g_rms * (D_rms * D_rms * D_rms) * S_rQ
-        du1_rope = g_rms * D_rms * (g0_L * cos_r + g1_L * sin_r) + 2.0 * k_rms_eff * u1 * dQ_rms
-        du2_rope = g_rms * D_rms * (-g0_L * sin_r + g1_L * cos_r) + 2.0 * k_rms_eff * u2 * dQ_rms
-
-        np.add.at(grad_gamma_rms, g_idx, D_rms * S_rQ)
-        np.add.at(grad_theta_rope, g_idx, g_rms * D_rms * S_phi * pos_l)
-        np.add.at(grad_kappa_rms, g_idx, sig_k_rms * dQ_rms * E_Q)
-
-        # 2. QKV
-        g2_R, g3_R = m2_w * g2_raw, m2_w * g3_raw
-        E_V = v1 * v1 + v2 * v2
-        D_qkv = 1.0 / np.sqrt(1.0 + k_qkv_eff * E_V)
-        cos_v, sin_v = np.cos(t_qkv), np.sin(t_qkv)
-        r_V1 = cos_v * v1 + sin_v * v2
-        r_V2 = -sin_v * v1 + cos_v * v2
-        S_rV = g2_R * r_V1 + g3_R * r_V2
-        S_tV = g2_R * r_V2 - g3_R * r_V1
-        dQ_qkv = -0.5 * w_v * (D_qkv * D_qkv * D_qkv) * S_rV
-        dv1_qkv = w_v * D_qkv * (g2_R * cos_v - g3_R * sin_v) + 2.0 * k_qkv_eff * v1 * dQ_qkv
-        dv2_qkv = w_v * D_qkv * (g2_R * sin_v + g3_R * cos_v) + 2.0 * k_qkv_eff * v2 * dQ_qkv
-
-        np.add.at(grad_w_qkv, g_idx, D_qkv * S_rV)
-        np.add.at(grad_theta_qkv, g_idx, w_v * D_qkv * S_tV)
-        np.add.at(grad_kappa_qkv, g_idx, sig_k_qkv * dQ_qkv * E_V)
-
-        # 3. SwiGLU
-        g0_s, g1_s, g2_s, g3_s = m3_w * g0_raw, m3_w * g1_raw, m3_w * g2_raw, m3_w * g3_raw
-        E_tot = E_Q + E_V
-        D_ffn = 1.0 / (1.0 + k_ffn_eff * E_tot)
-        G_glu = u1 * v2 - u2 * v1
-        m0 = w_u * v1 + w_g * G_glu * v2
-        m1 = w_u * v2 - w_g * G_glu * v1
-        m2 = w_u * u1 - w_g * G_glu * u2
-        m3 = w_u * u2 + w_g * G_glu * u1
-        tg0, tg1, tg2, tg3 = D_ffn * g0_s, D_ffn * g1_s, D_ffn * g2_s, D_ffn * g3_s
-        dD_ffn = g0_s * m0 + g1_s * m1 + g2_s * m2 + g3_s * m3
-        dE_tot_ffn = -k_ffn_eff * (D_ffn * D_ffn) * dD_ffn
-        glu_term = tg0 * v2 - tg1 * v1 - tg2 * u2 + tg3 * u1
-        dG_glu = w_g * glu_term
-
-        du1_swiglu = w_u * tg2 + w_g * G_glu * tg3 + dG_glu * v2 + 2.0 * u1 * dE_tot_ffn
-        du2_swiglu = w_u * tg3 - w_g * G_glu * tg2 - dG_glu * v1 + 2.0 * u2 * dE_tot_ffn
-        dv1_swiglu = w_u * tg0 - w_g * G_glu * tg1 - dG_glu * u2 + 2.0 * v1 * dE_tot_ffn
-        dv2_swiglu = w_u * tg1 + w_g * G_glu * tg0 + dG_glu * u1 + 2.0 * v2 * dE_tot_ffn
-
-        np.add.at(grad_w_up, g_idx, tg0 * v1 + tg1 * v2 + tg2 * u1 + tg3 * u2)
-        np.add.at(grad_w_gate, g_idx, G_glu * glu_term)
-        np.add.at(grad_kappa_ffn, g_idx, -sig_k_ffn * (D_ffn * D_ffn) * E_tot * dD_ffn)
-
-        # 4. Logit Head
-        g0_a, g1_a, g2_a, g3_a = m4_w * g0_raw, m4_w * g1_raw, m4_w * g2_raw, m4_w * g3_raw
-        Delta_E = E_V - E_Q
-        D_cap = 1.0 / np.sqrt(1.0 + k_head_eff * Delta_E * Delta_E)
-        G_cap = Delta_E * D_cap
-        I_qk = u1 * v1 + u2 * v2
-        D_head = 1.0 / (1.0 + k_head_eff * E_tot)
-        C_qk = D_head * I_qk
-
-        A0 = -u1 + G_cap * v2
-        A1 = u2 - G_cap * v1
-        A2 = v1 + G_cap * u2
-        A3 = -v2 - G_cap * u1
-        S_A = g0_a * A0 + g1_a * A1 + g2_a * A2 + g3_a * A3
-        S_B = g0_a * v1 - g1_a * v2 + g2_a * u1 - g3_a * u2
-
-        dC_qk = bt_qk * S_B
-        dI_qk = D_head * dC_qk
-        dD_head = I_qk * dC_qk
-        dE_tot_head = -k_head_eff * (D_head * D_head) * dD_head
-        dG_cap = al_eff * (g0_a * v2 - g1_a * v1 + g2_a * u2 - g3_a * u1)
-        dDelta_E = dG_cap * (D_cap * D_cap * D_cap)
-
-        du1_head = (
-            al_eff * (-g0_a - G_cap * g3_a)
-            + bt_qk * C_qk * g2_a
-            + dI_qk * v1
-            - 2.0 * u1 * dDelta_E
-            + 2.0 * u1 * dE_tot_head
-        )
-        du2_head = (
-            al_eff * (g1_a + G_cap * g2_a)
-            - bt_qk * C_qk * g3_a
-            + dI_qk * v2
-            - 2.0 * u2 * dDelta_E
-            + 2.0 * u2 * dE_tot_head
-        )
-        dv1_head = (
-            al_eff * (-G_cap * g1_a + g2_a)
-            + bt_qk * C_qk * g0_a
-            + dI_qk * u1
-            + 2.0 * v1 * dDelta_E
-            + 2.0 * v1 * dE_tot_head
-        )
-        dv2_head = (
-            al_eff * (G_cap * g0_a - g3_a)
-            - bt_qk * C_qk * g1_a
-            + dI_qk * u2
-            + 2.0 * v2 * dDelta_E
-            + 2.0 * v2 * dE_tot_head
-        )
-
-        np.add.at(grad_alpha_res, g_idx, d_al * S_A)
-        np.add.at(grad_beta_qk, g_idx, C_qk * S_B)
-        np.add.at(
-            grad_kappa_head,
-            g_idx,
-            sig_k_head
-            * (-0.5 * (Delta_E * Delta_E * Delta_E) * (D_cap * D_cap * D_cap) * dG_cap - (D_head * D_head) * E_tot * dD_head),
-        )
-
-        gx_flat[valid_offs, 0] = du1_rope + du1_swiglu + du1_head
-        gx_flat[valid_offs, 1] = du2_rope + du2_swiglu + du2_head
-        gx_flat[valid_offs, 2] = dv1_qkv + dv1_swiglu + dv1_head
-        gx_flat[valid_offs, 3] = dv2_qkv + dv2_swiglu + dv2_head
-
-    return (
-        gx_flat.reshape(B, L, D),
-        grad_theta_rope,
-        grad_gamma_rms,
-        grad_kappa_rms,
-        grad_theta_qkv,
-        grad_w_qkv,
-        grad_kappa_qkv,
-        grad_w_up,
-        grad_w_gate,
-        grad_kappa_ffn,
-        grad_alpha_res,
-        grad_beta_qk,
-        grad_kappa_head,
-    )
-
-
-# ==============================================================================
-# 5. PyTorch Autograd Function 与 LLMHierarchyOperator 独立算子封装
-# ==============================================================================
-if HAS_TORCH:
-
-    class LLMHierarchyAutogradFunction(torch.autograd.Function):
-        """绑定解析反向核的自定义 PyTorch Autograd Function。"""
+    class _TritonNormRope(torch.autograd.Function):
+        """O1 的融合核包装：RMSNorm + 学习频率 RoPE，前向/反向均为单核。"""
 
         @staticmethod
         def forward(
-            ctx,
-            x: torch.Tensor,
-            theta_rope: torch.Tensor,
-            gamma_rms: torch.Tensor,
-            kappa_rms: torch.Tensor,
-            theta_qkv: torch.Tensor,
-            w_qkv: torch.Tensor,
-            kappa_qkv: torch.Tensor,
-            w_up: torch.Tensor,
-            w_gate: torch.Tensor,
-            kappa_ffn: torch.Tensor,
-            alpha_res: torch.Tensor,
-            beta_qk: torch.Tensor,
-            kappa_head: torch.Tensor,
-            eps_zpe: float = 1e-4,
-            sub_op_weights: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
-        ) -> torch.Tensor:
-            ctx.save_for_backward(
-                x,
-                theta_rope,
-                gamma_rms,
-                kappa_rms,
-                theta_qkv,
-                w_qkv,
-                kappa_qkv,
-                w_up,
-                w_gate,
-                kappa_ffn,
-                alpha_res,
-                beta_qk,
-                kappa_head,
+            ctx: Any,
+            x: "torch.Tensor",
+            gamma: "torch.Tensor",
+            omega: "torch.Tensor",
+            offset: int,
+            cfg: LLMHierarchyConfig,
+        ) -> "torch.Tensor":
+            b, l, d = x.shape
+            x2 = x.reshape(b * l, d).contiguous()
+            cos, sin = _rope_tables_triton(cfg, omega, l, offset, x.dtype, x.device)
+            y = torch.empty_like(x2)
+            eps = _eps_tensor(cfg.eps, x.dtype, x.device)
+            _norm_rope_fwd_kernel[(b * l,)](
+                x2, gamma, cos, sin, y, eps,
+                l, d, cfg.head_dim,
+                BLOCK=triton.next_power_of_2(d),
             )
-            ctx.eps_zpe = eps_zpe
-            ctx.sub_op_weights = sub_op_weights
-
-            y_np = llm_hierarchy_numpy_forward(
-                x.detach().cpu().numpy(),
-                theta_rope.detach().cpu().numpy(),
-                gamma_rms.detach().cpu().numpy(),
-                kappa_rms.detach().cpu().numpy(),
-                theta_qkv.detach().cpu().numpy(),
-                w_qkv.detach().cpu().numpy(),
-                kappa_qkv.detach().cpu().numpy(),
-                w_up.detach().cpu().numpy(),
-                w_gate.detach().cpu().numpy(),
-                kappa_ffn.detach().cpu().numpy(),
-                alpha_res.detach().cpu().numpy(),
-                beta_qk.detach().cpu().numpy(),
-                kappa_head.detach().cpu().numpy(),
-                eps_zpe=eps_zpe,
-                sub_op_weights=sub_op_weights,
-            )
-            return torch.as_tensor(y_np, dtype=x.dtype, device=x.device)
+            ctx.save_for_backward(x2, gamma, omega, cos, sin, y)
+            ctx.cfg = cfg
+            ctx.offset = int(offset)
+            ctx.shape = (b, l, d)
+            return y.view(b, l, d)
 
         @staticmethod
-        def backward(ctx, grad_out: torch.Tensor):
-            saved = ctx.saved_tensors
-            np_args = [t.detach().cpu().numpy() for t in saved]
-            grads_np = llm_hierarchy_numpy_backward(
-                grad_out.detach().cpu().numpy(),
-                *np_args,
-                eps_zpe=ctx.eps_zpe,
-                sub_op_weights=ctx.sub_op_weights,
+        def backward(
+            ctx: Any, gy: "torch.Tensor"
+        ) -> Tuple["torch.Tensor", "torch.Tensor", "torch.Tensor", None, None]:
+            x2, gamma, omega, cos, sin, y = ctx.saved_tensors
+            cfg = ctx.cfg
+            b, l, d = ctx.shape
+            gx = torch.empty_like(x2)
+            ggamma = torch.zeros(d, dtype=x2.dtype, device=x2.device)
+            gphi = torch.zeros(l, cfg.pair_dim, dtype=x2.dtype, device=x2.device)
+            eps = _eps_tensor(cfg.eps, x2.dtype, x2.device)
+            _norm_rope_bwd_kernel[(b * l,)](
+                x2, gamma, cos, sin, y, gy.reshape(b * l, d).contiguous(), gx, ggamma, gphi,
+                eps, l, d, cfg.head_dim,
+                BLOCK=triton.next_power_of_2(d),
             )
-            grads_torch = tuple(
-                torch.as_tensor(g, dtype=saved[0].dtype, device=saved[0].device) for g in grads_np
+            idx = torch.arange(cfg.pair_dim, dtype=x2.dtype, device=x2.device)
+            base = torch.tensor(float(cfg.rope_base), dtype=x2.dtype, device=x2.device)
+            theta = torch.pow(base, -2.0 * idx / float(cfg.head_dim)) * torch.exp(omega.to(x2.dtype))
+            pos = torch.arange(l, dtype=x2.dtype, device=x2.device) + float(ctx.offset)
+            gomega = (gphi * pos[:, None] * theta[None, :]).sum(dim=0)
+            return gx.view(b, l, d), ggamma, gomega, None, None
+
+    class _TritonSwiGLUAct(torch.autograd.Function):
+        """O3 的门控融合：silu(gate) ⊙ up 单核完成，反向单核回传。"""
+
+        @staticmethod
+        def forward(ctx: Any, gate: "torch.Tensor", up: "torch.Tensor") -> "torch.Tensor":
+            out = torch.empty_like(gate)
+            n = gate.numel()
+            _swiglu_act_fwd_kernel[(_cdiv(n, 1024),)](gate, up, out, n, BLOCK=1024)
+            ctx.save_for_backward(gate, up)
+            return out
+
+        @staticmethod
+        def backward(ctx: Any, go: "torch.Tensor") -> Tuple["torch.Tensor", "torch.Tensor"]:
+            gate, up = ctx.saved_tensors
+            dgate = torch.empty_like(gate)
+            dup = torch.empty_like(up)
+            n = gate.numel()
+            _swiglu_act_bwd_kernel[(_cdiv(n, 1024),)](
+                gate, up, go.contiguous(), dgate, dup, n, BLOCK=1024
             )
-            return grads_torch + (None, None)
+            return dgate, dup
 
-    class LLMHierarchyOperator(nn.Module):
-        """基于完整 LLM 算子层次机制的独立神经网络算子 (PyTorch nn.Module)。"""
 
-        def __init__(self, config: Optional[LLMHierarchyConfig] = None) -> None:
-            super().__init__()
-            self.config = config or LLMHierarchyConfig()
-            G = self.config.dim // 4
-
-            # 子算子 I (Pre-RMSNorm & RoPE) 可学习参数
-            self.theta_rope = nn.Parameter(torch.linspace(0.40, 0.95, G, dtype=torch.float64))
-            self.gamma_rms = nn.Parameter(torch.linspace(0.90, 1.25, G, dtype=torch.float64))
-            self.kappa_rms = nn.Parameter(torch.linspace(-0.20, 0.30, G, dtype=torch.float64))
-
-            # 子算子 II (Multi-Head QKV Value Projection) 可学习参数
-            self.theta_qkv = nn.Parameter(torch.linspace(-0.75, -0.25, G, dtype=torch.float64))
-            self.w_qkv = nn.Parameter(torch.linspace(0.95, 1.30, G, dtype=torch.float64))
-            self.kappa_qkv = nn.Parameter(torch.linspace(-0.10, 0.40, G, dtype=torch.float64))
-
-            # 子算子 III (SwiGLU Gated FFN) 可学习参数
-            self.w_up = nn.Parameter(torch.linspace(0.75, 1.15, G, dtype=torch.float64))
-            self.w_gate = nn.Parameter(torch.linspace(0.65, 1.05, G, dtype=torch.float64))
-            self.kappa_ffn = nn.Parameter(torch.linspace(0.00, 0.50, G, dtype=torch.float64))
-
-            # 子算子 IV (QK Dot-Product & Softcap Logit Head) 可学习参数
-            self.alpha_res = nn.Parameter(torch.linspace(0.60, 1.20, G, dtype=torch.float64))
-            self.beta_qk = nn.Parameter(torch.linspace(0.85, 1.25, G, dtype=torch.float64))
-            self.kappa_head = nn.Parameter(torch.linspace(-0.20, 0.30, G, dtype=torch.float64))
-
-        def forward(
-            self,
-            x: torch.Tensor,
-            use_custom_autograd: bool = False,
-            return_sub_ops: bool = False,
-        ):
-            if use_custom_autograd and not return_sub_ops:
-                return LLMHierarchyAutogradFunction.apply(
-                    x,
-                    self.theta_rope,
-                    self.gamma_rms,
-                    self.kappa_rms,
-                    self.theta_qkv,
-                    self.w_qkv,
-                    self.kappa_qkv,
-                    self.w_up,
-                    self.w_gate,
-                    self.kappa_ffn,
-                    self.alpha_res,
-                    self.beta_qk,
-                    self.kappa_head,
-                    self.config.eps_zpe,
-                    self.config.sub_op_weights,
-                )
-
-            B, L, D = x.shape
-            G = D // 4
-            xg = x.view(B, L, G, 4)
-            u1, u2, v1, v2 = xg[..., 0], xg[..., 1], xg[..., 2], xg[..., 3]
-            eps = self.config.eps_zpe
-
-            k_rms_eff = F.softplus(self.kappa_rms) + eps
-            k_qkv_eff = F.softplus(self.kappa_qkv) + eps
-            k_ffn_eff = F.softplus(self.kappa_ffn) + eps
-            al_res_eff = torch.sigmoid(self.alpha_res)
-            k_head_eff = F.softplus(self.kappa_head) + eps
-
-            pos_l = (
-                torch.arange(1, L + 1, dtype=x.dtype, device=x.device).view(1, L, 1) / float(L)
-            )
-            phi_rope = pos_l * self.theta_rope.view(1, 1, G)
-
-            E_Q = u1 * u1 + u2 * u2
-            D_rms = torch.rsqrt(1.0 + k_rms_eff * E_Q)
-            cos_r, sin_r = torch.cos(phi_rope), torch.sin(phi_rope)
-            r_Q1 = cos_r * u1 - sin_r * u2
-            r_Q2 = sin_r * u1 + cos_r * u2
-            zeros = torch.zeros_like(u1)
-            op_rope = torch.stack(
-                [self.gamma_rms * D_rms * r_Q1, self.gamma_rms * D_rms * r_Q2, zeros, zeros], dim=-1
-            )
-
-            E_V = v1 * v1 + v2 * v2
-            D_qkv = torch.rsqrt(1.0 + k_qkv_eff * E_V)
-            cos_v, sin_v = torch.cos(self.theta_qkv), torch.sin(self.theta_qkv)
-            r_V1 = cos_v * v1 + sin_v * v2
-            r_V2 = -sin_v * v1 + cos_v * v2
-            op_qkv = torch.stack(
-                [zeros, zeros, self.w_qkv * D_qkv * r_V1, self.w_qkv * D_qkv * r_V2], dim=-1
-            )
-
-            E_tot = E_Q + E_V
-            D_ffn = 1.0 / (1.0 + k_ffn_eff * E_tot)
-            G_glu = u1 * v2 - u2 * v1
-            op_swiglu = D_ffn.unsqueeze(-1) * torch.stack(
-                [
-                    self.w_up * v1 + self.w_gate * G_glu * v2,
-                    self.w_up * v2 - self.w_gate * G_glu * v1,
-                    self.w_up * u1 - self.w_gate * G_glu * u2,
-                    self.w_up * u2 + self.w_gate * G_glu * u1,
-                ],
-                dim=-1,
-            )
-
-            Delta_E = E_V - E_Q
-            G_cap = Delta_E * torch.rsqrt(1.0 + k_head_eff * (Delta_E * Delta_E))
-            I_qk = u1 * v1 + u2 * v2
-            C_qk = I_qk / (1.0 + k_head_eff * E_tot)
-            op_head = torch.stack(
-                [
-                    al_res_eff * (-u1 + G_cap * v2) + self.beta_qk * C_qk * v1,
-                    al_res_eff * (u2 - G_cap * v1) - self.beta_qk * C_qk * v2,
-                    al_res_eff * (v1 + G_cap * u2) + self.beta_qk * C_qk * u1,
-                    al_res_eff * (-v2 - G_cap * u1) - self.beta_qk * C_qk * u2,
-                ],
-                dim=-1,
-            )
-
-            m1_w, m2_w, m3_w, m4_w = self.config.sub_op_weights
-            y = (m1_w * op_rope + m2_w * op_qkv + m3_w * op_swiglu + m4_w * op_head).reshape(B, L, D)
-            if return_sub_ops:
-                return y, (
-                    op_rope.reshape(B, L, D),
-                    op_qkv.reshape(B, L, D),
-                    op_swiglu.reshape(B, L, D),
-                    op_head.reshape(B, L, D),
-                )
-            return y
-
-else:
-
-    class _CompatTensor:
-        """无 PyTorch 环境下的轻量动态计算图张量封装。"""
-
-        def __init__(
-            self,
-            data: np.ndarray,
-            requires_grad: bool = False,
-            _backward_fn=None,
-            _parents: Tuple["_CompatTensor", ...] = (),
-        ) -> None:
-            self.data = np.asarray(data, dtype=np.float64)
-            self.requires_grad = requires_grad
-            self.grad: Optional[np.ndarray] = None
-            self._backward_fn = _backward_fn
-            self._parents = _parents
-
-        @property
-        def shape(self) -> Tuple[int, ...]:
-            return self.data.shape
-
-        def numpy(self) -> np.ndarray:
-            return self.data
-
-        def detach(self) -> "_CompatTensor":
-            return _CompatTensor(self.data.copy(), requires_grad=False)
-
-        def zero_grad(self) -> None:
-            self.grad = None
-
-        def backward(self, grad_output: Optional[np.ndarray] = None) -> None:
-            if grad_output is None:
-                grad_output = np.ones_like(self.data, dtype=np.float64)
+    # ------------------------------------------------------------------
+    # FlashAttention 式因果注意力核：把 QK^T、softmax、PV 三段矩阵乘
+    # 压进一次核内完成，不再materialize L×L 注意力矩阵。
+    # ------------------------------------------------------------------
+    @triton.jit
+    def _flash_fwd_kernel(
+        Q, K, V, Out, LSE, L, SCALE,
+        H: tl.constexpr, HK: tl.constexpr, REP: tl.constexpr,
+        D: tl.constexpr, BM: tl.constexpr, BN: tl.constexpr,
+        IEEE: tl.constexpr, ACC: tl.constexpr,
+    ):
+        scale = tl.load(SCALE)
+        pid_m = tl.program_id(0)
+        pid_bh = tl.program_id(1)
+        b = pid_bh // H
+        h = pid_bh % H
+        kvh = h // REP
+        offs_m = pid_m * BM + tl.arange(0, BM)
+        offs_n = tl.arange(0, BN)
+        offs_d = tl.arange(0, D)
+        row_ok = offs_m < L
+        q = tl.load(Q + ((b * H + h) * L + offs_m[:, None]) * D + offs_d[None, :],
+                    mask=row_ok[:, None], other=0.0)
+        m_i = tl.full([BM], float("-inf"), dtype=ACC)
+        l_i = tl.zeros([BM], dtype=ACC)
+        acc = tl.zeros([BM, D], dtype=ACC)
+        kbase = K + ((b * HK + kvh) * L) * D
+        vbase = V + ((b * HK + kvh) * L) * D
+        # 因果：第 m 行只需扫到 m 所在的块
+        for start_n in range(0, (pid_m + 1) * BM, BN):
+            n_idx = start_n + offs_n
+            nmask = n_idx < L
+            k = tl.load(kbase + n_idx[:, None] * D + offs_d[None, :],
+                        mask=nmask[:, None], other=0.0)
+            if IEEE:
+                qk = tl.dot(q, tl.trans(k), input_precision="ieee")
             else:
-                grad_output = np.asarray(grad_output, dtype=np.float64)
-            self.grad = grad_output if self.grad is None else self.grad + grad_output
-            if self._backward_fn is not None:
-                self._backward_fn(grad_output)
+                qk = tl.dot(q, tl.trans(k))
+            qk = qk.to(ACC) * scale
+            causal = n_idx[None, :] <= offs_m[:, None]
+            qk = tl.where(row_ok[:, None] & causal, qk, float("-inf"))
+            m_new = tl.maximum(m_i, tl.max(qk, 1))
+            alpha = tl.exp(m_i - m_new)
+            p = tl.exp(qk - m_new[:, None])
+            l_i = l_i * alpha + tl.sum(p, 1)
+            acc = acc * alpha[:, None]
+            v = tl.load(vbase + n_idx[:, None] * D + offs_d[None, :],
+                        mask=nmask[:, None], other=0.0)
+            if IEEE:
+                acc = tl.dot(p.to(v.dtype), v, acc, input_precision="ieee")
+            else:
+                acc = tl.dot(p.to(v.dtype), v, acc)
+            m_i = m_new
+        out = acc / l_i[:, None]
+        logsum = m_i + tl.log(l_i)
+        tl.store(Out + ((b * H + h) * L + offs_m[:, None]) * D + offs_d[None, :],
+                 out.to(Out.dtype.element_ty), mask=row_ok[:, None])
+        tl.store(LSE + (b * H + h) * L + offs_m, logsum.to(LSE.dtype.element_ty), mask=row_ok)
 
-    class LLMHierarchyOperator:  # type: ignore
-        """基于完整 LLM 算子层次机制的独立神经网络算子（兼容模式，API 与 PyTorch nn.Module 完全一致）。"""
+    @triton.jit
+    def _flash_bwd_kernel(
+        Q, K, V, dO, LSE, DELTA, dQ, dK, dV, L, SCALE,
+        H: tl.constexpr, HK: tl.constexpr, REP: tl.constexpr,
+        D: tl.constexpr, BM: tl.constexpr, BN: tl.constexpr,
+        IEEE: tl.constexpr, ACC: tl.constexpr,
+    ):
+        scale = tl.load(SCALE)
+        pid_m = tl.program_id(0)
+        pid_bh = tl.program_id(1)
+        b = pid_bh // H
+        h = pid_bh % H
+        kvh = h // REP
+        offs_m = pid_m * BM + tl.arange(0, BM)
+        offs_n = tl.arange(0, BN)
+        offs_d = tl.arange(0, D)
+        row_ok = offs_m < L
+        q = tl.load(Q + ((b * H + h) * L + offs_m[:, None]) * D + offs_d[None, :],
+                    mask=row_ok[:, None], other=0.0)
+        do = tl.load(dO + ((b * H + h) * L + offs_m[:, None]) * D + offs_d[None, :],
+                     mask=row_ok[:, None], other=0.0)
+        lse = tl.load(LSE + (b * H + h) * L + offs_m, mask=row_ok, other=0.0).to(ACC)
+        delta = tl.load(DELTA + (b * H + h) * L + offs_m, mask=row_ok, other=0.0).to(ACC)
+        dq = tl.zeros([BM, D], dtype=ACC)
+        kbase = K + ((b * HK + kvh) * L) * D
+        vbase = V + ((b * HK + kvh) * L) * D
+        for start_n in range(0, (pid_m + 1) * BM, BN):
+            n_idx = start_n + offs_n
+            nmask = n_idx < L
+            k = tl.load(kbase + n_idx[:, None] * D + offs_d[None, :],
+                        mask=nmask[:, None], other=0.0)
+            v = tl.load(vbase + n_idx[:, None] * D + offs_d[None, :],
+                        mask=nmask[:, None], other=0.0)
+            if IEEE:
+                qk = tl.dot(q, tl.trans(k), input_precision="ieee")
+            else:
+                qk = tl.dot(q, tl.trans(k))
+            qk = qk.to(ACC) * scale
+            causal = n_idx[None, :] <= offs_m[:, None]
+            qk = tl.where(row_ok[:, None] & causal, qk, float("-inf"))
+            p = tl.exp(qk - lse[:, None])
+            if IEEE:
+                dv_blk = tl.dot(tl.trans(p).to(do.dtype), do, input_precision="ieee")
+                dp = tl.dot(do, tl.trans(v), input_precision="ieee")
+            else:
+                dv_blk = tl.dot(tl.trans(p).to(do.dtype), do)
+                dp = tl.dot(do, tl.trans(v))
+            dp = dp.to(ACC)
+            # 行和用全局 Δ = rowsum(do ⊙ o) = Σ_j p_j dp_j；按 N 块局部求和会在多块时出错
+            ds = p * (dp - delta[:, None])
+            if IEEE:
+                dq += tl.dot(ds.to(q.dtype), k, input_precision="ieee") * scale
+                dk_blk = tl.dot(tl.trans(ds).to(q.dtype), q, input_precision="ieee") * scale
+            else:
+                dq += tl.dot(ds.to(q.dtype), k) * scale
+                dk_blk = tl.dot(tl.trans(ds).to(q.dtype), q) * scale
+            tl.atomic_add(dK + ((b * HK + kvh) * L + n_idx[:, None]) * D + offs_d[None, :],
+                          dk_blk.to(dK.dtype.element_ty), mask=nmask[:, None])
+            tl.atomic_add(dV + ((b * HK + kvh) * L + n_idx[:, None]) * D + offs_d[None, :],
+                          dv_blk.to(dV.dtype.element_ty), mask=nmask[:, None])
+        tl.store(dQ + ((b * H + h) * L + offs_m[:, None]) * D + offs_d[None, :],
+                 dq.to(dQ.dtype.element_ty), mask=row_ok[:, None])
 
-        def __init__(self, config: Optional[LLMHierarchyConfig] = None) -> None:
-            self.config = config or LLMHierarchyConfig()
-            G = self.config.dim // 4
+    def _flash_block_cfg(
+        dtype: "torch.dtype", head_dim: int, backward: bool = False
+    ) -> Tuple[int, int, int, int]:
+        """按精度/头维/前反向选 (BM, BN, stages, warps)。
 
-            self.theta_rope = _CompatTensor(np.linspace(0.40, 0.95, G), requires_grad=True)
-            self.gamma_rms = _CompatTensor(np.linspace(0.90, 1.25, G), requires_grad=True)
-            self.kappa_rms = _CompatTensor(np.linspace(-0.20, 0.30, G), requires_grad=True)
+        实测（L=1024, D=64, 8×8 头）：fp32 前向 warps=8 时 20.1→2.4 ms；反向 BN=32 时
+        12.6→6.5 ms；fp16 前向 64×64/4 warps、反向 stages=2 最佳。D=128 降 tile 保共享内存。
+        """
+        if dtype == torch.float64 or head_dim >= 128:
+            return 32, 32, 2, 4
+        if dtype in (torch.float16, torch.bfloat16):
+            return (64, 64, 2, 4) if backward else (64, 64, 3, 4)
+        return (64, 32, 2, 8) if backward else (64, 64, 2, 8)
 
-            self.theta_qkv = _CompatTensor(np.linspace(-0.75, -0.25, G), requires_grad=True)
-            self.w_qkv = _CompatTensor(np.linspace(0.95, 1.30, G), requires_grad=True)
-            self.kappa_qkv = _CompatTensor(np.linspace(-0.10, 0.40, G), requires_grad=True)
+    class _FlashAttention(torch.autograd.Function):
+        """因果 GQA 注意力的融合核：前向不落 L×L 矩阵，反向由同一套块内重算得到。"""
 
-            self.w_up = _CompatTensor(np.linspace(0.75, 1.15, G), requires_grad=True)
-            self.w_gate = _CompatTensor(np.linspace(0.65, 1.05, G), requires_grad=True)
-            self.kappa_ffn = _CompatTensor(np.linspace(0.00, 0.50, G), requires_grad=True)
-
-            self.alpha_res = _CompatTensor(np.linspace(0.60, 1.20, G), requires_grad=True)
-            self.beta_qk = _CompatTensor(np.linspace(0.85, 1.25, G), requires_grad=True)
-            self.kappa_head = _CompatTensor(np.linspace(-0.20, 0.30, G), requires_grad=True)
-
-        def parameters(self) -> List[_CompatTensor]:
-            return [
-                self.theta_rope,
-                self.gamma_rms,
-                self.kappa_rms,
-                self.theta_qkv,
-                self.w_qkv,
-                self.kappa_qkv,
-                self.w_up,
-                self.w_gate,
-                self.kappa_ffn,
-                self.alpha_res,
-                self.beta_qk,
-                self.kappa_head,
-            ]
-
-        def zero_grad(self) -> None:
-            for p in self.parameters():
-                p.zero_grad()
-
-        def forward(
-            self,
-            x: Union[np.ndarray, _CompatTensor],
-            use_custom_autograd: bool = True,
-            return_sub_ops: bool = False,
-        ):
-            x_tensor = x if isinstance(x, _CompatTensor) else _CompatTensor(x, requires_grad=True)
-            params = self.parameters()
-            p_arrays = [p.data for p in params]
-
-            B, L, D = x_tensor.shape
-            G = D // 4
-            xg = x_tensor.data.reshape(B, L, G, 4)
-            u1, u2, v1, v2 = xg[..., 0], xg[..., 1], xg[..., 2], xg[..., 3]
-            eps = self.config.eps_zpe
-
-            k_rms_eff = np.log1p(np.exp(-np.abs(self.kappa_rms.data))) + np.maximum(self.kappa_rms.data, 0.0) + eps
-            k_qkv_eff = np.log1p(np.exp(-np.abs(self.kappa_qkv.data))) + np.maximum(self.kappa_qkv.data, 0.0) + eps
-            k_ffn_eff = np.log1p(np.exp(-np.abs(self.kappa_ffn.data))) + np.maximum(self.kappa_ffn.data, 0.0) + eps
-            al_res_eff = _np_sigmoid(self.alpha_res.data)
-            k_head_eff = np.log1p(np.exp(-np.abs(self.kappa_head.data))) + np.maximum(self.kappa_head.data, 0.0) + eps
-
-            pos_l = (np.arange(1, L + 1, dtype=np.float64) / float(L)).reshape(1, L, 1)
-            phi_rope = pos_l * self.theta_rope.data.reshape(1, 1, G)
-
-            E_Q = u1**2 + u2**2
-            D_rms = (1.0 + k_rms_eff * E_Q) ** (-0.5)
-            c_r, s_r = np.cos(phi_rope), np.sin(phi_rope)
-            op_rope = np.stack(
-                [
-                    self.gamma_rms.data * D_rms * (c_r * u1 - s_r * u2),
-                    self.gamma_rms.data * D_rms * (s_r * u1 + c_r * u2),
-                    np.zeros_like(u1),
-                    np.zeros_like(u2),
-                ],
-                axis=-1,
+        @staticmethod
+        def forward(ctx: Any, q: "torch.Tensor", k: "torch.Tensor", v: "torch.Tensor") -> "torch.Tensor":
+            b, h, l, d = q.shape
+            hk = k.shape[1]
+            rep = h // hk
+            out = torch.empty_like(q)
+            acc_dtype = torch.float64 if q.dtype == torch.float64 else torch.float32
+            lse = torch.empty(b, h, l, dtype=acc_dtype, device=q.device)
+            bm, bn, stages, warps = _flash_block_cfg(q.dtype, d)
+            scale = torch.tensor(1.0 / math.sqrt(float(d)), dtype=q.dtype, device=q.device)
+            _flash_fwd_kernel[(triton.cdiv(l, bm), b * h)](
+                q, k, v, out, lse, l, scale, h, hk, rep, d, bm, bn,
+                q.dtype in (torch.float32, torch.float64),
+                tl.float64 if q.dtype == torch.float64 else tl.float32,
+                num_stages=stages, num_warps=warps,
             )
+            ctx.save_for_backward(q, k, v, out, lse)
+            ctx.rep = rep
+            return out
 
-            E_V = v1**2 + v2**2
-            D_qkv = (1.0 + k_qkv_eff * E_V) ** (-0.5)
-            c_v, s_v = np.cos(self.theta_qkv.data), np.sin(self.theta_qkv.data)
-            op_qkv = np.stack(
-                [
-                    np.zeros_like(v1),
-                    np.zeros_like(v2),
-                    self.w_qkv.data * D_qkv * (c_v * v1 + s_v * v2),
-                    self.w_qkv.data * D_qkv * (-s_v * v1 + c_v * v2),
-                ],
-                axis=-1,
+        @staticmethod
+        def backward(ctx: Any, do: "torch.Tensor") -> Tuple["torch.Tensor", "torch.Tensor", "torch.Tensor"]:
+            q, k, v, out, lse = ctx.saved_tensors
+            b, h, l, d = q.shape
+            hk = k.shape[1]
+            rep = ctx.rep
+            dq = torch.zeros_like(q)
+            dk = torch.zeros_like(k)
+            dv = torch.zeros_like(v)
+            bm, bn, stages, warps = _flash_block_cfg(q.dtype, d, backward=True)
+            scale = torch.tensor(1.0 / math.sqrt(float(d)), dtype=q.dtype, device=q.device)
+            if q.dtype == torch.float64:
+                delta = (do * out).sum(-1).contiguous()
+            else:
+                delta = (do.float() * out.float()).sum(-1).contiguous()
+            _flash_bwd_kernel[(triton.cdiv(l, bm), b * h)](
+                q, k, v, do.contiguous(), lse, delta, dq, dk, dv, l, scale,
+                h, hk, rep, d, bm, bn,
+                q.dtype in (torch.float32, torch.float64),
+                tl.float64 if q.dtype == torch.float64 else tl.float32,
+                num_stages=stages, num_warps=warps,
             )
+            return dq, dk, dv
 
-            E_tot = E_Q + E_V
-            D_ffn = 1.0 / (1.0 + k_ffn_eff * E_tot)
-            G_glu = u1 * v2 - u2 * v1
-            op_swiglu = D_ffn[..., None] * np.stack(
-                [
-                    self.w_up.data * v1 + self.w_gate.data * G_glu * v2,
-                    self.w_up.data * v2 - self.w_gate.data * G_glu * v1,
-                    self.w_up.data * u1 - self.w_gate.data * G_glu * u2,
-                    self.w_up.data * u2 + self.w_gate.data * G_glu * u1,
-                ],
-                axis=-1,
-            )
+    def triton_flash_attention(
+        q: "torch.Tensor", k: "torch.Tensor", v: "torch.Tensor"
+    ) -> "torch.Tensor":
+        """q (B,H,L,D)、k/v (B,H_kv,L,D) → o (B,H,L,D)；因果 + GQA。"""
+        if not (HAS_TORCH and HAS_TRITON):
+            raise RuntimeError("需要 torch + triton")
+        return _FlashAttention.apply(q.contiguous(), k.contiguous(), v.contiguous())
 
-            Delta_E = E_V - E_Q
-            G_cap = Delta_E * ((1.0 + k_head_eff * (Delta_E**2)) ** (-0.5))
-            I_qk = u1 * v1 + u2 * v2
-            C_qk = I_qk / (1.0 + k_head_eff * E_tot)
-            op_head = np.stack(
-                [
-                    al_res_eff * (-u1 + G_cap * v2) + self.beta_qk.data * C_qk * v1,
-                    al_res_eff * (u2 - G_cap * v1) - self.beta_qk.data * C_qk * v2,
-                    al_res_eff * (v1 + G_cap * u2) + self.beta_qk.data * C_qk * u1,
-                    al_res_eff * (-v2 - G_cap * u1) - self.beta_qk.data * C_qk * u2,
-                ],
-                axis=-1,
-            )
+def triton_norm_rope_forward(
+    x: "torch.Tensor",
+    gamma: "torch.Tensor",
+    omega: "torch.Tensor",
+    cfg: LLMHierarchyConfig,
+    offset: int = 0,
+) -> "torch.Tensor":
+    """供验证调用的显式入口（需 CUDA + Triton）。"""
+    if not (HAS_TORCH and HAS_TRITON):
+        raise RuntimeError("需要 torch + triton")
+    return _TritonNormRope.apply(x, gamma, omega, offset, cfg)
 
-            m1_w, m2_w, m3_w, m4_w = self.config.sub_op_weights
-            y_data = (m1_w * op_rope + m2_w * op_qkv + m3_w * op_swiglu + m4_w * op_head).reshape(B, L, D)
 
-            def _bwd(grad_out: np.ndarray) -> None:
-                grads = llm_hierarchy_numpy_backward(
-                    grad_out,
-                    x_tensor.data,
-                    *p_arrays,
-                    eps_zpe=self.config.eps_zpe,
-                    sub_op_weights=self.config.sub_op_weights,
-                )
-                if x_tensor.requires_grad:
-                    x_tensor.grad = grads[0] if x_tensor.grad is None else x_tensor.grad + grads[0]
-                for idx, p in enumerate(params):
-                    if p.requires_grad:
-                        g_val = grads[idx + 1]
-                        p.grad = g_val if p.grad is None else p.grad + g_val
+def triton_swiglu_forward(gate: "torch.Tensor", up: "torch.Tensor") -> "torch.Tensor":
+    if not (HAS_TORCH and HAS_TRITON):
+        raise RuntimeError("需要 torch + triton")
+    return _TritonSwiGLUAct.apply(gate, up)
 
-            out_tensor = _CompatTensor(
-                y_data,
-                requires_grad=True,
-                _backward_fn=_bwd,
-                _parents=(x_tensor,) + tuple(params),
-            )
-            if return_sub_ops:
-                return out_tensor, (
-                    _CompatTensor(op_rope.reshape(B, L, D)),
-                    _CompatTensor(op_qkv.reshape(B, L, D)),
-                    _CompatTensor(op_swiglu.reshape(B, L, D)),
-                    _CompatTensor(op_head.reshape(B, L, D)),
-                )
-            return out_tensor
 
-        def __call__(self, *args, **kwargs):
-            return self.forward(*args, **kwargs)
 
 
 # ==============================================================================
-# 6. 完整 LLM 算子级扩展接口 (KV-Cache 自回归推理与 Softcapped Logit 词表投射)
+# 5. 逐算子等价验证、Gradcheck 与五维正交独立性审计
 # ==============================================================================
-def llm_hierarchy_forward_with_kv_cache(
-    op: LLMHierarchyOperator,
-    x: np.ndarray,
-    kv_cache: Optional[Dict[str, np.ndarray]] = None,
-) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
-    """支持因果 KV-Cache 状态累积的完整 LLM 层次算子推理接口。
+def _max_abs(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.max(np.abs(np.asarray(a, dtype=np.float64) - np.asarray(b, dtype=np.float64))))
 
-    在执行四路正交 LLM 子算子（RoPE + QKV + SwiGLU + Head）的基础上，维护跨步因果
-    Key-Value 状态缓存 `kv_cache = {"k_state": ..., "v_state": ..., "step": ...}`，
-    实现 O(1) 步复杂度的自回归增量上下文融合。
-    """
-    x_arr = np.asarray(x, dtype=np.float64)
-    B, L, D = x_arr.shape
-    G = D // 4
-    decay = op.config.kv_decay
-    eps = op.config.eps_zpe
 
-    if HAS_TORCH:
-        params_np = [
-            op.theta_rope.detach().cpu().numpy(),
-            op.gamma_rms.detach().cpu().numpy(),
-            op.kappa_rms.detach().cpu().numpy(),
-            op.theta_qkv.detach().cpu().numpy(),
-            op.w_qkv.detach().cpu().numpy(),
-            op.kappa_qkv.detach().cpu().numpy(),
-            op.w_up.detach().cpu().numpy(),
-            op.w_gate.detach().cpu().numpy(),
-            op.kappa_ffn.detach().cpu().numpy(),
-            op.alpha_res.detach().cpu().numpy(),
-            op.beta_qk.detach().cpu().numpy(),
-            op.kappa_head.detach().cpu().numpy(),
-        ]
-    else:
-        params_np = [p.numpy() for p in op.parameters()]
+def _rel_err(a: np.ndarray, b: np.ndarray) -> float:
+    a = np.asarray(a, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+    denom = max(float(np.max(np.abs(b))), 1e-12)
+    return float(np.max(np.abs(a - b)) / denom)
 
-    y_base = llm_hierarchy_numpy_forward(
-        x_arr, *params_np, eps_zpe=eps, sub_op_weights=op.config.sub_op_weights
+
+def _audit_config() -> LLMHierarchyConfig:
+    return LLMHierarchyConfig(
+        dim=128, n_heads=4, n_kv_heads=2, ffn_dim=320, vocab_size=128,
+        n_layers=2, use_triton=True,
     )
 
-    xg = x_arr.reshape(B, L, G, 4)
-    k_cur = xg[..., :2]  # (B, L, G, 2)
-    v_cur = xg[..., 2:]  # (B, L, G, 2)
 
-    if kv_cache is None:
-        k_state = np.zeros((B, G, 2), dtype=np.float64)
-        v_state = np.zeros((B, G, 2), dtype=np.float64)
-        step_count = 0
-    else:
-        k_state = kv_cache["k_state"].copy()
-        v_state = kv_cache["v_state"].copy()
-        step_count = int(kv_cache["step"])
+def _check_operator_equivalence(cfg: LLMHierarchyConfig) -> Dict[str, Dict[str, float]]:
+    """A1：六个算子逐个对拍 NumPy ↔ PyTorch（前向 + 全部参数/输入梯度）。"""
+    rng = np.random.default_rng(3)
+    b, l, d, v = 2, 5, cfg.dim, cfg.vocab_size
+    model = LLMHierarchyOperator(cfg).double().eval()
+    blk = model.blocks[0]
+    out: Dict[str, Dict[str, float]] = {}
 
-    ctx_out = np.zeros_like(xg)
-    for t in range(L):
-        k_state = decay * k_state + (1.0 - decay) * k_cur[:, t]
-        v_state = decay * v_state + (1.0 - decay) * v_cur[:, t]
-        qk_score = np.sum(k_cur[:, t] * k_state, axis=-1, keepdims=True) / math.sqrt(2.0)
-        attn_gate = _np_sigmoid(qk_score)
-        ctx_v = attn_gate * v_state
-        ctx_out[:, t, :, 2:] = ctx_v
-        step_count += 1
+    def fwd_bwd(name: str, fn_t, fn_np, grads_np: Dict[str, np.ndarray],
+                tensors: Dict[str, "torch.Tensor"], go: np.ndarray) -> None:
+        xt = torch.tensor(x_np, dtype=torch.float64, requires_grad=True)
+        yt = fn_t(xt)
+        y_np = fn_np(x_np)
+        yt.backward(torch.tensor(go, dtype=torch.float64))
+        entry = {"fwd_max_abs": _max_abs(yt.detach().numpy(), y_np)}
+        entry["dx_rel"] = _rel_err(xt.grad.numpy(), grads_np["dx"])
+        for k, t in tensors.items():
+            entry[f"d{k}_rel"] = _rel_err(t.grad.numpy(), grads_np[k])
+        out[name] = entry
+        model.zero_grad()
 
-    y_With_kv = y_base + ctx_out.reshape(B, L, D)
-    new_cache = {"k_state": k_state, "v_state": v_state, "step": np.array(step_count)}
-    return y_With_kv, new_cache
-
-
-def llm_hierarchy_compute_logits(
-    hidden_states: np.ndarray,
-    vocab_weight: np.ndarray,
-    logit_softcap: float = 30.0,
-    eps_zpe: float = 1e-4,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """完整 LLM 最终输出层：执行 Final-RMSNorm、词表线性投射、有理 Logit Softcapping 与稳定 Softmax。
-
-    Returns:
-        logits: 软截断后的词表 Logits，形状为 (B, L, V)。
-        probs: 归一化词表概率分布，形状为 (B, L, V)。
-    """
-    h = np.asarray(hidden_states, dtype=np.float64)
-    W_v = np.asarray(vocab_weight, dtype=np.float64)  # (D, V)
-    rms_inv = 1.0 / np.sqrt(np.mean(h * h, axis=-1, keepdims=True) + eps_zpe)
-    h_norm = h * rms_inv
-    raw_logits = h_norm @ W_v
-    # 有理软截断包络 (将输出平滑有界限制在 [-logit_softcap, +logit_softcap])
-    scaled = raw_logits / logit_softcap
-    logits = logit_softcap * (scaled / np.sqrt(1.0 + scaled * scaled))
-    logits_shifted = logits - np.max(logits, axis=-1, keepdims=True)
-    exp_logits = np.exp(logits_shifted)
-    probs = exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
-    return logits, probs
-
-
-# ==============================================================================
-# 7. 三重位级等价校验与五维正交独立性形式化审计 (Verification & 5D Audit Suite)
-# ==============================================================================
-def run_verification_and_5d_audit(verbose: bool = True) -> Dict[str, object]:
-    """执行完整三重位级等价验证、中心有限差分 Gradcheck、KV-Cache/Logits 检验与五维正交独立性审计。"""
-    np.random.seed(2026)
-    B, L, D = 8, 16, 16
-    G = D // 4
-    cfg = LLMHierarchyConfig(dim=D, vocab_size=32, eps_zpe=1e-4, block_size=64)
-
-    x_np = np.random.randn(B, L, D).astype(np.float64)
-    grad_out_np = np.random.randn(B, L, D).astype(np.float64)
-
-    op = LLMHierarchyOperator(cfg)
-    if HAS_TORCH:
-        params_np = [
-            op.theta_rope.detach().cpu().numpy().copy(),
-            op.gamma_rms.detach().cpu().numpy().copy(),
-            op.kappa_rms.detach().cpu().numpy().copy(),
-            op.theta_qkv.detach().cpu().numpy().copy(),
-            op.w_qkv.detach().cpu().numpy().copy(),
-            op.kappa_qkv.detach().cpu().numpy().copy(),
-            op.w_up.detach().cpu().numpy().copy(),
-            op.w_gate.detach().cpu().numpy().copy(),
-            op.kappa_ffn.detach().cpu().numpy().copy(),
-            op.alpha_res.detach().cpu().numpy().copy(),
-            op.beta_qk.detach().cpu().numpy().copy(),
-            op.kappa_head.detach().cpu().numpy().copy(),
-        ]
-    else:
-        params_np = [p.numpy().copy() for p in op.parameters()]
-
-    # ------------------------------------------------------------------
-    # A. 三套实现位级等价检验 (NumPy vs PyTorch/Autograd vs Triton Kernel)
-    # ------------------------------------------------------------------
-    y_numpy, sub_ops_np = llm_hierarchy_numpy_forward(
-        x_np, *params_np, eps_zpe=cfg.eps_zpe, return_sub_ops=True
-    )
-    y_triton = llm_hierarchy_triton_forward(
-        x_np, *params_np, eps_zpe=cfg.eps_zpe, block_size=cfg.block_size
-    )
-
-    if HAS_TORCH:
-        x_t = torch.tensor(x_np, dtype=torch.float64, requires_grad=True)
-        y_torch_t = op(x_t)
-        y_torch = y_torch_t.detach().cpu().numpy()
-        y_torch_t.backward(torch.tensor(grad_out_np, dtype=torch.float64))
-        gx_torch = x_t.grad.detach().cpu().numpy()
-    else:
-        x_t = _CompatTensor(x_np, requires_grad=True)
-        y_torch_t = op(x_t)
-        y_torch = y_torch_t.numpy()
-        y_torch_t.backward(grad_out_np)
-        gx_torch = x_t.grad
-
-    grads_numpy_all = llm_hierarchy_numpy_backward(
-        grad_out_np, x_np, *params_np, eps_zpe=cfg.eps_zpe, return_sub_grads=True
-    )
-    grads_numpy = grads_numpy_all[:-1]
-    sub_grads_np = grads_numpy_all[-1]
-
-    grads_triton = llm_hierarchy_triton_backward(
-        grad_out_np, x_np, *params_np, eps_zpe=cfg.eps_zpe, block_size=cfg.block_size
-    )
-
-    fwd_err_torch = float(np.max(np.abs(y_numpy - y_torch)))
-    fwd_err_triton = float(np.max(np.abs(y_numpy - y_triton)))
-    bwd_err_torch = float(np.max(np.abs(grads_numpy[0] - gx_torch)))
-    bwd_err_triton_x = float(np.max(np.abs(grads_numpy[0] - grads_triton[0])))
-    bwd_err_triton_params = float(
-        max(np.max(np.abs(grads_numpy[i] - grads_triton[i])) for i in range(1, 13))
-    )
-
-    # 验证 KV-Cache 自回归一致性（整序列一次推理 vs 逐 Token 增量解码）
-    y_kv_full, cache_full = llm_hierarchy_forward_with_kv_cache(op, x_np[:, :4, :])
-    cache_step = None
-    step_outputs = []
-    for t_step in range(4):
-        # 校验增量 KV 状态递推
-        _, cache_step = llm_hierarchy_forward_with_kv_cache(
-            op, x_np[:, t_step : t_step + 1, :], kv_cache=cache_step
-        )
-        step_outputs.append(cache_step["v_state"].copy())
-    kv_state_diff = float(np.max(np.abs(cache_full["v_state"] - cache_step["v_state"])))
-
-    # 验证词表 Logit Softcap 与概率归一化
-    W_vocab = np.random.randn(D, cfg.vocab_size) * 0.5
-    logits_out, probs_out = llm_hierarchy_compute_logits(
-        y_numpy, W_vocab, logit_softcap=cfg.logit_softcap, eps_zpe=cfg.eps_zpe
-    )
-    prob_sum_err = float(np.max(np.abs(np.sum(probs_out, axis=-1) - 1.0)))
-
-    # ------------------------------------------------------------------
-    # B. 解析反向传播对比中心有限差分校验 (Gradcheck, eps = 1e-6)
-    # ------------------------------------------------------------------
-    B_gc, L_gc = 2, 4
-    x_gc = x_np[:B_gc, :L_gc].copy()
-    go_gc = grad_out_np[:B_gc, :L_gc].copy()
-    grads_gc = llm_hierarchy_numpy_backward(go_gc, x_gc, *params_np, eps_zpe=cfg.eps_zpe)
-
-    eps_fd = 1e-6
-    gx_fd = np.zeros_like(x_gc)
-    for idx in np.ndindex(x_gc.shape):
-        xp = x_gc.copy()
-        xp[idx] += eps_fd
-        xm = x_gc.copy()
-        xm[idx] -= eps_fd
-        yp = llm_hierarchy_numpy_forward(xp, *params_np, eps_zpe=cfg.eps_zpe)
-        ym = llm_hierarchy_numpy_forward(xm, *params_np, eps_zpe=cfg.eps_zpe)
-        gx_fd[idx] = np.sum((yp - ym) / (2.0 * eps_fd) * go_gc)
-
-    grad_x_rel_err = float(
-        np.max(np.abs(grads_gc[0] - gx_fd) / np.maximum(np.abs(grads_gc[0]) + np.abs(gx_fd), 1e-1))
-    )
-    grad_x_norm_rel_err = float(
-        np.linalg.norm(grads_gc[0] - gx_fd)
-        / np.maximum(np.linalg.norm(grads_gc[0]) + np.linalg.norm(gx_fd), 1e-12)
-    )
-
-    param_names = [
-        "theta_rope",
-        "gamma_rms",
-        "kappa_rms",
-        "theta_qkv",
-        "w_qkv",
-        "kappa_qkv",
-        "w_up",
-        "w_gate",
-        "kappa_ffn",
-        "alpha_res",
-        "beta_qk",
-        "kappa_head",
-    ]
-    param_rel_errs: Dict[str, float] = {}
-    for p_idx, p_name in enumerate(param_names):
-        g_ana = grads_gc[p_idx + 1]
-        g_fd = np.zeros_like(g_ana)
-        for k in range(G):
-            pp = [p.copy() for p in params_np]
-            pp[p_idx][k] += eps_fd
-            pm = [p.copy() for p in params_np]
-            pm[p_idx][k] -= eps_fd
-            yp = llm_hierarchy_numpy_forward(x_gc, *pp, eps_zpe=cfg.eps_zpe)
-            ym = llm_hierarchy_numpy_forward(x_gc, *pm, eps_zpe=cfg.eps_zpe)
-            g_fd[k] = np.sum((yp - ym) / (2.0 * eps_fd) * go_gc)
-        rel_e = float(
-            np.max(np.abs(g_ana - g_fd) / np.maximum(np.abs(g_ana) + np.abs(g_fd), 1e-1))
-        )
-        param_rel_errs[p_name] = rel_e
-
-    max_param_rel_err = max(param_rel_errs.values())
-
-    # ------------------------------------------------------------------
-    # C. 五维算子正交独立性形式化审计 (5D Independence Audit)
-    # ------------------------------------------------------------------
-    # 维度 1: 单文件零同级依赖检验 (AST Static Check)
-    allowed_modules = {
-        "__future__",
-        "ast",
-        "math",
-        "dataclasses",
-        "pathlib",
-        "typing",
-        "numpy",
-        "torch",
-        "triton",
+    # --- O0 Embedding ---
+    ids = rng.integers(0, v, (b, l))
+    e_np, c_e = np_embedding_forward(ids, model.embedding.weight.detach().numpy(), cfg)
+    e_t = model.embedding(torch.tensor(ids))
+    e_t.sum().backward()
+    g_table = np_embedding_backward(np.ones_like(e_np), c_e, model.embedding.weight.detach().numpy())
+    out["embedding"] = {
+        "fwd_max_abs": _max_abs(e_t.detach().numpy(), e_np),
+        "dweight_rel": _rel_err(model.embedding.weight.grad.numpy(), g_table),
     }
-    this_file = Path(__file__).resolve()
-    tree = ast.parse(this_file.read_text(encoding="utf-8"))
-    sibling_imports: List[str] = []
+    model.zero_grad()
+
+    x_np = rng.normal(0, 1, (b, l, d))
+    go = rng.normal(0, 1, (b, l, d))
+
+    # --- O1 NormPosition ---
+    y_np, c1 = np_rmsnorm_position_forward(
+        x_np, blk.norm_attn.gamma.detach().numpy(), blk.norm_attn.omega.detach().numpy(), cfg)
+    gx_np, gg_np, gw_np = np_rmsnorm_position_backward(
+        go, c1, blk.norm_attn.gamma.detach().numpy(), cfg)
+    fwd_bwd("norm_position", lambda t: blk.norm_attn(t),
+            lambda a: np_rmsnorm_position_forward(
+                a, blk.norm_attn.gamma.detach().numpy(), blk.norm_attn.omega.detach().numpy(), cfg)[0],
+            {"dx": gx_np, "gamma": gg_np, "omega": gw_np},
+            {"gamma": blk.norm_attn.gamma, "omega": blk.norm_attn.omega}, go)
+
+    # --- O2 CausalAttention ---
+    attn_p = {k: getattr(blk.attn, k).detach().numpy() for k in ("w_q", "w_k", "w_v", "w_o")}
+    y_np, c2 = np_causal_attention_forward(
+        x_np, attn_p["w_q"], attn_p["w_k"], attn_p["w_v"], attn_p["w_o"], cfg)
+    gx_np, ga_np = np_causal_attention_backward(go, c2, cfg)
+    fwd_bwd("attention", lambda t: blk.attn(t)[0],
+            lambda a: np_causal_attention_forward(
+                a, attn_p["w_q"], attn_p["w_k"], attn_p["w_v"], attn_p["w_o"], cfg)[0],
+            {"dx": gx_np, **{k: ga_np[k] for k in ("w_q", "w_k", "w_v", "w_o")}},
+            {k: getattr(blk.attn, k) for k in ("w_q", "w_k", "w_v", "w_o")}, go)
+
+    # --- O3 SwiGLU ---
+    ffn_p = {k: getattr(blk.ffn, k).detach().numpy() for k in ("w_gate", "w_up", "w_down")}
+    y_np, c3 = np_swiglu_forward(x_np, ffn_p["w_gate"], ffn_p["w_up"], ffn_p["w_down"], cfg)
+    gx_np, gf_np = np_swiglu_backward(go, c3, cfg)
+    fwd_bwd("swiglu", lambda t: blk.ffn(t),
+            lambda a: np_swiglu_forward(
+                a, ffn_p["w_gate"], ffn_p["w_up"], ffn_p["w_down"], cfg)[0],
+            {"dx": gx_np, **{k: gf_np[k] for k in ("w_gate", "w_up", "w_down")}},
+            {k: getattr(blk.ffn, k) for k in ("w_gate", "w_up", "w_down")}, go)
+
+    # --- O4 ResidualStream ---
+    s_np = rng.normal(0, 1, (b, l, d))
+    u_np = rng.normal(0, 1, (b, l, d))
+    gate_np = blk.res_attn.gate.detach().numpy()
+    y_np, c4 = np_residual_forward(s_np, u_np, gate_np)
+    gs_np, gu_np, gg_np = np_residual_backward(go, c4)
+    st = torch.tensor(s_np, dtype=torch.float64)
+    ut = torch.tensor(u_np, dtype=torch.float64, requires_grad=True)
+    yt = blk.res_attn(st, ut)
+    yt.backward(torch.tensor(go, dtype=torch.float64))
+    out["residual"] = {
+        "fwd_max_abs": _max_abs(yt.detach().numpy(), y_np),
+        "dupdate_rel": _rel_err(ut.grad.numpy(), gu_np),
+        "dgate_rel": _rel_err(blk.res_attn.gate.grad.numpy(), gg_np),
+    }
+    model.zero_grad()
+
+    # --- O5 VocabHead ---
+    h_np = rng.normal(0, 1, (b, l, d))
+    go_v = rng.normal(0, 1, (b, l, v))
+    y_np, c5 = np_vocab_head_forward(h_np, model.head.weight.detach().numpy(), cfg)
+    gh_np, gwl_np = np_vocab_head_backward(go_v, c5, cfg)
+    ht = torch.tensor(h_np, dtype=torch.float64, requires_grad=True)
+    yt = model.head(ht)
+    yt.backward(torch.tensor(go_v, dtype=torch.float64))
+    out["vocab_head"] = {
+        "fwd_max_abs": _max_abs(yt.detach().numpy(), y_np),
+        "dh_rel": _rel_err(ht.grad.numpy(), gh_np),
+        "dweight_rel": _rel_err(model.head.weight.grad.numpy(), gwl_np),
+    }
+    return out
+
+
+def _block_grad(blk: "LLMHierarchyBlock", key: str) -> Optional["torch.Tensor"]:
+    if key == "gamma":
+        return blk.norm_attn.gamma.grad
+    if key == "omega":
+        return blk.norm_attn.omega.grad
+    if key == "ffn_gamma":
+        return blk.norm_ffn.gamma.grad
+    if key == "ffn_omega":
+        return blk.norm_ffn.omega.grad
+    if key.startswith("attn_"):
+        return getattr(blk.attn, key[5:]).grad
+    if key.startswith("ffn_w"):
+        return getattr(blk.ffn, key[4:]).grad
+    if key == "res_attn_gate":
+        return blk.res_attn.gate.grad
+    if key == "res_ffn_gate":
+        return blk.res_ffn.gate.grad
+    raise KeyError(key)
+
+
+def _check_model_equivalence(cfg: LLMHierarchyConfig) -> Dict[str, float]:
+    """A2：整模型 NumPy ↔ PyTorch 前向与全部梯度（含绑定词表时的梯度累加）。"""
+    model = LLMHierarchyOperator(cfg).double().eval()
+    ids = torch.randint(0, cfg.vocab_size, (3, 8))
+    rng = np.random.default_rng(11)
+    go = rng.normal(0.0, 1.0, (3, 8, cfg.vocab_size))
+    params = model.numpy_params()
+
+    logits_t, _ = model(ids)
+    logits_t.backward(torch.tensor(go, dtype=torch.float64))
+    logits_n, cache = np_model_forward(ids.numpy(), params, cfg, return_cache=True)
+    grads = np_model_backward(go, cache, params, cfg)
+
+    embed_ref = grads["embed"] + (grads["lm_head"] if cfg.tie_embeddings else 0.0)
+    worst = _rel_err(model.embedding.weight.grad.numpy(), embed_ref)
+    worst = max(worst, _rel_err(model.final_norm.gamma.grad.numpy(), grads["final_gamma"]))
+    if cfg.tie_embeddings:
+        worst = max(worst, _rel_err(model.head.weight.grad.numpy(), grads["lm_head"]))
+    for i, blk in enumerate(model.blocks):
+        for key in blk.numpy_params():
+            g = _block_grad(blk, key)
+            if g is None:                       # 非位置归一化的 omega 是 buffer
+                assert float(np.max(np.abs(grads["blocks"][i][key]))) == 0.0, key
+                continue
+            worst = max(worst, _rel_err(g.numpy(), grads["blocks"][i][key]))
+    return {"fwd_max_abs": _max_abs(logits_t.detach().numpy(), logits_n), "grad_rel_max": worst}
+
+
+def _check_triton_equivalence(cfg: LLMHierarchyConfig) -> Dict[str, Any]:
+    """A3：Triton 融合核 ↔ NumPy（fp64），含前向、反向与位置偏移。"""
+    if not (HAS_TORCH and HAS_TRITON and torch.cuda.is_available()):
+        return {"available": False}
+    rng = np.random.default_rng(7)
+    b, t, d = 3, 6, cfg.dim
+    x_np = rng.normal(0, 1, (b, t, d))
+    gy_np = rng.normal(0, 1, (b, t, d))
+    gamma_np = rng.normal(1.0, 0.1, d)
+    omega_np = rng.normal(0.0, 0.2, cfg.pair_dim)
+
+    y_np, c1 = np_rmsnorm_position_forward(x_np, gamma_np, omega_np, cfg)
+    gx_np, gg_np, gomega_np = np_rmsnorm_position_backward(gy_np, c1, gamma_np, cfg)
+    x = torch.tensor(x_np, device="cuda", dtype=torch.float64, requires_grad=True)
+    g = torch.tensor(gamma_np, device="cuda", dtype=torch.float64, requires_grad=True)
+    w = torch.tensor(omega_np, device="cuda", dtype=torch.float64, requires_grad=True)
+    y = triton_norm_rope_forward(x, g, w, cfg)
+    fwd = _max_abs(y.detach().cpu().numpy(), y_np)
+    y.backward(torch.tensor(gy_np, device="cuda", dtype=torch.float64))
+    dx = _rel_err(x.grad.cpu().numpy(), gx_np)
+    dg = _rel_err(g.grad.cpu().numpy(), gg_np)
+    dw = _rel_err(w.grad.cpu().numpy(), gomega_np)
+    y_off = triton_norm_rope_forward(x.detach(), g.detach(), w.detach(), cfg, offset=5)
+    y_off_np, _ = np_rmsnorm_position_forward(x_np, gamma_np, omega_np, cfg, True, 5)
+    off_err = _max_abs(y_off.cpu().numpy(), y_off_np)
+
+    gf_np = rng.normal(0, 1, (b * t, cfg.ffn_dim))
+    up_np = rng.normal(0, 1, (b * t, cfg.ffn_dim))
+    go_np = rng.normal(0, 1, (b * t, cfg.ffn_dim))
+    h_np = gf_np * (1.0 / (1.0 + np.exp(-gf_np))) * up_np
+    gf = torch.tensor(gf_np, device="cuda", requires_grad=True)
+    up = torch.tensor(up_np, device="cuda", requires_grad=True)
+    h = triton_swiglu_forward(gf, up)
+    s_fwd = _max_abs(h.detach().cpu().numpy(), h_np)
+    h.backward(torch.tensor(go_np, device="cuda"))
+    sig = 1.0 / (1.0 + np.exp(-gf_np))
+    dsilu = sig * (1.0 + gf_np * (1.0 - sig))
+    s_dg = _rel_err(gf.grad.cpu().numpy(), go_np * up_np * dsilu)
+    s_du = _rel_err(up.grad.cpu().numpy(), go_np * gf_np * sig)
+    return {
+        "available": True,
+        "norm_rope_fwd_max_abs": fwd, "norm_rope_dx_rel": dx,
+        "norm_rope_dgamma_rel": dg, "norm_rope_domega_rel": dw,
+        "norm_rope_offset_max_abs": off_err,
+        "swiglu_fwd_max_abs": s_fwd, "swiglu_dgate_rel": s_dg, "swiglu_dup_rel": s_du,
+    }
+
+
+def _check_kv_cache(cfg: LLMHierarchyConfig) -> Dict[str, float]:
+    """A4：整序列前向 vs 逐 token 增量解码（NumPy 与 PyTorch 双引擎）。"""
+    model = LLMHierarchyOperator(cfg).double().eval()
+    blk = model.blocks[0]
+    rng = np.random.default_rng(5)
+    x_np = rng.normal(0, 1, (2, 7, cfg.dim))
+    wq, wk, wv, wo = (blk.attn.w_q.detach().numpy(), blk.attn.w_k.detach().numpy(),
+                      blk.attn.w_v.detach().numpy(), blk.attn.w_o.detach().numpy())
+    y_full, _ = np_causal_attention_forward(x_np, wq, wk, wv, wo, cfg)
+    cache, outs = None, []
+    for t in range(x_np.shape[1]):
+        y_t, cache = np_causal_attention_forward(x_np[:, t:t + 1], wq, wk, wv, wo, cfg, cache)
+        outs.append(y_t)
+    np_kv = _max_abs(np.concatenate(outs, axis=1), y_full)
+
+    xt = torch.tensor(x_np, dtype=torch.float64)
+    yt, _ = blk.attn(xt)
+    tc, touts = None, []
+    for t in range(x_np.shape[1]):
+        y_t, tc = blk.attn(xt[:, t:t + 1], tc)
+        touts.append(y_t)
+    torch_kv = _max_abs(torch.cat(touts, dim=1).detach().numpy(), yt.detach().numpy())
+
+    ids = torch.randint(0, cfg.vocab_size, (2, 8))
+    full, _ = model(ids)
+    caches, parts = None, []
+    for t in range(8):
+        step, caches = model(ids[:, t:t + 1], caches)
+        parts.append(step)
+    model_kv = _max_abs(torch.cat(parts, dim=1).detach().numpy(), full.detach().numpy())
+    return {"numpy_attention": np_kv, "torch_attention": torch_kv, "torch_model": model_kv}
+
+
+def _check_gradcheck(cfg: LLMHierarchyConfig, eps: float = 1e-6) -> Dict[str, float]:
+    """A5：PyTorch 自动微分 vs 中心差分（独立于 NumPy 引擎的第三方校验）。"""
+    model = LLMHierarchyOperator(cfg).double().eval()
+    ids = torch.randint(0, cfg.vocab_size, (2, 6))
+    go = torch.tensor(np.random.default_rng(9).normal(0.0, 1.0, (2, 6, cfg.vocab_size)),
+                     dtype=torch.float64)
+
+    def loss() -> float:
+        logits, _ = model(ids)
+        return float((logits * go).sum())
+
+    model.zero_grad()
+    model(ids)[0].backward(go)
+    params = dict(model.named_parameters())
+    grads = {n: p.grad.detach().clone() for n, p in params.items() if p.grad is not None}
+
+    err_p, ref_p = 0.0, 0.0
+    with torch.no_grad():
+        for name, p in params.items():
+            if name not in grads:
+                continue
+            flat = p.reshape(-1)
+            gflat = grads[name].reshape(-1)
+            for idx in torch.topk(gflat.abs(), min(2, gflat.numel())).indices.tolist():
+                orig = flat[idx].item()
+                flat[idx] = orig + eps
+                lp = loss()
+                flat[idx] = orig - eps
+                lm = loss()
+                flat[idx] = orig
+                fd = (lp - lm) / (2 * eps)
+                ref = abs(gflat[idx].item())
+                err_p = max(err_p, abs(fd - gflat[idx].item()) / max(ref, 1e-8))
+                ref_p = max(ref_p, ref)
+
+    # 嵌入表：随机 4 个 (token, 通道) 的中心差分
+    err_e, ref_e = 0.0, 0.0
+    emb_grad = grads["embedding.weight"]
+    with torch.no_grad():
+        rng = np.random.default_rng(31)
+        for _ in range(4):
+            tok = int(rng.integers(0, cfg.vocab_size))
+            ch = int(rng.integers(0, cfg.dim))
+            w = model.embedding.weight
+            orig = w[tok, ch].item()
+            w[tok, ch] = orig + eps
+            lp = loss()
+            w[tok, ch] = orig - eps
+            lm = loss()
+            w[tok, ch] = orig
+            fd = (lp - lm) / (2 * eps)
+            g = emb_grad[tok, ch].item()
+            err_e = max(err_e, abs(fd - g) / max(abs(g), 1e-8))
+            ref_e = max(ref_e, abs(g))
+    return {"param_rel_err": float(err_p), "param_ref": float(ref_p),
+            "embed_rel_err": float(err_e), "embed_ref": float(ref_e)}
+
+
+def _check_training_smoke(cfg: LLMHierarchyConfig, steps: int = 40) -> Dict[str, float]:
+    """A6：可训练性冒烟——合成下一 token 任务上跑 AdamW，损失必须显著下降。"""
+    torch.manual_seed(cfg.seed)
+    model = LLMHierarchyOperator(cfg)
+    if torch.cuda.is_available():
+        model = model.cuda()
+    opt = torch.optim.AdamW(model.parameters(), lr=3e-3)
+    base = torch.arange(8).repeat(2)[None, :]
+    ids = (base + torch.arange(4)[:, None]) % 5
+    ids = ids.to(next(model.parameters()).device)
+    target = torch.cat((ids[:, 1:], ids[:, :1]), dim=1)
+    losses = []
+    for _ in range(steps):
+        logits, _ = model(ids)
+        loss = F.cross_entropy(logits.reshape(-1, cfg.vocab_size), target.reshape(-1))
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        losses.append(float(loss.detach()))
+    return {"loss_first": losses[0], "loss_last": losses[-1],
+            "loss_min": min(losses), "steps": steps}
+
+
+def _check_zero_imports() -> List[str]:
+    """维度 1：AST 静态检查，只允许标准库与 numpy/torch/triton。"""
+    allowed = {
+        "__future__", "argparse", "ast", "copy", "json", "math", "sys",
+        "dataclasses", "pathlib", "typing", "numpy", "torch", "triton",
+    }
+    tree = ast.parse(Path(__file__).resolve().read_text(encoding="utf-8"))
+    bad: List[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                root_mod = alias.name.split(".")[0]
-                if root_mod not in allowed_modules:
-                    sibling_imports.append(alias.name)
+                if alias.name.split(".")[0] not in allowed:
+                    bad.append(alias.name)
         elif isinstance(node, ast.ImportFrom):
             if node.level > 0:
-                sibling_imports.append(f"relative_import_level_{node.level}")
-            elif node.module:
-                root_mod = node.module.split(".")[0]
-                if root_mod not in allowed_modules:
-                    sibling_imports.append(node.module)
+                bad.append(f"relative:{node.level}")
+            elif node.module and node.module.split(".")[0] not in allowed:
+                bad.append(node.module)
+    return bad
 
-    # 维度 2: 前向输出子空间满秩检验
-    M_fwd = np.column_stack([op_i.ravel() for op_i in sub_ops_np])
-    svals_sub = np.linalg.svd(M_fwd, compute_uv=False)
-    fwd_sub_rank = int(np.sum(svals_sub > 1e-8))
-    fwd_sub_sigma_min = float(svals_sub[-1])
 
-    svals_feat = np.linalg.svd(y_numpy.reshape(-1, D), compute_uv=False)
-    fwd_feat_rank = int(np.sum(svals_feat > 1e-8))
-    fwd_feat_sigma_min = float(svals_feat[-1])
+def _vif(matrix: np.ndarray) -> Tuple[float, int, float]:
+    svals = np.linalg.svd(matrix, compute_uv=False)
+    rank = int(np.sum(svals > 1e-8 * max(svals[0], 1e-12)))
+    corr = np.atleast_2d(np.corrcoef(matrix.T))
+    try:
+        vifs = np.diag(np.linalg.inv(corr))
+    except np.linalg.LinAlgError:
+        vifs = np.full(matrix.shape[1], np.inf)
+    return float(np.max(vifs)), rank, float(svals[-1])
 
-    # 维度 3: 反向输入雅可比满秩与低共线性检验 (Max VIF < 2.0)
-    M_bwd = np.column_stack([g_i.ravel() for g_i in sub_grads_np])
-    svals_bwd = np.linalg.svd(M_bwd, compute_uv=False)
-    bwd_sub_rank = int(np.sum(svals_bwd > 1e-8))
-    bwd_sub_sigma_min = float(svals_bwd[-1])
 
-    corr_bwd = np.corrcoef(M_bwd.T)
-    vifs_bwd = np.diag(np.linalg.inv(corr_bwd))
-    max_vif_bwd = float(np.max(vifs_bwd))
+def _operator_audit(cfg: LLMHierarchyConfig) -> Dict[str, Any]:
+    """五维正交独立性审计：六个算子类型，六个空间。"""
+    model = LLMHierarchyOperator(cfg).double().eval()
+    blk = model.blocks[0]
+    d, v = cfg.dim, cfg.vocab_size
+    torch.manual_seed(5)
+    # L=5、取第 5 个位置：注意力在该位置已能看到 5 个 value 子空间（每个 rank kv_dim），
+    # 足以占满 D；位置太短时 rank 上限是 kv_dim+1，测不出真实空间。
+    base = torch.randn(1, 5, d, dtype=torch.float64)
+    pos = 4
 
-    corr_fwd = np.corrcoef(M_fwd.T)
-    vifs_fwd = np.diag(np.linalg.inv(corr_fwd))
-    max_vif_fwd = float(np.max(vifs_fwd))
+    def image_rank(y: "torch.Tensor", tol: float = 1e-8) -> Tuple[int, int, float]:
+        """一批输入下，算子输出张成的子空间秩（= 它在自有空间里真正占满多少维）。"""
+        mat = y.detach().reshape(-1, y.shape[-1]).numpy()
+        svals = np.linalg.svd(mat, compute_uv=False)
+        rank = int(np.sum(svals > tol * max(svals[0], 1e-12)))
+        return rank, mat.shape[1], float(svals[-1])
 
-    # 维度 4: 4x4 参数交叉灵敏度矩阵严格对角化检验
-    S_matrix = np.zeros((4, 4), dtype=np.float64)
-    delta_p = 0.15
-    for j in range(4):
-        p_pert = [p.copy() for p in params_np]
-        for k in range(3):
-            p_pert[3 * j + k] = p_pert[3 * j + k] + delta_p
-        _, sub_ops_pert = llm_hierarchy_numpy_forward(
-            x_np, *p_pert, eps_zpe=cfg.eps_zpe, return_sub_ops=True
-        )
-        for i in range(4):
-            diff_norm = np.linalg.norm(sub_ops_pert[i] - sub_ops_np[i])
-            base_norm = np.linalg.norm(sub_ops_np[i])
-            S_matrix[i, j] = diff_norm / (base_norm * delta_p)
+    with torch.no_grad():
+        xb = torch.randn(64, 5, d, dtype=torch.float64)
+        embed_rank = int(np.linalg.matrix_rank(model.embedding.weight.detach().numpy(), tol=1e-8))
+        norm_rank, norm_out, norm_smin = image_rank(blk.norm_attn(xb))
+        attn_rank, attn_out, attn_smin = image_rank(blk.attn(xb)[0])
+        ffn_rank, ffn_out, ffn_smin = image_rank(blk.ffn(xb))
+        hidden_rank, hidden_out, hidden_smin = image_rank(blk.ffn.hidden(xb))
+        head_rank, head_out, head_smin = image_rank(model.head(xb))
+        gate_np = blk.res_attn.gate.detach().numpy()
+        residual_rank = int(np.sum(np.abs(gate_np) > 1e-12))
 
-    off_diag_mask = ~np.eye(4, dtype=bool)
-    max_off_diag_sensitivity = float(np.max(np.abs(S_matrix[off_diag_mask])))
-    min_diag_sensitivity = float(np.min(np.diag(S_matrix)))
+    # 维度 3：五个 D 空间算子在同一探针下的输入梯度共线性
+    def input_grad(fn) -> np.ndarray:
+        x = base[0, pos].clone().requires_grad_(True)
+        z = base.clone()
+        z[0, pos] = x
+        y = fn(z)[0, pos]
+        probe = torch.randn_like(y)
+        g, = torch.autograd.grad(y, x, grad_outputs=probe)
+        return g.detach().numpy()
 
-    # 维度 5: 留一法不可替代性检验 (LOOO CV)
-    y_flat = y_numpy.ravel()
-    ss_tot = float(np.sum((y_flat - np.mean(y_flat)) ** 2))
-    w_full, _, _, _ = np.linalg.lstsq(M_fwd, y_flat, rcond=None)
-    r2_full = float(1.0 - np.sum((y_flat - M_fwd @ w_full) ** 2) / ss_tot)
-
-    looo_deltas: Dict[str, float] = {}
-    sub_op_labels = [
-        "O_rope (Pre-RMSNorm & RoPE)",
-        "O_qkv (Multi-Head QKV Projection)",
-        "O_swiglu (SwiGLU Bilinear FFN)",
-        "O_head (QK-Inner & Softcap Head)",
+    stream0 = base.detach()
+    audit_fns = [
+        blk.norm_attn,
+        lambda z: blk.attn(z)[0],
+        blk.ffn,
+        lambda z: blk.res_attn(stream0, z),
+        lambda z: model.head(z),
     ]
-    for k in range(4):
-        keep_cols = [c for c in range(4) if c != k]
-        M_sub = M_fwd[:, keep_cols]
-        w_sub, _, _, _ = np.linalg.lstsq(M_sub, y_flat, rcond=None)
-        r2_sub = float(1.0 - np.sum((y_flat - M_sub @ w_sub) ** 2) / ss_tot)
-        looo_deltas[sub_op_labels[k]] = r2_full - r2_sub
+    m_bwd = np.column_stack([input_grad(fn).ravel() for fn in audit_fns])
+    bwd_vif, bwd_rank, bwd_smin = _vif(m_bwd)
 
-    min_looo_delta_r2 = min(looo_deltas.values())
+    # 维度 4：6×6 参数交叉灵敏度（每个算子的输入固定）
+    names = ["embedding", "norm_attn", "attn", "ffn", "res_attn", "head"]
+    modules = [model.embedding, blk.norm_attn, blk.attn, blk.ffn, blk.res_attn, model.head]
+    ids0 = torch.tensor([[3, 7, 11]])
 
-    # 严格断言所有指标达标
-    assert len(sibling_imports) == 0, f"发现非零同级依赖: {sibling_imports}"
-    assert fwd_err_torch < 1e-14, f"PyTorch 前向误差超标: {fwd_err_torch}"
-    assert fwd_err_triton < 1e-14, f"Triton 前向误差超标: {fwd_err_triton}"
-    assert bwd_err_triton_x < 1e-14, f"Triton 反向输入梯度误差超标: {bwd_err_triton_x}"
-    assert bwd_err_triton_params < 1e-13, f"Triton 反向参数梯度误差超标: {bwd_err_triton_params}"
-    assert kv_state_diff < 1e-15, f"KV-Cache 增量状态误差超标: {kv_state_diff}"
-    assert prob_sum_err < 1e-14, f"Logits Softmax 概率归一化误差超标: {prob_sum_err}"
-    assert grad_x_rel_err < 1e-8, f"输入 X 有限差分相对误差超标: {grad_x_rel_err}"
-    assert max_param_rel_err < 1e-8, f"可学参数有限差分相对误差超标: {max_param_rel_err}"
-    assert fwd_sub_rank == 4 and fwd_feat_rank == D, "前向子空间不满秩"
-    assert bwd_sub_rank == 4 and max_vif_bwd < 2.0, f"反向梯度 VIF 超标: {max_vif_bwd}"
-    assert max_off_diag_sensitivity == 0.0, f"交叉灵敏度非零: {max_off_diag_sensitivity}"
-    assert min_diag_sensitivity > 0.08, f"对角自灵敏度不足: {min_diag_sensitivity}"
-    assert r2_full > 0.999 and min_looo_delta_r2 > 0.02, f"LOOO 检验未通过: {looo_deltas}"
+    def outputs() -> List["torch.Tensor"]:
+        return [
+            model.embedding(ids0)[0],
+            blk.norm_attn(base)[0],
+            blk.attn(base)[0][0],
+            blk.ffn(base)[0],
+            blk.res_attn(base, base * 0.5)[0],
+            model.head(base)[0],
+        ]
 
-    report = {
-        "fwd_err_torch": fwd_err_torch,
-        "fwd_err_triton": fwd_err_triton,
-        "bwd_err_torch": bwd_err_torch,
-        "bwd_err_triton_x": bwd_err_triton_x,
-        "bwd_err_triton_params": bwd_err_triton_params,
-        "kv_state_diff": kv_state_diff,
-        "prob_sum_err": prob_sum_err,
-        "grad_x_rel_err": grad_x_rel_err,
-        "grad_x_norm_rel_err": grad_x_norm_rel_err,
-        "max_param_rel_err": max_param_rel_err,
-        "param_rel_errs": param_rel_errs,
-        "sibling_imports": len(sibling_imports),
-        "fwd_sub_rank": f"{fwd_sub_rank}/4",
-        "fwd_sub_sigma_min": fwd_sub_sigma_min,
-        "fwd_feat_rank": f"{fwd_feat_rank}/{D}",
-        "fwd_feat_sigma_min": fwd_feat_sigma_min,
-        "bwd_sub_rank": f"{bwd_sub_rank}/4",
-        "bwd_sub_sigma_min": bwd_sub_sigma_min,
-        "max_vif_fwd": max_vif_fwd,
-        "max_vif_bwd": max_vif_bwd,
-        "vifs_bwd": vifs_bwd.tolist(),
-        "sensitivity_matrix": S_matrix.tolist(),
-        "max_off_diag_sensitivity": max_off_diag_sensitivity,
-        "min_diag_sensitivity": min_diag_sensitivity,
-        "r2_full": r2_full,
-        "looo_deltas": looo_deltas,
-        "min_looo_delta_r2": min_looo_delta_r2,
+    with torch.no_grad():
+        outs0 = outputs()
+        sens = np.zeros((6, 6))
+        for j, target in enumerate(modules):
+            saved = {n: p.detach().clone() for n, p in target.named_parameters()}
+            for p in target.parameters():
+                p.add_(0.05)
+            pert = outputs()
+            for i in range(6):
+                sens[i, j] = float((pert[i] - outs0[i]).abs().max())
+            for n, p in target.named_parameters():
+                p.copy_(saved[n])
+        off = sens[~np.eye(6, dtype=bool)]
+        max_off = float(np.max(np.abs(off)))
+        exact = int(np.sum(off == 0.0))
+        min_diag = float(np.min(np.diag(sens)))
+
+    # 维度 5：参数置零消融（留一法不可替代性）
+    ids_eval = torch.randint(0, v, (4, 12))
+    with torch.no_grad():
+        ref = model(ids_eval)[0].detach().numpy()
+        ref_norm = max(float(np.linalg.norm(ref)), 1e-12)
+        abl: Dict[str, float] = {}
+        for kind in names:
+            m2 = copy.deepcopy(model)
+            with torch.no_grad():
+                if kind == "embedding":
+                    m2.embedding.weight.zero_()
+                elif kind == "norm_attn":
+                    for b in m2.blocks:
+                        b.norm_attn.gamma.zero_()
+                        b.norm_ffn.gamma.zero_()
+                    m2.final_norm.gamma.zero_()
+                elif kind == "attn":
+                    for b in m2.blocks:
+                        for p in b.attn.parameters():
+                            p.zero_()
+                elif kind == "ffn":
+                    for b in m2.blocks:
+                        for p in b.ffn.parameters():
+                            p.zero_()
+                elif kind == "res_attn":
+                    for b in m2.blocks:
+                        b.res_attn.gate.zero_()
+                        b.res_ffn.gate.zero_()
+                elif kind == "head":
+                    m2.head.weight.zero_()
+                out = m2(ids_eval)[0].detach().numpy()
+            # 留一法：置零该算子的全部可学参数后，logits 的相对偏离（RMS 意义）
+            abl[kind] = float(np.linalg.norm(ref - out) / ref_norm)
+
+    return {
+        "sibling_imports": _check_zero_imports(),
+        "spaces": cfg.spaces(),
+        "forward_ranks": {
+            "embedding_table": (embed_rank, min(cfg.vocab_size, d)),
+            "norm_position": (norm_rank, norm_out),
+            "attention": (attn_rank, attn_out),
+            "swiglu": (ffn_rank, ffn_out),
+            "swiglu_hidden": (hidden_rank, hidden_out),
+            "residual_stream": (residual_rank, d),
+            "vocab_head": (head_rank, head_out),
+        },
+        "forward_sigma_min": {
+            "norm_position": norm_smin, "attention": attn_smin, "swiglu": ffn_smin,
+            "swiglu_hidden": hidden_smin, "vocab_head": head_smin,
+        },
+        "bwd_max_vif": bwd_vif, "bwd_rank": bwd_rank, "bwd_sigma_min": bwd_smin,
+        "sensitivity_matrix": sens.tolist(),
+        "max_off_diag": max_off, "exact_zero_count": exact, "min_diag": min_diag,
+        "ablation_rel_change": abl, "min_ablation_rel_change": float(min(abl.values())),
     }
 
-    if verbose:
-        print("=" * 78)
-        print("  LLM-HIERARCHY OPERATOR: TRIPLE EQUIVALENCE & 5D INDEPENDENCE AUDIT")
-        print("=" * 78)
-        print(f"[1] Bit-Level Equivalence & LLM Hierarchy Capabilities:")
-        print(f"    - NumPy vs PyTorch/Autograd Fwd Max Abs Error : {fwd_err_torch:.3e} (< 1e-14)")
-        print(f"    - NumPy vs Triton Kernel Fwd Max Abs Error    : {fwd_err_triton:.3e} (< 1e-14)")
-        print(f"    - NumPy vs Triton Kernel Bwd dX Max Abs Error : {bwd_err_triton_x:.3e} (< 1e-14)")
-        print(f"    - NumPy vs Triton Kernel Bwd dP Max Abs Error : {bwd_err_triton_params:.3e} (< 1e-13)")
-        print(f"    - KV-Cache Full vs Stepwise State Equivalence : {kv_state_diff:.3e} (< 1e-15)")
-        print(f"    - Softcapped Vocab Logits Softmax Sum Error   : {prob_sum_err:.3e} (< 1e-14)")
-        print(f"[2] Analytical Gradcheck vs Central Finite Difference (eps=1e-6):")
-        print(f"    - Input X Max Elementwise Rel Error           : {grad_x_rel_err:.3e} (< 1e-8)")
-        print(f"    - Input X Norm Relative Error                 : {grad_x_norm_rel_err:.3e} (< 1e-8)")
-        print(f"    - All 12 Learnable Params Max Relative Error  : {max_param_rel_err:.3e} (< 1e-8)")
-        for k_name, v_err in param_rel_errs.items():
-            print(f"      * grad_{k_name:10s} rel err = {v_err:.3e}")
-        print(f"[3] 5-Dimensional Formal Independence Audit:")
-        print(f"    - Dim 1 (Zero Sibling Imports)  : {len(sibling_imports)} sibling imports (PASS)")
-        print(
-            f"    - Dim 2 (Forward Full Rank)     : Sub-Ops {fwd_sub_rank}/4 (sigma_min={fwd_sub_sigma_min:.4f}), "
-            f"Features {fwd_feat_rank}/{D} (sigma_min={fwd_feat_sigma_min:.4f}) (PASS)"
-        )
-        print(
-            f"    - Dim 3 (Backward Jacobian VIF) : Sub-Grads {bwd_sub_rank}/4 (sigma_min={bwd_sub_sigma_min:.4f}), "
-            f"Max Bwd VIF={max_vif_bwd:.4f} (< 2.0), Max Fwd VIF={max_vif_fwd:.4f} (PASS)"
-        )
-        print(
-            f"    - Dim 4 (4x4 Param Sensitivity) : Max Off-Diag={max_off_diag_sensitivity:.2e} (exact 0.00e+00), "
-            f"Min Diag={min_diag_sensitivity:.4f} (> 0.08) (PASS)"
-        )
-        for r_idx in range(4):
-            row_str = "  ".join(f"{S_matrix[r_idx, c_idx]:.3e}" for c_idx in range(4))
-            print(f"      * Row {r_idx + 1}: [{row_str}]")
-        print(
-            f"    - Dim 5 (LOOO Irreplaceability) : Full R^2={r2_full:.6f} (> 0.999), "
-            f"Min Delta R^2=+{min_looo_delta_r2:.6f} (> +0.02) (PASS)"
-        )
-        for op_label, dr2 in looo_deltas.items():
-            print(f"      * Drop {op_label:34s} -> Delta R^2 = +{dr2:.6f}")
-        print("=" * 78)
-        print("  ALL LLM-HIERARCHY VERIFICATION & 5D AUDIT CHECKS PASSED SUCCESSFULLY!")
-        print("=" * 78)
 
+
+def _check_triton_attention(cfg: LLMHierarchyConfig) -> Dict[str, Any]:
+    """A3b：融合注意力核 ↔ NumPy 解析引擎（fp64 位级 / fp32 单精度容差），L 非块对齐。"""
+    if not (HAS_TORCH and HAS_TRITON and torch.cuda.is_available()):
+        return {"available": False}
+    rng = np.random.default_rng(17)
+    b, l = 2, max(cfg.flash_min_len + 8, 200)      # 非块对齐，且必须走融合核
+    x_np = rng.normal(0.0, 1.0, (b, l, cfg.dim))
+    go = rng.normal(0.0, 1.0, (b, l, cfg.dim))
+    out: Dict[str, Any] = {"available": True}
+    for label, dtype, ftol, gtol in (
+        ("fp64", torch.float64, 1e-12, 1e-11),
+        ("fp32", torch.float32, 3e-5, 1e-4),
+    ):
+        model = LLMHierarchyOperator(cfg).to(device="cuda", dtype=dtype).eval()
+        blk = model.blocks[0]
+        p_np = {k: getattr(blk.attn, k).detach().double().cpu().numpy()
+                for k in ("w_q", "w_k", "w_v", "w_o")}
+        y_np, c = np_causal_attention_forward(
+            x_np, p_np["w_q"], p_np["w_k"], p_np["w_v"], p_np["w_o"], cfg)
+        gx_np, gp_np = np_causal_attention_backward(go, c, cfg)
+        x = torch.tensor(x_np, device="cuda", dtype=dtype, requires_grad=True)
+        y, _ = blk.attn(x)
+        y.backward(torch.tensor(go, device="cuda", dtype=dtype))
+        entry = {
+            "fwd_rel": _rel_err(y.detach().double().cpu().numpy(), y_np),
+            "dx_rel": _rel_err(x.grad.double().cpu().numpy(), gx_np),
+        }
+        for k in ("w_q", "w_k", "w_v", "w_o"):
+            entry[f"d{k}_rel"] = _rel_err(
+                getattr(blk.attn, k).grad.double().cpu().numpy(), gp_np[k])
+        out[label] = entry
+        assert entry["fwd_rel"] < ftol, (label, entry)
+        assert max(v for k, v in entry.items() if k != "fwd_rel") < gtol, (label, entry)
+    return out
+
+
+def benchmark_attention(iters: int = 20) -> Dict[str, Any]:
+    """融合注意力 vs PyTorch eager（materialize L×L）的 fwd / fwd+bwd 耗时。"""
+    if not (HAS_TORCH and HAS_TRITON and torch.cuda.is_available()):
+        return {"available": False}
+    B, H, HK, L, D = 8, 8, 4, 1024, 64
+    out: Dict[str, Any] = {"available": True, "shape": {"B": B, "H": H, "L": L, "D": D}}
+
+    def timeit(fn, rounds: int = 3):
+        for _ in range(3):
+            fn()
+        best = float("inf")
+        for _ in range(rounds):
+            torch.cuda.synchronize()
+            t0, t1 = torch.cuda.Event(True), torch.cuda.Event(True)
+            t0.record()
+            for _ in range(iters):
+                fn()
+            t1.record()
+            torch.cuda.synchronize()
+            best = min(best, t0.elapsed_time(t1) / iters)
+        return best
+
+    for label, dtype in (("fp16", torch.float16), ("fp32", torch.float32)):
+        q = torch.randn(B, H, L, D, device="cuda", dtype=dtype, requires_grad=True)
+        k = torch.randn(B, HK, L, D, device="cuda", dtype=dtype, requires_grad=True)
+        v = torch.randn(B, HK, L, D, device="cuda", dtype=dtype, requires_grad=True)
+        rep = H // HK
+
+        def eager(q=q, k=k, v=v, rep=rep):
+            ke = k.repeat_interleave(rep, dim=1)
+            ve = v.repeat_interleave(rep, dim=1)
+            s = q @ ke.transpose(-1, -2) / math.sqrt(D)
+            mask = torch.tril(torch.ones(L, L, dtype=torch.bool, device=q.device))
+            p = torch.softmax(s.masked_fill(~mask, float("-inf")), dim=-1)
+            return p @ ve
+
+        def eager_bwd(q=q, k=k, v=v):
+            g = torch.autograd.grad(eager(q, k, v).square().mean(), (q, k, v))
+            return g
+
+        def flash_bwd(q=q, k=k, v=v):
+            o = triton_flash_attention(q, k, v)
+            return torch.autograd.grad(o.square().mean(), (q, k, v))
+
+        t_e = timeit(eager)
+        t_f = timeit(lambda q=q, k=k, v=v: triton_flash_attention(q, k, v))
+        t_eb = timeit(eager_bwd)
+        t_fb = timeit(flash_bwd)
+        out[label] = {
+            "fwd_eager_ms": t_e, "fwd_flash_ms": t_f, "fwd_speedup": t_e / t_f,
+            "fwd_bwd_eager_ms": t_eb, "fwd_bwd_flash_ms": t_fb, "fwd_bwd_speedup": t_eb / t_fb,
+        }
+    return out
+
+
+def run_verification(verbose: bool = True, quick: bool = False) -> Dict[str, Any]:
+    """逐算子三引擎等价、Gradcheck、五维正交审计与可训练性冒烟。"""
+    cfg = _audit_config()
+    np.random.seed(2026)
+    report: Dict[str, Any] = {
+        "config": {"dim": cfg.dim, "heads": cfg.n_heads, "kv_heads": cfg.n_kv_heads,
+                   "ffn": cfg.ffn_dim, "vocab": cfg.vocab_size, "layers": cfg.n_layers,
+                   "spaces": cfg.spaces()},
+        "operators": _check_operator_equivalence(cfg),
+        "model": _check_model_equivalence(cfg),
+        "triton": _check_triton_equivalence(cfg),
+        "kv_cache": _check_kv_cache(cfg),
+        "triton_attention": _check_triton_attention(cfg),
+    }
+    if not quick:
+        report["gradcheck"] = _check_gradcheck(cfg)
+        report["training_smoke"] = _check_training_smoke(cfg)
+    report["audit"] = _operator_audit(cfg)
+
+    ops, model, tri, kv, aud = (
+        report["operators"], report["model"], report["triton"],
+        report["kv_cache"], report["audit"],
+    )
+
+    for name, entry in ops.items():
+        assert entry["fwd_max_abs"] < 1e-13, (name, entry)
+        for k, val in entry.items():
+            if k != "fwd_max_abs":
+                assert val < 1e-12, (name, k, val)
+    assert model["fwd_max_abs"] < 1e-13 and model["grad_rel_max"] < 1e-11, model
+    assert kv["numpy_attention"] < 1e-13 and kv["torch_attention"] < 1e-13, kv
+    assert kv["torch_model"] < 1e-13, kv
+    if tri.get("available"):
+        assert tri["norm_rope_fwd_max_abs"] < 1e-13 and tri["norm_rope_offset_max_abs"] < 1e-13, tri
+        for k in ("norm_rope_dx_rel", "norm_rope_dgamma_rel", "norm_rope_domega_rel",
+                  "swiglu_fwd_max_abs", "swiglu_dgate_rel", "swiglu_dup_rel"):
+            assert tri[k] < 1e-12, (k, tri[k])
+    if not quick:
+        assert report["gradcheck"]["param_rel_err"] < 1e-6, report["gradcheck"]
+        assert report["gradcheck"]["embed_rel_err"] < 1e-6, report["gradcheck"]
+        smoke = report["training_smoke"]
+        assert smoke["loss_last"] < 0.5 * smoke["loss_first"], smoke
+
+    assert not aud["sibling_imports"], aud["sibling_imports"]
+    expect = {
+        "embedding_table": min(cfg.vocab_size, cfg.dim),
+        "norm_position": cfg.dim,
+        "attention": cfg.dim,
+        "swiglu": cfg.dim,
+        "swiglu_hidden": cfg.ffn_dim,
+        "residual_stream": cfg.dim,
+        "vocab_head": min(cfg.vocab_size, cfg.dim),
+    }
+    for name, (rank, _) in aud["forward_ranks"].items():
+        assert rank == expect[name], (name, rank, expect[name])
+    assert aud["bwd_rank"] == 5, aud["bwd_rank"]
+    assert aud["bwd_max_vif"] < 2.0, aud["bwd_max_vif"]
+    assert aud["max_off_diag"] == 0.0, aud["max_off_diag"]
+    assert aud["min_diag"] > 0.02, aud["min_diag"]
+    assert aud["min_ablation_rel_change"] > 0.02, aud["ablation_rel_change"]
+
+    if verbose:
+        _print_report(report, cfg)
     return report
 
 
+def _print_report(report: Dict[str, Any], cfg: LLMHierarchyConfig) -> None:
+    ops, model, tri, kv, aud = (
+        report["operators"], report["model"], report["triton"],
+        report["kv_cache"], report["audit"],
+    )
+    gc = report.get("gradcheck")
+    smoke = report.get("training_smoke")
+    line = "=" * 84
+    print(line)
+    print("  LLM-HIERARCHY OPERATOR — 六算子 × 六空间 / 三引擎等价 / 五维正交审计")
+    sp = cfg.spaces()
+    print(f"  D={cfg.dim}  H={cfg.n_heads}  H_kv={cfg.n_kv_heads}  F={cfg.ffn_dim}  "
+          f"V={cfg.vocab_size}  layers={cfg.n_layers}")
+    print(f"  空间: token {sp['token']} | stream {sp['stream']} | head {sp['head']} | "
+          f"kv {sp['kv']} | ffn {sp['ffn']} | logit {sp['logit']}")
+    print(line)
+    print("[A] 逐算子 NumPy ↔ PyTorch（双精度，前向 max|Δ| / 反向相对误差）")
+    rows = [
+        ("O0 embedding", "fwd_max_abs", ["dweight_rel"]),
+        ("O1 norm_position", "fwd_max_abs", ["dx_rel", "dgamma_rel", "domega_rel"]),
+        ("O2 attention", "fwd_max_abs", ["dx_rel", "dw_q_rel", "dw_k_rel", "dw_v_rel", "dw_o_rel"]),
+        ("O3 swiglu", "fwd_max_abs", ["dx_rel", "dw_gate_rel", "dw_up_rel", "dw_down_rel"]),
+        ("O4 residual", "fwd_max_abs", ["dupdate_rel", "dgate_rel"]),
+        ("O5 vocab_head", "fwd_max_abs", ["dh_rel", "dweight_rel"]),
+    ]
+    for label, fk, gkeys in rows:
+        entry = ops[label.split()[1]]
+        gs = "  ".join(f"{k.split('_rel')[0][1:]} {entry[k]:.1e}" for k in gkeys)
+        print(f"    {label:16s} fwd {entry[fk]:.2e}   {gs}")
+    print(f"    整模型           fwd {model['fwd_max_abs']:.2e}   grad {model['grad_rel_max']:.2e}")
+    print(f"    KV-Cache 逐 token (NumPy/Torch/整模型): {kv['numpy_attention']:.2e} / "
+          f"{kv['torch_attention']:.2e} / {kv['torch_model']:.2e}")
+    if tri.get("available"):
+        print(f"    Triton fp64: norm+rope fwd {tri['norm_rope_fwd_max_abs']:.2e}, "
+              f"dX {tri['norm_rope_dx_rel']:.2e}, dγ {tri['norm_rope_dgamma_rel']:.2e}, "
+              f"dω {tri['norm_rope_domega_rel']:.2e}")
+        print(f"                 offset {tri['norm_rope_offset_max_abs']:.2e}; "
+              f"swiglu fwd {tri['swiglu_fwd_max_abs']:.2e}, "
+              f"dGate {tri['swiglu_dgate_rel']:.2e}, dUp {tri['swiglu_dup_rel']:.2e}")
+    else:
+        print("    Triton：不可用（无 CUDA/triton），已跳过")
+    attn = report.get("triton_attention", {})
+    if attn.get("available"):
+        for label in ("fp64", "fp32"):
+            e = attn[label]
+            print(f"    Triton 注意力核 {label} (L={max(cfg.flash_min_len + 8, 200)} 非块对齐): fwd {e['fwd_rel']:.2e}  "
+                  f"dX {e['dx_rel']:.2e}  dW {max(e[k] for k in e if k.startswith('dw')):.2e}")
+    if gc:
+        print(f"[B] 中心差分 Gradcheck (eps=1e-6): 参数 {gc['param_rel_err']:.2e}  "
+              f"嵌入表 {gc['embed_rel_err']:.2e}")
+    if smoke:
+        print(f"[C] 可训练性冒烟（{smoke['steps']} 步 AdamW）: loss {smoke['loss_first']:.4f} → "
+              f"{smoke['loss_last']:.4f}")
+    print("[D] 五维正交独立性审计（六个算子、六个空间）")
+    print(f"    Dim1 零同级依赖                    : {len(aud['sibling_imports'])} 个 (PASS)")
+    print("    Dim2 算子像空间满秩（各自空间，一批输入下输出张成的秩）:")
+    for name, (rank, out) in aud["forward_ranks"].items():
+        smin = aud["forward_sigma_min"].get(name)
+        smin_s = f"  σ_min={smin:.3e}" if smin is not None else ""
+        print(f"         {name:16s} {rank}/{out}{smin_s}")
+    print(f"    Dim3 反向输入雅可比                : {aud['bwd_rank']}/5 算子, "
+          f"σ_min={aud['bwd_sigma_min']:.3f}, Max VIF={aud['bwd_max_vif']:.4f} (< 2.0)")
+    print(f"    Dim4 6×6 参数交叉灵敏度            : 非对角精确 0 计数 {aud['exact_zero_count']}/30, "
+          f"min diag={aud['min_diag']:.4f}")
+    for row in aud["sensitivity_matrix"]:
+        print("         [" + "  ".join(f"{x:.2e}" for x in row) + "]")
+    print("    Dim5 留一法消融（置零参数的 logits 相对偏离 ‖Δ‖/‖logits‖）:")
+    for k, val in aud["ablation_rel_change"].items():
+        print(f"         drop {k:12s} Δrel = {val:.4f}")
+    print(line)
+    print("  ALL CHECKS PASSED — 六个算子在六个空间里满秩、正交、不可替代。")
+    print(line)
+
+
+# ==============================================================================
+# 6. 基准与 CLI
+# ==============================================================================
+def benchmark_fusion(cfg: Optional[LLMHierarchyConfig] = None, iters: int = 50) -> Dict[str, Any]:
+    """比较融合核与 PyTorch eager 的耗时（fp32，GPU；无 GPU 返回 available=False）。"""
+    if not (HAS_TORCH and HAS_TRITON and torch.cuda.is_available()):
+        return {"available": False}
+    cfg = cfg or LLMHierarchyConfig(dim=1024, n_heads=8, n_kv_heads=8, ffn_dim=2752, n_layers=1)
+    b, l, d, f = 8, 1024, cfg.dim, cfg.ffn_dim
+    x = torch.randn(b * l, d, device="cuda")
+    gamma = torch.randn(d, device="cuda").abs() + 0.5
+    omega = torch.randn(cfg.pair_dim, device="cuda")
+    gate = torch.randn(b * l, f, device="cuda")
+    up = torch.randn(b * l, f, device="cuda")
+
+    def timeit(fn, rounds: int = 3):
+        for _ in range(5):
+            fn()
+        best = float("inf")
+        for _ in range(rounds):
+            torch.cuda.synchronize()
+            start, end = torch.cuda.Event(True), torch.cuda.Event(True)
+            start.record()
+            for _ in range(iters):
+                fn()
+            end.record()
+            torch.cuda.synchronize()
+            best = min(best, start.elapsed_time(end) / iters)
+        return best
+
+    x3 = x.view(b, l, d)
+    inv = _inv_freq_torch(cfg, torch.float32, x.device)
+    pos = torch.arange(l, dtype=torch.float32, device=x.device)
+
+    def eager_norm_only():
+        return x3 / torch.sqrt(x3.pow(2).mean(-1, keepdim=True) + cfg.eps) * gamma
+
+    def eager_norm_rope():
+        h = eager_norm_only()
+        theta = inv * torch.exp(omega)
+        phi = pos[:, None] * theta[None, :]
+        c = torch.cos(phi)[None, :, None, :]
+        s = torch.sin(phi)[None, :, None, :]
+        t = h.view(b, l, cfg.n_heads, cfg.head_dim)
+        e, o = t[..., 0::2], t[..., 1::2]
+        return torch.stack((e * c - o * s, e * s + o * c), -1).flatten(-2)
+
+    t_eager_norm = timeit(eager_norm_only)
+    t_eager_full = timeit(eager_norm_rope)
+    t_fused_norm = timeit(lambda: triton_norm_rope_forward(x3, gamma, omega, cfg))
+    t_eager_glu = timeit(lambda: F.silu(gate) * up)
+    t_fused_glu = timeit(lambda: triton_swiglu_forward(gate, up))
+    return {
+        "available": True,
+        "shape": {"rows": b * l, "dim": d, "ffn": f},
+        "norm_only_eager_ms": t_eager_norm,
+        "norm_rope_eager_ms": t_eager_full,
+        "norm_rope_fused_ms": t_fused_norm,
+        "norm_rope_speedup": t_eager_full / t_fused_norm,
+        "swiglu_eager_ms": t_eager_glu,
+        "swiglu_fused_ms": t_fused_glu,
+        "swiglu_speedup": t_eager_glu / t_fused_glu,
+    }
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="LLM 全层次可微算子：逐算子等价验证与五维正交审计")
+    parser.add_argument("--json", action="store_true", help="只输出 JSON 报告")
+    parser.add_argument("--quick", action="store_true", help="跳过中心差分与训练冒烟")
+    parser.add_argument("--bench", action="store_true", help="附加融合核基准")
+    args = parser.parse_args(argv)
+
+    report = run_verification(verbose=not args.json, quick=args.quick)
+    if args.bench:
+        bench = benchmark_fusion()
+        bench_attn = benchmark_attention()
+        report["benchmark"] = bench
+        report["benchmark_attention"] = bench_attn
+        if not args.json and bench.get("available"):
+            print(f"[E] 融合核基准（{bench['shape']}）")
+            print(f"    RMSNorm+RoPE  eager {bench['norm_rope_eager_ms']:.3f} ms → "
+                  f"fused {bench['norm_rope_fused_ms']:.3f} ms  ({bench['norm_rope_speedup']:.2f}×)")
+            print(f"    SwiGLU gate   eager {bench['swiglu_eager_ms']:.3f} ms → "
+                  f"fused {bench['swiglu_fused_ms']:.3f} ms  ({bench['swiglu_speedup']:.2f}×)")
+    if args.bench and bench_attn.get("available"):
+        print(f"[F] 融合注意力基准（{bench_attn['shape']}，因果 + GQA）")
+        for label in ("fp16", "fp32"):
+            e = bench_attn[label]
+            print(f"    {label}  fwd  {e['fwd_eager_ms']:.3f} → {e['fwd_flash_ms']:.3f} ms "
+                  f"({e['fwd_speedup']:.2f}×)    fwd+bwd {e['fwd_bwd_eager_ms']:.3f} → "
+                  f"{e['fwd_bwd_flash_ms']:.3f} ms ({e['fwd_bwd_speedup']:.2f}×)")
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+    return 0
+
+
 if __name__ == "__main__":
-    run_verification_and_5d_audit(verbose=True)
+    sys.exit(main())

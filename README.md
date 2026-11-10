@@ -78,7 +78,7 @@ together with four further independence dimensions).
 | `adaptive_checkpointed_adjoint_megakernels.py` | O(√L·D) 分段检查点伴随 + 局部相空间误差自适应步长 | 1,583 |
 | `deepspeed_megatron_physics_plugin.py` | 4 个物理阶段的 DeepSpeed/Megatron 即插即用层 + ZeRO-3 分片引擎 + SP P2P | 1,890 |
 | `distributed_sequence_parallel_adjoint.py` | Ring/Ulysses 序列并行、伴随交接、计算-通信重叠 | 853 |
-| `llm_hierarchy_operators.py` | LLM 四层结构（Pre-RMSNorm+RoPE / 多头 QKV+KV-Cache / SwiGLU / QK 凝聚+Softcap） | 2,148 |
+| `llm_hierarchy_operators.py` | 完整 LLM 计算层次六算子 × 六空间：Embedding / RMSNorm+RoPE / 因果 GQA 注意力 / SwiGLU / 残差流 / 词表头；含 KV-Cache、generate、7 个 Triton 融合核（FlashAttention / norm+RoPE / SwiGLU）| 2,384 |
 | `spin_chirality_operators.py` | 左手/右手 Weyl 手性流 + SU(2) 泡利进动 + ABJ 手性反常门 | 1,990 |
 | `nbsc_omega_operator.py` | 脉冲神经元 + 脊髓牵张反射 + 肌骨力学 + STDP（42 神经元 / 202 边 / 858 参数，独立模型） | 516 |
 | `viral_invasion_operator.py` | 病毒核酸侵入 DNA 状态机（7 状态 / 11 边 / 13 条 PMID 约束，独立模型） | 671 |
