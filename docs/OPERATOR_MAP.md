@@ -93,7 +93,7 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `llm_hierarchy_operators.py` | 2384 | 完整 LLM 计算层次六算子 × 六空间（Embedding / RMSNorm+RoPE / 因果 GQA / SwiGLU / 残差流 / 词表头），含 KV-Cache、generate、7 个 Triton 核 |
+| `llm_hierarchy_operators.py` | 2384 | 完整 LLM 计算层次六算子 × 六空间（Embedding / RMSNorm+RoPE / 因果 GQA / SwiGLU / 残差流 / 词表头），含 KV-Cache、generate、8 个 Triton 核（RoPE 已压进 flash 核内）|
 | `spin_chirality_operators.py` | 1205 | 复旋量 / 真 SU(2) 手性规范 / 精确 Dirac 演化 / 轴矢流 j⁵ 与手性荷 Q5；P1–P16 物理自检 |
 
 ---

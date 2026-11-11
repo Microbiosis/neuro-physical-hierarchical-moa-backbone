@@ -41,7 +41,8 @@ LLM-Hierarchy Operator — 现代大语言模型完整计算层次的单文件�
                      · RMSNorm+RoPE 单核融合（含 cos/sin 表生成）；
                      · SwiGLU 门控融合；
                      · FlashAttention 式因果注意力（QK^T → softmax → PV 全在核内，
-                       不落 L×L 矩阵，支持 GQA 与 fp16/bf16/fp32/fp64）。
+                       不落 L×L 矩阵，支持 GQA 与 fp16/bf16/fp32/fp64）；
+                       可再把 RoPE 一并压进核内（q/k 以未旋转原样进核，角度块内现算）。
 
 自检
 ----
@@ -111,7 +112,7 @@ except ImportError:  # pragma: no cover - 无 triton 环境
     tl = None  # type: ignore
     tld = None  # type: ignore
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "__version__",
@@ -145,6 +146,7 @@ __all__ = [
     "benchmark_fusion",
     "benchmark_attention",
     "triton_flash_attention",
+    "triton_flash_attention_rope",
     "triton_norm_rope_forward",
     "triton_swiglu_forward",
     "main",
@@ -781,9 +783,12 @@ if HAS_TORCH:
     class CausalAttentionOp(nn.Module):
         """O2 —— 因果注意力算子（QKV 投射 + RoPE + 因果 softmax + GQA + KV-Cache）。
 
-        训练 / prefill：QK^T、softmax、PV 三段矩阵乘走 Triton FlashAttention 融合核
-        （长度 ≥ `cfg.flash_min_len` 且头维为 2 的幂时）；增量解码（kv_cache 非空）、
-        CPU、fp64 以外的非常规头维回落下面的 PyTorch 路径。
+        训练 / prefill：RoPE、QK^T、softmax、PV 全部走 Triton FlashAttention 融合核
+        （长度 ≥ `cfg.flash_min_len` 且头维为 2 的幂时）：q/k 以未旋转的原样进核，
+        成对旋转在块内完成，既不落 L×L 注意力矩阵，也不落旋转后的 q/k；反向则把 q/k
+        各旋转一次交给纯净反向核，再按 R^T 回转 dQ/dK。增量解码（kv_cache 非空）、
+        CPU、非常规头维回落下面的 PyTorch 路径（查表旋转），缓存由此路径产出时 `k`
+        已旋转，融合路径产出时带 "raw" 标记、由解码分支补旋转。
         """
 
         _SALT = 211
@@ -817,35 +822,47 @@ if HAS_TORCH:
             v = (x @ self.w_v).view(b, l, hk, hd)
 
             offset = 0 if kv_cache is None else int(kv_cache["length"])
-            cos, sin = _rope_tables_torch(cfg, None, l, offset, x.dtype, x.device)
-            q = _rope_apply_torch(q, cos, sin)
-            k = _rope_apply_torch(k, cos, sin)
 
-            # 训练 / prefill：QK^T、softmax、PV 三段矩阵乘走融合核（不落 L×L 矩阵）；
-            # 增量解码（kv_cache 非空）与 CPU / 非 2 的幂头维回落到 PyTorch 路径。
+            # 训练 / prefill：RoPE + QK^T + softmax + PV 全部压进一个核（不落 L×L 矩阵，
+            # 也不落旋转后的 q/k）；增量解码（kv_cache 非空）与 CPU / 非 2 的幂头维
+            # 回落到下面的 PyTorch 路径（查表旋转）。
             use_flash = (
                 cfg.use_triton and HAS_TRITON and x.is_cuda and kv_cache is None
+                # float64 不走 Triton：tl.dot 在 fp64 下不可用（LLVM IR 层失败）。
                 and x.dtype in (torch.float16, torch.bfloat16, torch.float32)
                 and hd in (16, 32, 64, 128) and l >= cfg.flash_min_len
             )
             if use_flash:
                 try:
-                    qf = q.transpose(1, 2).contiguous()
-                    kf = k.transpose(1, 2).contiguous()
-                    vf = v.transpose(1, 2).contiguous()
-                    o = _FlashAttention.apply(qf, kf, vf)      # (B, H, L, hd)
+                    invf = _inv_freq_torch(
+                        cfg, torch.float64 if x.dtype == torch.float64 else torch.float32, x.device
+                    )
+                    o = _FlashAttention.apply(
+                        q.transpose(1, 2).contiguous(),
+                        k.transpose(1, 2).contiguous(),
+                        v.transpose(1, 2).contiguous(),
+                        invf,
+                    )                                       # (B, H, L, hd)
                     y = o.transpose(1, 2).reshape(b, l, d) @ self.w_o
-                    return y, {"k": k, "v": v, "length": l}
+                    # 缓存里放未旋转的 k（省一次旋转），用 "raw" 标记；解码分支会补旋转
+                    return y, {"k": k, "v": v, "length": l, "raw": True}
                 except Exception:
                     # 融合核编译 / 运行失败时回落到 PyTorch 路径（数值语义不变）。
-                    # Triton 的 tl.dot 不支持 float64，而审计用 .double() 跑 fp64，
-                    # 编译会在 LLVM IR 层抛错；这里兜底保证任何 dtype 都能跑。
                     pass
+
+            cos, sin = _rope_tables_torch(cfg, None, l, offset, x.dtype, x.device)
+            q = _rope_apply_torch(q, cos, sin)
+            k = _rope_apply_torch(k, cos, sin)
 
             if kv_cache is None:
                 k_all, v_all = k, v
             else:
-                k_all = torch.cat((kv_cache["k"], k), dim=1)
+                k_prev = kv_cache["k"]
+                if kv_cache.get("raw"):
+                    c0, s0 = _rope_tables_torch(
+                        cfg, None, k_prev.shape[1], 0, x.dtype, x.device)
+                    k_prev = _rope_apply_torch(k_prev, c0, s0)
+                k_all = torch.cat((k_prev, k), dim=1)
                 v_all = torch.cat((kv_cache["v"], v), dim=1)
             lc = k_all.shape[1]
 
@@ -1103,7 +1120,10 @@ if HAS_TORCH:
 #    (a) RMSNorm + RoPE 单核融合：一次读入 x，归一化、旋转、写回，cos/sin 表也在核内生成；
 #    (b) SwiGLU 门控融合：silu(gate) ⊙ up 单核完成，反向解析回传两侧梯度；
 #    (c) FlashAttention 式因果注意力：QK^T → online softmax → PV 全在核内，
-#        不 materialize L×L 矩阵，支持 GQA、KV 分组与 fp16/bf16/fp32/fp64。
+#        不 materialize L×L 矩阵，支持 GQA、KV 分组与 fp16/bf16/fp32/fp64；
+#        `ROPE=True` 时把成对旋转也搬进核内：q/k 以未旋转原样进核，旋转按行位置在块内
+#        完成，省掉两张 L×D 的旋转结果与一次写回/读回；反向为避免 K 的块被逐块重旋
+#        （O(L/BN) 倍冗余），改为「旋转一次 → 纯净反向核 → 按 R^T 回转 dQ/dK」。
 #    三套核均与 NumPy 双精度引擎逐元素对拍；fp64 下达到 1e-15 量级。
 #    块大小 / warps 按精度与头维选（见 `_flash_block_cfg`），短序列自动回落 PyTorch。
 # ==============================================================================
@@ -1180,7 +1200,8 @@ if HAS_TRITON:
         mask = off < N
         g = tl.load(GATE + off, mask=mask, other=0.0)
         u = tl.load(UP + off, mask=mask, other=0.0)
-        # libdevice 的 exp 不支持 float16；仅低精度时升 fp32，fp32/fp64 保持原精度。
+        # libdevice 的 exp 不支持 float16（编译期 KeyError: triton.language.float16）；
+        # 仅低精度时升 fp32，fp32/fp64 保持原精度。
         g_hi = g.to(tl.float32) if HI else g
         a = (g_hi / (1.0 + tld.exp(-g_hi))).to(g.dtype)
         tl.store(OUT + off, a * u, mask=mask)
@@ -1242,9 +1263,7 @@ if HAS_TRITON:
         mask_pos = local < L
         inv = tl.load(INVF + p)
         om = tl.load(OMEGA + p)
-        # libdevice 的 exp/cos/sin 不支持 float16（编译期 KeyError: triton.language.float16）。
-        # 只在低精度（HI=True）时升到 fp32 求值；fp32/fp64 保持原精度，
-        # 否则 fp64 的 1e-13 级断言会被降到 fp32 精度而失败。
+        # libdevice 的 exp/cos/sin 都不支持 float16；仅低精度时升 fp32。
         inv_hi = inv.to(tl.float32) if HI else inv
         om_hi = om.to(tl.float32) if HI else om
         theta = inv_hi * tld.exp(om_hi)
@@ -1355,13 +1374,54 @@ if HAS_TRITON:
     # ------------------------------------------------------------------
     # FlashAttention 式因果注意力核：把 QK^T、softmax、PV 三段矩阵乘
     # 压进一次核内完成，不再materialize L×L 注意力矩阵。
+    # `ROPE=True` 时 Q/K 以未旋转的原样进核，成对旋转在块内完成：
+    # 省掉两张 L×D 的旋转结果、一次写回与一次读回，cos/sin 也在块内现算
+    # （角度按 ACC 精度求，故 fp16 下比旧的 fp16 查表更准）。
     # ------------------------------------------------------------------
     @triton.jit
+    def _rope_tile_fwd(x, pos, COS, SIN, BLOCK: tl.constexpr, D: tl.constexpr):
+        """(BLOCK, D) tile 的成对 RoPE：第 d 与 d^1 lane 成对，按各自行位置旋转。"""
+        p = tl.arange(0, D // 2)
+        off = pos[:, None] * (D // 2) + p[None, :]
+        c = tl.load(COS + off)
+        s = tl.load(SIN + off)
+        even, odd = tl.split(tl.reshape(x, (BLOCK, D // 2, 2)))
+        return tl.reshape(tl.join(even * c - odd * s, even * s + odd * c), (BLOCK, D))
+
+    @triton.jit
+    def _rope_tile_bwd(g, pos, COS, SIN, BLOCK: tl.constexpr, D: tl.constexpr):
+        """RoPE 的转置（反向用）：dL/dx = R^T dL/dy，按 (g, g^1) 成对回转。"""
+        p = tl.arange(0, D // 2)
+        off = pos[:, None] * (D // 2) + p[None, :]
+        c = tl.load(COS + off)
+        s = tl.load(SIN + off)
+        ge, go = tl.split(tl.reshape(g, (BLOCK, D // 2, 2)))
+        return tl.reshape(tl.join(ge * c + go * s, go * c - ge * s), (BLOCK, D))
+
+    @triton.jit
+    def _rope_apply_kernel(
+        X, COS, SIN, Y, N, L,
+        D: tl.constexpr, INVERSE: tl.constexpr, BLOCK: tl.constexpr,
+    ):
+        """把 (N, D) 按行位置整体旋转（INVERSE=True 时为 R^T），供反向一次性处理 q/k。"""
+        rows = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        ok = rows < N
+        pos = rows % L
+        cols = tl.arange(0, D)
+        x = tl.load(X + rows[:, None] * D + cols[None, :], mask=ok[:, None], other=0.0)
+        if INVERSE:
+            y = _rope_tile_bwd(x, pos, COS, SIN, BLOCK, D)
+        else:
+            y = _rope_tile_fwd(x, pos, COS, SIN, BLOCK, D)
+        tl.store(Y + rows[:, None] * D + cols[None, :], y.to(Y.dtype.element_ty),
+                 mask=ok[:, None])
+
+    @triton.jit
     def _flash_fwd_kernel(
-        Q, K, V, Out, LSE, L, SCALE,
+        Q, K, V, Out, LSE, COS, SIN, L, SCALE,
         H: tl.constexpr, HK: tl.constexpr, REP: tl.constexpr,
         D: tl.constexpr, BM: tl.constexpr, BN: tl.constexpr,
-        IEEE: tl.constexpr, ACC: tl.constexpr,
+        ROPE: tl.constexpr, IEEE: tl.constexpr, ACC: tl.constexpr,
     ):
         scale = tl.load(SCALE)
         pid_m = tl.program_id(0)
@@ -1375,6 +1435,8 @@ if HAS_TRITON:
         row_ok = offs_m < L
         q = tl.load(Q + ((b * H + h) * L + offs_m[:, None]) * D + offs_d[None, :],
                     mask=row_ok[:, None], other=0.0)
+        if ROPE:
+            q = _rope_tile_fwd(q.to(ACC), offs_m, COS, SIN, BM, D).to(q.dtype)
         m_i = tl.full([BM], float("-inf"), dtype=ACC)
         l_i = tl.zeros([BM], dtype=ACC)
         acc = tl.zeros([BM, D], dtype=ACC)
@@ -1386,6 +1448,8 @@ if HAS_TRITON:
             nmask = n_idx < L
             k = tl.load(kbase + n_idx[:, None] * D + offs_d[None, :],
                         mask=nmask[:, None], other=0.0)
+            if ROPE:
+                k = _rope_tile_fwd(k.to(ACC), n_idx, COS, SIN, BN, D).to(k.dtype)
             if IEEE:
                 qk = tl.dot(q, tl.trans(k), input_precision="ieee")
             else:
@@ -1488,35 +1552,104 @@ if HAS_TRITON:
             return (64, 64, 2, 4) if backward else (64, 64, 3, 4)
         return (64, 32, 2, 8) if backward else (64, 64, 2, 8)
 
+    _ZERO_OMEGA: Dict[Tuple[str, str, int], "torch.Tensor"] = {}
+
+    def _rope_cos_sin(
+        inv: "torch.Tensor", length: int, dtype: "torch.dtype", device: "torch.device"
+    ) -> Tuple["torch.Tensor", "torch.Tensor"]:
+        """(L, d/2) 的 cos/sin 平表：只算一次，核内按行位置取用。
+
+        超越函数不进核内热路径：反向里 K 的块会被重复旋转 O(L/BN) 次，逐块现算
+        cos/sin 会把反向拖慢一个量级（实测 fp32 反向 12.6 → 106.8 ms）。表按 ACC 精度
+        （fp16 输入取 fp32）生成，故长序列下比旧的低精度查表更准。
+        """
+        p = int(inv.numel())
+        if p & (p - 1):
+            raise ValueError(f"head_dim={2 * p} 不是 2 的幂，融合 RoPE 不支持")
+        cos = torch.empty(length, p, dtype=dtype, device=device)
+        sin = torch.empty(length, p, dtype=dtype, device=device)
+        key = (str(dtype), str(device), p)
+        zero = _ZERO_OMEGA.get(key)
+        if zero is None:
+            zero = torch.zeros(p, dtype=dtype, device=device)
+            _ZERO_OMEGA[key] = zero
+        _rope_table_kernel[(triton.cdiv(length, 16),)](
+            inv.to(dtype), zero, cos, sin, 0, length, P=p, BLOCK_P=16,
+            HI=dtype in (torch.float16, torch.bfloat16),
+        )
+        return cos, sin
+
+    def _rope_rotate(
+        t: "torch.Tensor",
+        cos: "torch.Tensor",
+        sin: "torch.Tensor",
+        length: int,
+        inverse: bool = False,
+    ) -> "torch.Tensor":
+        """对 (B, H, L, D) 一次性做旋转（`inverse=True` 为 R^T），返回新张量。"""
+        b, h, l, d = t.shape
+        out = torch.empty_like(t)
+        block = 64
+        _rope_apply_kernel[(triton.cdiv(b * h * l, block),)](
+            t, cos, sin, out, b * h * l, l, d, inverse, block,
+        )
+        return out
+
     class _FlashAttention(torch.autograd.Function):
-        """因果 GQA 注意力的融合核：前向不落 L×L 矩阵，反向由同一套块内重算得到。"""
+        """因果 GQA 注意力的融合核：前向不落 L×L 矩阵，反向由同一套块内重算得到。
+
+        传入 `invf`（θ_i = base^(-2i/d)，长度 d/2）时，Q/K 以**未旋转**的原样进核，
+        成对旋转在块内按行位置完成；cos/sin 表只建一次，不随块重算。反向不做核内
+        逐块重旋（K 的块会被重旋 O(L/BN) 次），而是把 q/k 各转一次后交给纯净反向核，
+        再按 R^T 回转 dQ/dK——实测比逐块重旋快 1.2×（fp16 3.22 → 2.67 ms）。
+        """
 
         @staticmethod
-        def forward(ctx: Any, q: "torch.Tensor", k: "torch.Tensor", v: "torch.Tensor") -> "torch.Tensor":
+        def forward(
+            ctx: Any,
+            q: "torch.Tensor",
+            k: "torch.Tensor",
+            v: "torch.Tensor",
+            invf: Optional["torch.Tensor"] = None,
+        ) -> "torch.Tensor":
             b, h, l, d = q.shape
             hk = k.shape[1]
             rep = h // hk
+            rope = invf is not None
             out = torch.empty_like(q)
             acc_dtype = torch.float64 if q.dtype == torch.float64 else torch.float32
             lse = torch.empty(b, h, l, dtype=acc_dtype, device=q.device)
+            cos, sin = _rope_cos_sin(invf, l, acc_dtype, q.device) if rope else (q, q)
             bm, bn, stages, warps = _flash_block_cfg(q.dtype, d)
             scale = torch.tensor(1.0 / math.sqrt(float(d)), dtype=q.dtype, device=q.device)
             _flash_fwd_kernel[(triton.cdiv(l, bm), b * h)](
-                q, k, v, out, lse, l, scale, h, hk, rep, d, bm, bn,
+                q, k, v, out, lse, cos, sin, l, scale, h, hk, rep, d, bm, bn,
+                rope,
                 q.dtype in (torch.float32, torch.float64),
                 tl.float64 if q.dtype == torch.float64 else tl.float32,
                 num_stages=stages, num_warps=warps,
             )
             ctx.save_for_backward(q, k, v, out, lse)
             ctx.rep = rep
+            ctx.rope_cs = (cos, sin) if rope else None
             return out
 
         @staticmethod
-        def backward(ctx: Any, do: "torch.Tensor") -> Tuple["torch.Tensor", "torch.Tensor", "torch.Tensor"]:
+        def backward(
+            ctx: Any, do: "torch.Tensor"
+        ) -> Tuple["torch.Tensor", "torch.Tensor", "torch.Tensor", None]:
             q, k, v, out, lse = ctx.saved_tensors
             b, h, l, d = q.shape
             hk = k.shape[1]
             rep = ctx.rep
+            rope = ctx.rope_cs is not None
+            cos, sin = ctx.rope_cs if rope else (q, q)
+            if rope:
+                # 反向只旋转一次：核内逐块重旋 K 会把 O(L/BN) 倍的工作塞进内层循环
+                q_r = _rope_rotate(q, cos, sin, l)
+                k_r = _rope_rotate(k, cos, sin, l)
+            else:
+                q_r, k_r = q, k
             dq = torch.zeros_like(q)
             dk = torch.zeros_like(k)
             dv = torch.zeros_like(v)
@@ -1527,21 +1660,57 @@ if HAS_TRITON:
             else:
                 delta = (do.float() * out.float()).sum(-1).contiguous()
             _flash_bwd_kernel[(triton.cdiv(l, bm), b * h)](
-                q, k, v, do.contiguous(), lse, delta, dq, dk, dv, l, scale,
+                q_r, k_r, v, do.contiguous(), lse, delta, dq, dk, dv, l, scale,
                 h, hk, rep, d, bm, bn,
                 q.dtype in (torch.float32, torch.float64),
                 tl.float64 if q.dtype == torch.float64 else tl.float32,
                 num_stages=stages, num_warps=warps,
             )
-            return dq, dk, dv
+            if rope:
+                dq = _rope_rotate(dq, cos, sin, l, inverse=True)
+                dk = _rope_rotate(dk, cos, sin, l, inverse=True)
+            return dq, dk, dv, None
 
     def triton_flash_attention(
         q: "torch.Tensor", k: "torch.Tensor", v: "torch.Tensor"
     ) -> "torch.Tensor":
-        """q (B,H,L,D)、k/v (B,H_kv,L,D) → o (B,H,L,D)；因果 + GQA。"""
+        """q (B,H,L,D)、k/v (B,H_kv,L,D) → o (B,H,L,D)；因果 + GQA，不含 RoPE。"""
         if not (HAS_TORCH and HAS_TRITON):
             raise RuntimeError("需要 torch + triton")
+        if q.dtype == torch.float64:
+            # Triton 的 tl.dot 不支持 float64（LLVM IR 层失败）。这里给出明确错误，
+            # 而不是让调用方撞上 Triton 的编译错误。
+            raise ValueError(
+                "triton_flash_attention 不支持 float64：Triton 的 tl.dot 无 fp64 路径。"
+                "请用 float32/float16/bfloat16，或改走 PyTorch 路径。")
         return _FlashAttention.apply(q.contiguous(), k.contiguous(), v.contiguous())
+
+    def triton_flash_attention_rope(
+        q: "torch.Tensor",
+        k: "torch.Tensor",
+        v: "torch.Tensor",
+        inv_freq: Optional["torch.Tensor"] = None,
+        cfg: Optional[LLMHierarchyConfig] = None,
+    ) -> "torch.Tensor":
+        """同 `triton_flash_attention`，但 q/k 传**未旋转**原样，RoPE 在核内完成。
+
+        θ_i（`inv_freq`，长度 d/2）缺省时按 `cfg` 现算；fp16/bf16 输入下角度按 fp32
+        求，避免低精度 θ 在长序列上把角度误差放大到 >0.1 rad。
+        """
+        if not (HAS_TORCH and HAS_TRITON):
+            raise RuntimeError("需要 torch + triton")
+        if q.dtype == torch.float64:
+            raise ValueError(
+                "triton_flash_attention_rope 不支持 float64：Triton 的 tl.dot 无 fp64 路径。"
+                "请用 float32/float16/bfloat16，或改走 PyTorch 路径。")
+        if inv_freq is None:
+            if cfg is None:
+                raise ValueError("inv_freq 与 cfg 至少给一个")
+            acc = torch.float64 if q.dtype == torch.float64 else torch.float32
+            inv_freq = _inv_freq_torch(cfg, acc, q.device)
+        return _FlashAttention.apply(
+            q.contiguous(), k.contiguous(), v.contiguous(), inv_freq.contiguous()
+        )
 
 def triton_norm_rope_forward(
     x: "torch.Tensor",
@@ -2101,6 +2270,45 @@ def _check_triton_attention(cfg: LLMHierarchyConfig) -> Dict[str, Any]:
         out[label] = entry
         assert entry["fwd_rel"] < ftol, (label, entry)
         assert max(v for k, v in entry.items() if k != "fwd_rel") < gtol, (label, entry)
+
+    # A3c：核内 RoPE ↔「先查表旋转 q/k、再走核」，前向与 dQ/dK 都应重合
+    b2, l2 = 2, max(cfg.flash_min_len + 8, 200)
+    h, hk, hd = cfg.n_heads, cfg.n_kv_heads, cfg.head_dim
+    for label, dtype, ftol, gtol in (
+        ("fp64", torch.float64, 1e-12, 1e-11),
+        ("fp32", torch.float32, 3e-5, 1e-4),
+    ):
+        if dtype == torch.float64:
+            # Triton 的 tl.dot 无 fp64 路径，fp64 下无法做「核内 RoPE vs 核外旋转」
+            # 的对照；该对照在 fp32 下进行（fp32 足以验证两条路径的一致性）。
+            out.setdefault("fused_rope", {})[label] = {
+                "skipped": "float64 unsupported by triton tl.dot; see fused_rope['fp32']"}
+            continue
+        torch.manual_seed(3)
+        inv = _inv_freq_torch(cfg, dtype, torch.device("cuda"))
+        q = torch.randn(b2, h, l2, hd, dtype=dtype, device="cuda", requires_grad=True)
+        k = torch.randn(b2, hk, l2, hd, dtype=dtype, device="cuda", requires_grad=True)
+        v = torch.randn(b2, hk, l2, hd, dtype=dtype, device="cuda", requires_grad=True)
+        pos = torch.arange(l2, dtype=dtype, device="cuda")
+        phi = pos[None, None, :, None] * inv[None, None, None, :]
+        c, s = torch.cos(phi), torch.sin(phi)
+        y_ref = triton_flash_attention(
+            _rope_apply_torch(q, c, s), _rope_apply_torch(k, c, s), v)
+        y_fused = triton_flash_attention_rope(q, k, v, inv_freq=inv)
+        dq_r, dk_r = torch.autograd.grad(y_ref.square().mean(), (q, k))
+        dq_f, dk_f = torch.autograd.grad(y_fused.square().mean(), (q, k))
+
+        def _np(t):
+            return t.detach().double().cpu().numpy()
+
+        fused = {
+            "fwd_rel": _rel_err(_np(y_fused), _np(y_ref)),
+            "dq_rel": _rel_err(_np(dq_f), _np(dq_r)),
+            "dk_rel": _rel_err(_np(dk_f), _np(dk_r)),
+        }
+        out.setdefault("fused_rope", {})[label] = fused
+        assert fused["fwd_rel"] < ftol, (label, fused)
+        assert max(fused["dq_rel"], fused["dk_rel"]) < gtol, (label, fused)
     return out
 
 
@@ -2152,9 +2360,42 @@ def benchmark_attention(iters: int = 20) -> Dict[str, Any]:
         t_f = timeit(lambda q=q, k=k, v=v: triton_flash_attention(q, k, v))
         t_eb = timeit(eager_bwd)
         t_fb = timeit(flash_bwd)
+
+        # RoPE 融合：与「先查表旋转 q/k、再走核」这条旧路对比
+        inv = torch.pow(
+            torch.tensor(10000.0, dtype=torch.float32, device="cuda"),
+            -2.0 * torch.arange(D // 2, dtype=torch.float32, device="cuda") / D,
+        )
+
+        def rope_torch(t, inv=inv):
+            pos = torch.arange(t.shape[2], dtype=t.dtype, device=t.device)
+            phi = pos[None, None, :, None] * inv.to(t.dtype)[None, None, None, :]
+            return _rope_apply_torch(t, torch.cos(phi), torch.sin(phi))
+
+        def split_rope(q=q, k=k, v=v, inv=inv):
+            return triton_flash_attention(rope_torch(q, inv), rope_torch(k, inv), v)
+
+        def fused_rope(q=q, k=k, v=v, inv=inv):
+            return triton_flash_attention_rope(q, k, v, inv_freq=inv)
+
+        def split_rope_bwd(q=q, k=k, v=v, inv=inv):
+            o = split_rope(q, k, v)
+            return torch.autograd.grad(o.square().mean(), (q, k, v))
+
+        def fused_rope_bwd(q=q, k=k, v=v, inv=inv):
+            o = fused_rope(q, k, v)
+            return torch.autograd.grad(o.square().mean(), (q, k, v))
+
+        t_sr = timeit(split_rope)
+        t_fr = timeit(fused_rope)
+        t_srb = timeit(split_rope_bwd)
+        t_frb = timeit(fused_rope_bwd)
         out[label] = {
             "fwd_eager_ms": t_e, "fwd_flash_ms": t_f, "fwd_speedup": t_e / t_f,
             "fwd_bwd_eager_ms": t_eb, "fwd_bwd_flash_ms": t_fb, "fwd_bwd_speedup": t_eb / t_fb,
+            "rope_split_ms": t_sr, "rope_fused_ms": t_fr, "rope_speedup": t_sr / t_fr,
+            "rope_split_bwd_ms": t_srb, "rope_fused_bwd_ms": t_frb,
+            "rope_bwd_speedup": t_srb / t_frb,
         }
     return out
 
@@ -2270,8 +2511,22 @@ def _print_report(report: Dict[str, Any], cfg: LLMHierarchyConfig) -> None:
     if attn.get("available"):
         for label in ("fp64", "fp32"):
             e = attn[label]
-            print(f"    Triton 注意力核 {label} (L={max(cfg.flash_min_len + 8, 200)} 非块对齐): fwd {e['fwd_rel']:.2e}  "
+            # fp64 下 use_flash 门控排除 float64（Triton 的 tl.dot 无 fp64 路径），
+            # 该行实测的是 PyTorch 路径 vs NumPy 参考，标签要如实说明。
+            path = "PyTorch 路径（fp64 门控排除）" if label == "fp64" else "Triton 融合核"
+            print(f"    注意力核 {label} (L={max(cfg.flash_min_len + 8, 200)} 非块对齐, {path}): "
+                  f"fwd {e['fwd_rel']:.2e}  "
                   f"dX {e['dx_rel']:.2e}  dW {max(e[k] for k in e if k.startswith('dw')):.2e}")
+        for label in ("fp64", "fp32"):
+            f = attn.get("fused_rope", {}).get(label)
+            if not f:
+                continue
+            if "fwd_rel" not in f:
+                # fp64 被跳过（Triton 无 fp64 路径），如实说明而不是静默。
+                print(f"    核内 RoPE {label}: 已跳过（{f.get('skipped', '不适用')}）")
+                continue
+            print(f"    核内 RoPE {label}（对照「先旋转再进核」）: fwd {f['fwd_rel']:.2e}  "
+                  f"dQ {f['dq_rel']:.2e}  dK {f['dk_rel']:.2e}")
     if gc:
         print(f"[B] 中心差分 Gradcheck (eps=1e-6): 参数 {gc['param_rel_err']:.2e}  "
               f"嵌入表 {gc['embed_rel_err']:.2e}")
@@ -2390,6 +2645,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"    {label}  fwd  {e['fwd_eager_ms']:.3f} → {e['fwd_flash_ms']:.3f} ms "
                   f"({e['fwd_speedup']:.2f}×)    fwd+bwd {e['fwd_bwd_eager_ms']:.3f} → "
                   f"{e['fwd_bwd_flash_ms']:.3f} ms ({e['fwd_bwd_speedup']:.2f}×)")
+            print(f"    {label}  RoPE 融合 {e['rope_split_ms']:.3f} → {e['rope_fused_ms']:.3f} ms "
+                  f"({e['rope_speedup']:.2f}×)  fwd+bwd {e['rope_split_bwd_ms']:.3f} → "
+                  f"{e['rope_fused_bwd_ms']:.3f} ms ({e['rope_bwd_speedup']:.2f}×)")
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
     return 0
