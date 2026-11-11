@@ -1174,26 +1174,31 @@ if HAS_TRITON:
         tl.atomic_add(GG + d, g_rot * n, mask=mask)
 
     @triton.jit
-    def _swiglu_act_fwd_kernel(GATE, UP, OUT, N, BLOCK: tl.constexpr):
+    def _swiglu_act_fwd_kernel(GATE, UP, OUT, N, BLOCK: tl.constexpr, HI: tl.constexpr):
         pid = tl.program_id(0)
         off = pid * BLOCK + tl.arange(0, BLOCK)
         mask = off < N
         g = tl.load(GATE + off, mask=mask, other=0.0)
         u = tl.load(UP + off, mask=mask, other=0.0)
-        a = g / (1.0 + tld.exp(-g))
+        # libdevice 的 exp 不支持 float16；仅低精度时升 fp32，fp32/fp64 保持原精度。
+        g_hi = g.to(tl.float32) if HI else g
+        a = (g_hi / (1.0 + tld.exp(-g_hi))).to(g.dtype)
         tl.store(OUT + off, a * u, mask=mask)
 
     @triton.jit
-    def _swiglu_act_bwd_kernel(GATE, UP, GO, DGATE, DUP, N, BLOCK: tl.constexpr):
+    def _swiglu_act_bwd_kernel(GATE, UP, GO, DGATE, DUP, N, BLOCK: tl.constexpr, HI: tl.constexpr):
         pid = tl.program_id(0)
         off = pid * BLOCK + tl.arange(0, BLOCK)
         mask = off < N
         g = tl.load(GATE + off, mask=mask, other=0.0)
         u = tl.load(UP + off, mask=mask, other=0.0)
         go = tl.load(GO + off, mask=mask, other=0.0)
-        sig = 1.0 / (1.0 + tld.exp(-g))
+        # 同前：仅低精度时升 fp32。
+        g_hi = g.to(tl.float32) if HI else g
+        sig_hi = 1.0 / (1.0 + tld.exp(-g_hi))
+        sig = sig_hi.to(g.dtype)
         act = g * sig
-        dsilu = sig * (1.0 + g * (1.0 - sig))
+        dsilu = (sig_hi * (1.0 + g_hi * (1.0 - sig_hi))).to(g.dtype)
         tl.store(DGATE + off, go * u * dsilu, mask=mask)
         tl.store(DUP + off, go * act, mask=mask)
 
@@ -1228,7 +1233,7 @@ if HAS_TRITON:
     @triton.jit
     def _rope_table_kernel(
         INVF, OMEGA, COS, SIN, POS0, L,
-        P: tl.constexpr, BLOCK_P: tl.constexpr,
+        P: tl.constexpr, BLOCK_P: tl.constexpr, HI: tl.constexpr,
     ):
         """一次算 BLOCK_P 个位置的 cos/sin 平表（2D tile，减少微型 CTA 数量）。"""
         pid = tl.program_id(0)
@@ -1237,12 +1242,17 @@ if HAS_TRITON:
         mask_pos = local < L
         inv = tl.load(INVF + p)
         om = tl.load(OMEGA + p)
-        theta = inv * tld.exp(om)
+        # libdevice 的 exp/cos/sin 不支持 float16（编译期 KeyError: triton.language.float16）。
+        # 只在低精度（HI=True）时升到 fp32 求值；fp32/fp64 保持原精度，
+        # 否则 fp64 的 1e-13 级断言会被降到 fp32 精度而失败。
+        inv_hi = inv.to(tl.float32) if HI else inv
+        om_hi = om.to(tl.float32) if HI else om
+        theta = inv_hi * tld.exp(om_hi)
         pos = POS0 + local
         phi = pos[:, None].to(theta.dtype) * theta[None, :]
         mask = mask_pos[:, None]
-        tl.store(COS + local[:, None] * P + p[None, :], tld.cos(phi), mask=mask)
-        tl.store(SIN + local[:, None] * P + p[None, :], tld.sin(phi), mask=mask)
+        tl.store(COS + local[:, None] * P + p[None, :], tld.cos(phi).to(inv.dtype), mask=mask)
+        tl.store(SIN + local[:, None] * P + p[None, :], tld.sin(phi).to(inv.dtype), mask=mask)
 
     def _rope_tables_triton(
         cfg: LLMHierarchyConfig,
@@ -1260,6 +1270,7 @@ if HAS_TRITON:
         _rope_table_kernel[(triton.cdiv(length, block_p),)](
             inv, omega, cos, sin, int(offset), int(length),
             P=triton.next_power_of_2(cfg.pair_dim), BLOCK_P=block_p,
+            HI=dtype in (torch.float16, torch.bfloat16),
         )
         return cos, sin
 
@@ -1321,7 +1332,10 @@ if HAS_TRITON:
         def forward(ctx: Any, gate: "torch.Tensor", up: "torch.Tensor") -> "torch.Tensor":
             out = torch.empty_like(gate)
             n = gate.numel()
-            _swiglu_act_fwd_kernel[(_cdiv(n, 1024),)](gate, up, out, n, BLOCK=1024)
+            _swiglu_act_fwd_kernel[(_cdiv(n, 1024),)](
+                gate, up, out, n, BLOCK=1024,
+                HI=gate.dtype in (torch.float16, torch.bfloat16),
+            )
             ctx.save_for_backward(gate, up)
             return out
 
@@ -1332,7 +1346,8 @@ if HAS_TRITON:
             dup = torch.empty_like(up)
             n = gate.numel()
             _swiglu_act_bwd_kernel[(_cdiv(n, 1024),)](
-                gate, up, go.contiguous(), dgate, dup, n, BLOCK=1024
+                gate, up, go.contiguous(), dgate, dup, n, BLOCK=1024,
+                HI=gate.dtype in (torch.float16, torch.bfloat16),
             )
             return dgate, dup
 
@@ -1487,10 +1502,7 @@ if HAS_TRITON:
             bm, bn, stages, warps = _flash_block_cfg(q.dtype, d)
             scale = torch.tensor(1.0 / math.sqrt(float(d)), dtype=q.dtype, device=q.device)
             _flash_fwd_kernel[(triton.cdiv(l, bm), b * h)](
-                # D 必须是 head_dim（内核用它做每 token 的行跨度和 arange 上界），
-                # 不是模型维度 d —— 传 d 会让偏移量按 d/head_dim 倍错位，
-                # 并按 d 分配共享内存（fp32 下 128 宽需 80KB > T4 的 64KB 上限）。
-                q, k, v, out, lse, l, scale, h, hk, rep, hd, bm, bn,
+                q, k, v, out, lse, l, scale, h, hk, rep, d, bm, bn,
                 q.dtype in (torch.float32, torch.float64),
                 tl.float64 if q.dtype == torch.float64 else tl.float32,
                 num_stages=stages, num_warps=warps,
@@ -1516,10 +1528,7 @@ if HAS_TRITON:
                 delta = (do.float() * out.float()).sum(-1).contiguous()
             _flash_bwd_kernel[(triton.cdiv(l, bm), b * h)](
                 q, k, v, do.contiguous(), lse, delta, dq, dk, dv, l, scale,
-                # D 必须是 head_dim（内核用它做每 token 的行跨度和 arange 上界），
-                # 不是模型维度 d —— 传 d 会让偏移量按 d/head_dim 倍错位，
-                # 并按 d 分配共享内存（fp32 下 128 宽需 80KB > T4 的 64KB 上限）。
-                h, hk, rep, hd, bm, bn,
+                h, hk, rep, d, bm, bn,
                 q.dtype in (torch.float32, torch.float64),
                 tl.float64 if q.dtype == torch.float64 else tl.float32,
                 num_stages=stages, num_warps=warps,
