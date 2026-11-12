@@ -100,9 +100,9 @@ if not out_requires_grad:
 
 | 文件 | 数字 | 性质 |
 |---|---|---|
-| `adaptive_checkpointed_adjoint_megakernels.py` | HBM 激活内存节省 99.4%+ | `k·B·L·Dh·4` 公式推算，未分配显存 |
-| `high_order_pde_ode_megakernels.py` | H100 627× 加速 | Roofline 模型推算，未计时；launch 数（9227→2）是精确计数 |
-| `distributed_sequence_parallel_adjoint.py` | Hiding 99.87% | `L_chk·D·flops/peak` 推算，未发起集合通信 |
+| `adaptive_checkpointed_adjoint_megakernels.py` | HBM 激活内存节省 99.4%+ | 1,583 |
+| `high_order_pde_ode_megakernels.py` | H100 627× 加速 | 1,878 |
+| `distributed_sequence_parallel_adjoint.py` | Hiding 99.87% | 853 |
 
 与之相对，以下数字**是实测的**：
 - 检查点伴随 vs 全轨迹伴随：`8.882e-16` / `3.553e-15`
