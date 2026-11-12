@@ -115,6 +115,30 @@ def test_imports():
     return f"{len(MODULES)}/{len(MODULES)} modules, {len(pkg.__all__)} exports"
 
 
+def test_no_silent_skips():
+    """检测「可选依赖缺失被静默跳过」：包形态下逐项跑关键自检入口，
+    任何返回 skipped_* 的项都算失败。
+
+    背景：spin_chirality 的 P17（3+1D 格点指标）在包形态下曾因
+    `from . import lattice4d` 用了错误的平铺名而静默返回 skipped_no_lattice，
+    而 ISOLATED PASS（拷到临时目录单独跑）却能通过 —— 只查 import 存在
+    是抓不到这类问题的。"""
+    spin = importlib.import_module(f"{PKG}.spin_chirality_operators")
+    skips = []
+    for name in ("_check_index_4d",):
+        fn = getattr(spin, name, None)
+        if fn is None:
+            continue
+        r = fn()
+        if isinstance(r, dict):
+            for k, v in r.items():
+                if k.startswith("skipped"):
+                    skips.append(f"{name}: {k}={v}")
+    if skips:
+        raise RuntimeError("在包形态下被静默跳过: " + "; ".join(skips))
+    return "spin P17 在包形态下真实执行（未静默跳过）"
+
+
 def test_module_isolation():
     """13 个独立算子模块各自单独放进空目录也能 import（零兄弟依赖）。"""
     import shutil
@@ -479,6 +503,7 @@ def main() -> int:
     print("-" * 74)
 
     check("package imports (25 modules + package exports)", test_imports)
+    check("no silent skips in optional-dependency paths", test_no_silent_skips)
     check("module isolation: 25 个独立模块单独可 import", test_module_isolation)
     check("numpy branch RMSNorm fwd/bwd + FD gradient", test_numpy_rmsnorm)
     check("numpy cross-modal anchor co-attention (zero decay)", test_numpy_cross_modal_anchor_co_attention)

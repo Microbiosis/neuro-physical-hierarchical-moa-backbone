@@ -1205,11 +1205,15 @@ def _check_index_4d() -> dict:
     这里只负责调用与归一。缺 scipy 或模块不可用时记为跳过（不算失败）。
     """
     try:
-        from . import lattice4d                      # 包内形态
+        # 包内形态：相对导入必须用**平铺后的模块名**（spin_chirality_lattice4d），
+        # 否则 `from . import lattice4d` 必然 ImportError，
+        # 于是 P17 在整包导入时被静默跳过（只体现为 skipped_no_lattice）。
+        from . import spin_chirality_lattice4d as lattice4d
     except ImportError:
         try:
-                import importlib as _il
-                lattice4d = _il.import_module("spin_chirality_lattice4d")
+            # 平铺/单文件形态：按模块名动态导入（AST 不判为同级 import）。
+            import importlib as _il
+            lattice4d = _il.import_module("spin_chirality_lattice4d")
         except ImportError:
             return {"skipped_no_lattice": 0.0}
     if not getattr(lattice4d, "HAS_SCIPY", False):
