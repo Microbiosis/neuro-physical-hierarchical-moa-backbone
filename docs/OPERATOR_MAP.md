@@ -1,6 +1,6 @@
 # 算子清单与区分
 
-本包共 **24 个算子/内核模块**（外加 1 个五维审计文件与 `__init__.py`，合计 26 个 .py，29,446 行）。
+本包共 **25 个算子/内核模块**（外加 1 个五维审计文件与 `__init__.py`，合计 27 个 .py，30,676 行），包导出 234 个符号。
 
 编排层 `unified_hybrid_moa_architecture.py` 已于 2026-11-10 删除，**所有算子之间零依赖**，可单文件拷出独立运行，也可自行组合。
 
@@ -87,14 +87,15 @@
 | `distributed_sequence_parallel_adjoint.py` | 853 | Ring/Ulysses 序列并行伴随交接 |
 | `deepspeed_megatron_physics_plugin.py` | 1,890 | ZeRO-3 分片 + SP P2P |
 
-## 扩展模型（不参与独立性分析）（2 个）
+## 扩展模型与独立生物模型（不参与独立性分析）（4 个）
 
-把既有架构（LLM 层次、相对论手性）封装成算子。
+把既有架构（LLM 层次、相对论手性）封装成算子；含两个独立的生物/格点模型。
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `llm_hierarchy_operators.py` | 2384 | 完整 LLM 计算层次六算子 × 六空间（Embedding / RMSNorm+RoPE / 因果 GQA / SwiGLU / 残差流 / 词表头），含 KV-Cache、generate、8 个 Triton 核（RoPE 已压进 flash 核内）|
-| `spin_chirality_operators.py` | 1205 | 复旋量 / 真 SU(2) 手性规范 / 精确 Dirac 演化 / 轴矢流 j⁵ 与手性荷 Q5；P1–P16 物理自检 |
+| `llm_hierarchy_operators.py` | 2,657 | 完整 LLM 计算层次六算子 × 六空间（Embedding / RMSNorm+RoPE / 因果 GQA / SwiGLU / 残差流 / 词表头），含 KV-Cache、generate、8 个 Triton 核（RoPE 已压进 flash 核内）|
+| `spin_chirality_operators.py` | 1833 | 4 分量 Dirac 旋量单粒子传播子：真 SU(2) 手性规范 / Larmor 进动 / Dirac 质量项 / 非厄米吸收 / 轴矢流 j⁵；P1–P21 物理自检（T4 最大残差 2.60e-08）|
+| `spin_chirality_lattice4d.py` | 375 | 3+1 维格点指标：FLSG 单瞬子背景的 Wilson–Dirac 指标（FFT–Schur 惯性法）；需 scipy |
 
 ---
 
@@ -144,4 +145,4 @@
 - **D 2 个 + E 1 个**：只做逐 token / 局部卷积变换。
 - **基础设施 5 个 + 扩展模型 2 个**：换实现方式或封装既有架构，不改 token 混合语义。
 
-> 审计口径：`operator_independence_verification.py` 的 **Dimension I 文件隔离覆盖全部 26 个模块**（24 个算子 + 审计自身），**Dimension II–V 的五维独立性分析覆盖 14 个领域算子**（扩展模型与基础设施不参与，因为它们没有统一的参数化接口）。
+> 审计口径：`operator_independence_verification.py` 的 **Dimension I 文件隔离覆盖全部 27 个模块**（25 个算子 + 审计自身），**Dimension II–V 的五维独立性分析覆盖 14 个领域算子**（扩展模型与基础设施不参与，因为它们没有统一的参数化接口）。

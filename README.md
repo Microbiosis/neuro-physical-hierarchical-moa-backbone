@@ -23,7 +23,7 @@ and the package `__init__.py` (131 lines); a clean-room smoke test covers 13 che
 ├── smoke_test.py                     clean-room verification (13/13)
 ├── README.md                         本文件
 └── hybrid_moa_vl_operator_suite/     算子包（Python package）
-    ├── __init__.py                   动态初始化（零硬编码表）→ 169 个公开导出
+    ├── __init__.py                   动态初始化（零硬编码表）→ 234 个公开导出
     ├── README.md                     包内说明（原始版本文档）
     ├── quantum_resource_phasing_operators.py   量子资源相位（1,086 行）
     ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（2,324 行）
@@ -59,7 +59,7 @@ together with four further independence dimensions).
 |---|---|---|
 | `cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,324 |
 | `quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门 → **Stage I.C** | 1,086 |
-| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献）；文件隔离覆盖 24 个模块，五维独立性分析覆盖 14 个领域算子 | 666 |
+| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献）；文件隔离覆盖 25 个模块，五维独立性分析覆盖 14 个领域算子 | 666 |
 | `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,039 |
 | `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,176 |
 | `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 962 |
@@ -79,7 +79,8 @@ together with four further independence dimensions).
 | `deepspeed_megatron_physics_plugin.py` | 4 个物理阶段的 DeepSpeed/Megatron 即插即用层 + ZeRO-3 分片引擎 + SP P2P | 1,890 |
 | `distributed_sequence_parallel_adjoint.py` | Ring/Ulysses 序列并行、伴随交接、计算-通信重叠 | 853 |
 | `llm_hierarchy_operators.py` | 完整 LLM 计算层次六算子 × 六空间：Embedding / RMSNorm+RoPE / 因果 GQA 注意力 / SwiGLU / 残差流 / 词表头；含 KV-Cache、generate、8 个 Triton 融合核（FlashAttention 含核内 RoPE / norm+RoPE / SwiGLU）| 2,384 |
-| `spin_chirality_operators.py` | 左手/右手 Weyl 手性流 + SU(2) 泡利进动 + ABJ 手性反常门 | 1,990 |
+| `spin_chirality_operators.py` | 4 分量 Dirac 旋量（Weyl 表象）单粒子传播子：真 SU(2) 手性规范（左 U / 右 U†）/ Larmor 进动 / Dirac 质量项 / 非厄米吸收 / 轴矢流 j⁵ 与手性荷 Q5；P1–P21 物理自检（T4 最大残差 2.60e-08）| 1,990 |
+| `spin_chirality_lattice4d.py` | 3+1 维格点指标：FLSG 单瞬子背景的 Wilson–Dirac 指标（FFT–Schur 惯性法，8N⁴ 维稀疏算符而核心维与 N 无关）；需 scipy | 375 |
 | `nbsc_omega_operator.py` | 脉冲神经元 + 脊髓牵张反射 + 肌骨力学 + STDP（42 神经元 / 202 边 / 858 参数，独立模型） | 516 |
 | `viral_invasion_operator.py` | 病毒核酸侵入 DNA 状态机（7 状态 / 11 边 / 13 条 PMID 约束，独立模型） | 671 |
 
@@ -225,7 +226,7 @@ out, cache = k.cross_modal_vl_bilinear_fusion_forward(
     v_vis, t_txt, c_align, alpha_vis, alpha_txt, beta_bilin, lam_norm=0.35)
 ```
 
-## Package initializer (v12)
+## Package initializer
 
 `__init__.py` is no longer a hand-written export table. It now:
 
@@ -245,7 +246,7 @@ impossible by construction. Measured: **194 exports, package imports with no pat
 ## Verification
 
 `smoke_test.py` is the clean-room test: fresh interpreter, CPU only, no Triton.
-It takes roughly 5 minutes, most of which is the 13 isolated-subprocess imports.
+It takes roughly 5 minutes, most of which is the 25 isolated-subprocess imports.
 
 ```bash
 python smoke_test.py            # everything available
@@ -256,8 +257,8 @@ Result: **13/13 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 
 | Check | Result |
 |---|---|
-| package imports (14 modules, 64 exports) | 14/14 |
-| module isolation: 24 standalone modules import alone in an empty dir | 24/24 |
+| package imports (25 modules, 234 exports) | 25/25 |
+| module isolation: 25 standalone modules import alone in an empty dir | 25/25 |
 | branch RMSNorm fwd/bwd + finite-difference gradient | fwd 1.8e-15, grad 2.7e-09 |
 | cross-modal anchor co-attention (zero decay, both attentions normalised) | 0.0e+00, head/tail = 1.003 |
 | VL Hadamard-bilinear fusion: closed form, β=0 degeneration, gate saturation, backward gradient | fwd 8.9e-16, grad 7.7e-11 |
@@ -297,14 +298,14 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 
   | Dimension | Result |
   |---|---|
-  | I · file & runtime isolation | **24/24 modules**: zero sibling imports, standalone run PASS |
+  | I · file & runtime isolation | **26/26 modules** (25 算子 + 审计自身): zero sibling imports, standalone run PASS |
   | II · forward-representation independence | joint subspace rank **14/14 full**; mean off-diag \|cos\| **0.0762**; max VIF **1.74** (< 2.0) |
   | III · input-gradient subspace independence | gradient matrix rank **14/14**; max gradient VIF < 5.0 |
   | IV · parameter cross-sensitivity Jacobian | off-diagonal cross-talk **exactly 0.00e+00**; all 14 active |
   | V · leave-one-operator-out (CV) | full-ensemble CV R² **0.9997**; every operator irreplaceable |
 
   五维独立性分析覆盖 **14 个领域算子**（新增 `14:QuantumResource_Phasing`）；文件隔离维度
-  已扩展到全部 24 个算子模块。Kaggle GPU kernel
+  已扩展到全部 25 个算子模块。Kaggle GPU kernel
   `redmingwei/hetero-moe-operator-independence-v8`，1.1 min 跑完，日志见
   `docs/operator_independence_audit.log`。
   Note: the script's header says "5-Fold CV" while its result line prints "4-Fold CV R²";
@@ -327,6 +328,11 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 - Everything under `hybrid_moa_vl_operator_suite/` is byte-identical to the shipped
   archive. The only files written for this repository are `smoke_test.py`, `README.md`,
   `NOTICE`, `.gitignore` and the files under `docs/`.
+- `docs/VERIFICATION_MATRIX.md` is the per-operator verification matrix: what each
+  operator's self-test covers, the measured numbers, and which figures are
+  analytic models rather than measurements.
+- `docs/OPERATOR_MAP.md` classifies all operators by their token-mixing mechanism
+  (the criterion for whether an operator is still a Transformer variant).
 - `docs/TAXONOMY_AUDIT.md` audits an external taxonomy write-up of this architecture
   claim by claim against the code (which claims hold, which are overstated, and what
   the write-up missed).

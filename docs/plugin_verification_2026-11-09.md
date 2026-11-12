@@ -1,5 +1,14 @@
 # 插件验证记录（2026-11-09）
 
+> **时效说明（2026-11-12 补）**
+>
+> 本文档是 2026-11-09 针对 `deepspeed_megatron_physics_plugin.py` 那一批
+> 算子的验证记录，结论（4 个缺陷、ZeRO-3 四项验收、序列并行 P2P）**仍然成立**。
+> 此后仓库新增了 LLM 层次算子、自旋手性算子（含 3+1D 格点指标层）、
+> 病毒核酸侵入算子、NBSC-Ω 算子等，并删除了编排层 `unified_hybrid_moa_architecture.py`。
+> **当前全仓库的验证覆盖与数值见 `docs/VERIFICATION_MATRIX.md`**。
+
+
 对象：`hybrid_moa_vl_operator_suite/deepspeed_megatron_physics_plugin.py`（1882 行）
 以及同批新增的 4 个物理/分布式算子。
 
