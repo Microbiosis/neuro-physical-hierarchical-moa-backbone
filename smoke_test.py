@@ -123,6 +123,10 @@ def test_no_silent_skips():
     `from . import lattice4d` 用了错误的平铺名而静默返回 skipped_no_lattice，
     而 ISOLATED PASS（拷到临时目录单独跑）却能通过 —— 只查 import 存在
     是抓不到这类问题的。"""
+    # ① 格点模块必须能从包内导入 —— 这正是当初 P17 静默跳过的根因
+    #    （`from . import lattice4d` 用了错误的平铺名）。
+    importlib.import_module(f"{PKG}.spin_chirality_lattice4d")
+
     spin = importlib.import_module(f"{PKG}.spin_chirality_operators")
     skips = []
     for name in ("_check_index_4d",):
@@ -132,7 +136,9 @@ def test_no_silent_skips():
         r = fn()
         if isinstance(r, dict):
             for k, v in r.items():
-                if k.startswith("skipped"):
+                # skipped_no_scipy 是合法的：scipy 是可选依赖，缺它就该跳过。
+                # skipped_no_lattice 才是 bug：模块找不到。
+                if k.startswith("skipped") and k != "skipped_no_scipy":
                     skips.append(f"{name}: {k}={v}")
     if skips:
         raise RuntimeError("在包形态下被静默跳过: " + "; ".join(skips))
@@ -140,7 +146,7 @@ def test_no_silent_skips():
 
 
 def test_module_isolation():
-    """13 个独立算子模块各自单独放进空目录也能 import（零兄弟依赖）。"""
+    """25 个独立算子模块各自单独放进空目录也能 import（零兄弟依赖）。"""
     import shutil
 
     pkg_dir = os.path.dirname(importlib.import_module(f"{PKG}.moa_operators").__file__)

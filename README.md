@@ -11,7 +11,7 @@ implementations — and every layer is importable even without torch installed
 (fallback stubs raise a clear `ImportError` only when instantiated).
 
 Totals: **25 operator modules** plus the 5-dimensional independence audit (667 lines)
-and the package `__init__.py` (134 lines); a clean-room smoke test covers 13 checks.
+and the package `__init__.py` (134 lines); a clean-room smoke test covers 14 checks.
 
 ---
 
@@ -20,7 +20,7 @@ and the package `__init__.py` (134 lines); a clean-room smoke test covers 13 che
 ```
 .
 ├── LICENSE / NOTICE                  Apache-2.0 + provenance
-├── smoke_test.py                     clean-room verification (13/13)
+├── smoke_test.py                     clean-room verification (14/14)
 ├── README.md                         本文件
 └── hybrid_moa_vl_operator_suite/     算子包（Python package）
     ├── __init__.py                   动态初始化（零硬编码表）→ 234 个公开导出
@@ -253,7 +253,7 @@ python smoke_test.py            # everything available
 python smoke_test.py --quick    # imports + numpy kernels only
 ```
 
-Result: **13/13 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
+Result: **14/14 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 
 | Check | Result |
 |---|---|

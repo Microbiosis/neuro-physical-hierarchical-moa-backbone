@@ -28,7 +28,7 @@
 
 | 检查 | 命令 | 结果 |
 |---|---|---|
-| 净室 smoke test | `python3 smoke_test.py` | **13/13 PASS**（25/25 模块可独立 import，234 exports） |
+| 净室 smoke test | `python3 smoke_test.py` | **14/14 PASS**（25/25 模块可独立 import，234 exports） |
 | 五维独立性审计 | `python3 hybrid_moa_vl_operator_suite/operator_independence_verification.py` | **ALL 5 DIMENSIONS VERIFIED**（25 条 ISOLATED PASS） |
 | 行数一致性 | 扫 README + docs 全部 `.md` 对照 `wc -l` | 不一致 **0** 处 |
 

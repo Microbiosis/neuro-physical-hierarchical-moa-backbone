@@ -14,13 +14,13 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `baryogenesis_parity_operators.py` | 922 | 922 |
-| `supermembrane_spacetime_operators.py` | 888 | 888 |
-| `quantum_tidal_operators.py` | 886 | 886 |
-| `quantum_resource_phasing_operators.py` | 1,086 | 1,086 |
-| `spinal_cord_pathway_operators.py` | 959 | 959 |
-| `corticospinal_chaotic_operators.py` | 962 | 962 |
-| `dissociative_trauma_neuro_operators.py` | 736 | 736 |
+| `baryogenesis_parity_operators.py` | 922 | 宇称破缺 / Sphaleron 输运 |
+| `supermembrane_spacetime_operators.py` | 888 | 11D 超膜 DBI / RSKK |
+| `quantum_tidal_operators.py` | 886 | WKB 隧穿 / 潮汐张量 |
+| `quantum_resource_phasing_operators.py` | 1,086 | DQI 块门控 / 1/R(ε) |
+| `spinal_cord_pathway_operators.py` | 959 | 背角门控 / Renshaw |
+| `corticospinal_chaotic_operators.py` | 962 | Pyragas 时滞镇定 / 混沌轴 |
+| `dissociative_trauma_neuro_operators.py` | 736 | Lanius 双模 / DPDR / 闪回 |
 
 ## A2  潜锚点注意力（R≪L）（3 个）
 
@@ -28,9 +28,9 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `vacuum_zpe_fluctuation_operators.py` | 960 | 960 |
-| `sleep_subconscious_neuro_operators.py` | 1,039 | 1,039 |
-| `cpu_gpu_self_bootstrapping_operators.py` | 2,324 | 2,324 |
+| `vacuum_zpe_fluctuation_operators.py` | 960 | 真空 ZPE / Casimir / Schwinger 对 |
+| `sleep_subconscious_neuro_operators.py` | 1,039 | SHY / 类淋巴 / SWR / PGO |
+| `cpu_gpu_self_bootstrapping_operators.py` | 2,324 | Tri-ISA CPU + SIMT GPU 自举 |
 
 ## B   递推状态 / 不动点（2 个）
 
@@ -38,8 +38,8 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `viral_invasion_operator.py` | 671 | 671 |
-| `nbsc_omega_operator.py` | 516 | 516 |
+| `viral_invasion_operator.py` | 671 | 7 状态 DNA 状态机 / 11 边 / 13 条 PMID 约束 |
+| `nbsc_omega_operator.py` | 516 | 42 神经元脉冲 + 202 延迟边 + 肌骨闭环 |
 
 ## C   快权重 Delta 规则（1 个）
 
@@ -47,7 +47,7 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `local_self_modifying_operators.py` | 1,455 | 1,757 |
+| `local_self_modifying_operators.py` | 1,757 | 有理 Hebbian + Delta-Oja 快权重（双支路） |
 
 ## D   逐 token 非线性（无跨位置通路）（2 个）
 
@@ -55,8 +55,8 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `neuro_nonlinear_operators.py` | 817 | 817 |
-| `tulpa_neuro_operators.py` | 879 | 879 |
+| `neuro_nonlinear_operators.py` | 817 | 树突 NMDA / shunting / FHN |
+| `tulpa_neuro_operators.py` | 879 | 多吸引子 / TPJ 归因 |
 
 ## E   纯卷积 / 逐元素（无 softmax）（1 个）
 
@@ -64,7 +64,7 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `moa_operators.py` | 1,176 | 1,176 |
+| `moa_operators.py` | 1,176 | 跨模态 VL 融合（Conv1d 支路）+ MoE 路由 |
 
 ## Triton 内核实现与模拟器（1 个）
 
@@ -74,27 +74,27 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `moa_triton_kernels.py` | 468 | 468 |
+| `moa_triton_kernels.py` | 468 | 跨模态 VL 双线性 fwd/bwd + 持久化 sparse-topk megakernel；逐 tile 模拟器 |
 ## 基础设施（不参与独立性分析）（5 个）
 
 换的是「怎么算」而不是「算什么」：积分器、检查点、内存、多卡、框架适配。
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `physical_wave_dynamics_operators.py` | 2,062 | 2,062 |
-| `high_order_pde_ode_megakernels.py` | 1,878 | 1,878 |
-| `adaptive_checkpointed_adjoint_megakernels.py` | 1,583 | 1,583 |
-| `distributed_sequence_parallel_adjoint.py` | 853 | 853 |
-| `deepspeed_megatron_physics_plugin.py` | 1,890 | 1,890 |
+| `physical_wave_dynamics_operators.py` | 2,062 | Schwinger 波包 / 辛谐振 / 反应扩散 / DBI 膜 |
+| `high_order_pde_ode_megakernels.py` | 1,878 | Störmer-Verlet / CN-IMEX / RK2 + Roofline |
+| `adaptive_checkpointed_adjoint_megakernels.py` | 1,583 | O(√L·D) 分段检查点伴随 |
+| `distributed_sequence_parallel_adjoint.py` | 853 | Ring/Ulysses 序列并行伴随交接 |
+| `deepspeed_megatron_physics_plugin.py` | 1,890 | ZeRO-3 分片 + SP P2P |
 
-## 扩展模型与独立生物模型（不参与独立性分析）（5 个）
+## 扩展模型（不参与独立性分析）（3 个）
 
-把既有架构（LLM 层次、相对论手性）封装成算子；含两个独立的生物/格点模型。
+把既有架构（LLM 层次、相对论手性）封装成算子；含自旋手性的 3+1 维格点指标层。
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `llm_hierarchy_operators.py` | 2,657 | 2,657 |
-| `spin_chirality_operators.py` | 1833 | 1,837 |
+| `llm_hierarchy_operators.py` | 2,657 | 完整 LLM 计算层次六算子 × 六空间（Embedding / RMSNorm+RoPE / 因果 GQA / SwiGLU / 残差流 / 词表头），含 KV-Cache、generate、8 个 Triton 核（RoPE 已压进 flash 核内）|
+| `spin_chirality_operators.py` | 1,837 | 4 分量 Dirac 旋量单粒子传播子：真 SU(2) 手性规范 / Larmor 进动 / Dirac 质量项 / 非厄米吸收 / 轴矢流 j⁵；P1–P21 物理自检（T4 最大残差 2.60e-08）|
 | `spin_chirality_lattice4d.py` | 375 | 3+1 维格点指标：FLSG 单瞬子背景的 Wilson–Dirac 指标（FFT–Schur 惯性法）；需 scipy |
 
 ---
@@ -143,6 +143,6 @@
 - **A1 7 个 + A2 3 个**：统一 `[B,L,D] → [B,L,D]` 协议，但内层仍是注意力。
 - **B 2 个 + C 1 个**：结构上确实不是 Transformer，是目前最有突破潜力的三个。
 - **D 2 个 + E 1 个**：只做逐 token / 局部卷积变换。
-- **基础设施 5 个 + 扩展模型 3 个 + 独立生物模型 2 个**：换实现方式或封装既有架构，不改 token 混合语义。
+- **基础设施 5 个 + 扩展模型 3 个**：换实现方式或封装既有架构，不改 token 混合语义。
 
 > 审计口径：`operator_independence_verification.py` 的 **Dimension I 文件隔离覆盖全部 25 个算子模块**（审计脚本自身不在其列表内），**Dimension II–V 的五维独立性分析覆盖 14 个领域算子**（扩展模型与基础设施不参与，因为它们没有统一的参数化接口）。

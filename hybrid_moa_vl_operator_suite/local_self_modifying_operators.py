@@ -477,8 +477,8 @@ def _delta_oja_sram_diagnostics(B, L, G, D_g, w_hist):
 # 语义与第 3 节的解析实现逐条对应（解析实现即 Triton 核的参考实现）：
 #   前向：w(b,g) 跨 L 步常驻 SRAM，w_{t+1} = γ·w_t + (0.20·η)·(δ⊗k̂)
 #   反向：精确 reverse-time 伴随；dw 与 w 一样按 (b,g) 独立演化，故可按 (b,g) 并行。
-# 数值：全程 float32（与 torch 路径一致），与 float64 混合的解析参考实现相差
-#       ~1e-6（fp32 eps 量级）。
+# 数值：累加器与常量用 float64（精度跟随输入 dtype，不强制降到 fp32），
+#       因此与 fp64 解析参考实现一致到 ~1e-15；输出数组仍按 q.dtype 存放。
 
 if HAS_NUMBA:
 

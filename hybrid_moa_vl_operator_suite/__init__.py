@@ -1,7 +1,7 @@
 """
 Interdisciplinary Hybrid MoA Operator Suite (`hybrid_moa_vl_operator_suite`).
 
-24 standalone operator modules; there is no orchestration layer - every module is
+25 standalone operator modules; there is no orchestration layer - every module is
 independently importable and carries its own verification suite.
 
 Zero-hardcoded-table dynamic package initializer:
