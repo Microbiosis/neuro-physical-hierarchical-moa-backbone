@@ -109,6 +109,7 @@ STANDALONE_OPERATOR_FILES: Tuple[str, ...] = (
     "deepspeed_megatron_physics_plugin.py",
     "llm_hierarchy_operators.py",
     "spin_chirality_operators.py",
+    "spin_chirality_lattice4d.py",
     "nbsc_omega_operator.py",
     "viral_invasion_operator.py",
 )
