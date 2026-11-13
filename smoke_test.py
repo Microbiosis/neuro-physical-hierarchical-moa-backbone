@@ -65,7 +65,15 @@ MODULES = [
     "spin_chirality_operators",
     "spin_chirality_lattice4d",
     "nbsc_omega_operator",
-    "viral_invasion_operator",
+    "payload_core",
+    "payload_operator",
+    "payload_host_operator",
+    "payload_ecology",
+    "payload_lineage",
+    "payload_recombination",
+    "payload_spatial",
+    "payload_channels",
+    "payload_survival",
 ]
 # 全部算子模块（编排层已于 2026-11-10 删除，这里是全部 24 个）
 STANDALONE = list(MODULES)
@@ -146,14 +154,28 @@ def test_no_silent_skips():
 
 
 def test_module_isolation():
-    """25 个独立算子模块各自单独放进空目录也能 import（零兄弟依赖）。"""
+    """25 个独立算子模块各自单独放进空目录也能 import（零兄弟依赖）。
+
+    payload_* 是一族（共用 payload_core 底座），隔离时整族拷贝。
+    """
     import shutil
 
     pkg_dir = os.path.dirname(importlib.import_module(f"{PKG}.moa_operators").__file__)
     bad = []
+    # 模块族（如 payload_* 共用 payload_core 底座）需整族一起拷贝，
+    # 否则同族文件在空目录里找不到彼此。
+    families = [
+        ("payload_core", "payload_operator", "payload_host_operator",
+         "payload_ecology", "payload_lineage", "payload_recombination",
+         "payload_spatial", "payload_channels", "payload_survival"),
+    ]
     for name in STANDALONE:
         with tempfile.TemporaryDirectory() as td:
-            shutil.copy(os.path.join(pkg_dir, f"{name}.py"), td)
+            fam = next((f for f in families if name in f), (name,))
+            for m in fam:
+                src = os.path.join(pkg_dir, f"{m}.py")
+                if os.path.exists(src):
+                    shutil.copy(src, td)
             r = subprocess.run(
                 [sys.executable, "-c", f"import {name}"],
                 cwd=td, capture_output=True, text=True, timeout=180,

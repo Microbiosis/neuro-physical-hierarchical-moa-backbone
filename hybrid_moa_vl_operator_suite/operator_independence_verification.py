@@ -111,8 +111,36 @@ STANDALONE_OPERATOR_FILES: Tuple[str, ...] = (
     "spin_chirality_operators.py",
     "spin_chirality_lattice4d.py",
     "nbsc_omega_operator.py",
-    "viral_invasion_operator.py",
+    "payload_core.py",
+    "payload_operator.py",
+    "payload_host_operator.py",
+    "payload_ecology.py",
+    "payload_lineage.py",
+    "payload_recombination.py",
+    "payload_spatial.py",
+    "payload_channels.py",
+    "payload_survival.py",
 )
+
+# 模块族：上游把 payload 设计成「共用底座 payload_core 的一组视图」
+# （payload_core + 算子类 + 生态/谱系/重组/空间/通道/存活 各层）。
+# 它们在 AST 上没有静态同级 import（用 importlib 动态导入），
+# 但运行时需要同族文件在场，所以隔离测试按族拷贝而不是单文件拷贝。
+MODULE_FAMILIES: Tuple[Tuple[str, ...], ...] = (
+    (
+        "payload_core.py", "payload_operator.py", "payload_host_operator.py",
+        "payload_ecology.py", "payload_lineage.py", "payload_recombination.py",
+        "payload_spatial.py", "payload_channels.py", "payload_survival.py",
+    ),
+)
+
+
+def _family_of(fname: str) -> Tuple[str, ...]:
+    """返回该文件所属模块族（自身），不属于任何族则只含自身。"""
+    for fam in MODULE_FAMILIES:
+        if fname in fam:
+            return fam
+    return (fname,)
 
 DOMAIN_OPERATOR_NAMES: Tuple[str, ...] = (
     "01:VacuumZPE_Fluctuation",
@@ -489,7 +517,12 @@ def run_five_dimensional_operator_independence_verification() -> None:
 
         with tempfile.TemporaryDirectory() as iso_dir:
             dst = os.path.join(iso_dir, fname)
-            shutil.copy2(fpath, dst)
+            # 模块族（如 payload_* 共用 payload_core 底座）需要整族一起拷贝，
+            # 否则同族文件在空目录里找不到彼此。
+            for _fam_file in _family_of(fname):
+                _fam_src = os.path.join(cur_dir, _fam_file)
+                if os.path.exists(_fam_src):
+                    shutil.copy2(_fam_src, os.path.join(iso_dir, _fam_file))
             stem = fname[:-3]
 
             r_imp = subprocess.run(

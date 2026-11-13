@@ -1,6 +1,6 @@
 # 算子清单与区分
 
-本包共 **25 个算子/内核模块**（外加 1 个五维审计文件与 `__init__.py`，合计 27 个 .py，30,982 行），包导出 234 个符号。
+本包共 **33 个算子/内核模块**（外加 1 个五维审计文件与 `__init__.py`，合计 35 个 .py，32,507 行），包导出 234 个符号。
 
 编排层 `unified_hybrid_moa_architecture.py` 已于 2026-11-10 删除，**所有算子之间零依赖**，可单文件拷出独立运行，也可自行组合。
 
@@ -32,14 +32,36 @@
 | `sleep_subconscious_neuro_operators.py` | 1,039 | SHY / 类淋巴 / SWR / PGO |
 | `cpu_gpu_self_bootstrapping_operators.py` | 2,324 | Tri-ISA CPU + SIMT GPU 自举 |
 
-## B   递推状态 / 不动点（2 个）
+## B   递推状态 / 不动点（1 个）
 
 `q(t) = T(q(t-1), x(t))`，无 softmax、无 q·k^T。**结构上不是 Transformer。**
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `viral_invasion_operator.py` | 671 | 7 状态 DNA 状态机 / 11 边 / 13 条 PMID 约束 |
 | `nbsc_omega_operator.py` | 516 | 42 神经元脉冲 + 202 延迟边 + 肌骨闭环 |
+
+## P   载荷算子族（宿主是模型，不是细胞）（9 个）
+
+**方向变更**：原先的细胞级病毒算子（DNA 状态机 / HIV-1）已被取代，收在上游 `legacy/bio/`。
+新框架把宿主看作**一个算子/模型实例**，病原是**能改写它输入或参数的载荷**：非负密度、
+每步一次不动点、带计量（放大）与门控的边 —— 同一套骨架，五层 + 三段投递链路。
+
+| 文件 | 行数 | 层 | 机制 |
+|---|---|---|---|
+| `payload_operator.py` | 368 | 核心 | `ViralHostOperator` + `Edge` dataclass |
+| `payload_core.py` | 192 | 共用底座 | 饱和、7 种图、二分阈值、Shannon、判据打印 |
+| `payload_host_operator.py` | 232 | 宿主 | 13 状态 / 22 边，9 条判据 |
+| `payload_ecology.py` | 235 | 生态 | 多株竞争 + 平台 + 桥，5 条判据 |
+| `payload_lineage.py` | 262 | 谱系 | 可突变基因组 + 选择，6 条判据 |
+| `payload_recombination.py` | 248 | 重组 | 位点交换，3 条判据 |
+| `payload_spatial.py` | 268 | 空间 | 拓扑 → 阈值，3 条判据 |
+| `payload_channels.py` | 140 | 投递链路 | 扇出/口径 → 临界成功率，4 条判据 |
+| `payload_survival.py` | 218 | 存活率 | 切块→检索→截断，4 条判据 |
+
+**这一族共用 `payload_core` 底座**，因此在仓库的平铺布局下用 importlib 动态导入同族模块
+（AST 里没有静态同级 import，兄弟依赖仍为 0），隔离测试按族拷贝。
+设计文档见 `docs/payload/`（README / DESIGN / EVIDENCE / LIMITS）。
+
 
 ## C   快权重 Delta 规则（1 个）
 
@@ -121,7 +143,7 @@
 | 7 | **llm_hierarchy**（FlashAttention fwd/bwd、norm+RoPE fwd/bwd、SwiGLU fwd/bwd、RoPE 表）|
 | 3 | dissociative_trauma / cpu_gpu_bootstrap / adaptive_checkpointed |
 | 2 | quantum_resource |
-| 0 | distributed_sequence_parallel / **nbsc_omega** / viral_invasion |
+| 0 | distributed_sequence_parallel / **nbsc_omega** / payload 家族 9 件 |
 
 ### 3. 机制属于哪个学科
 
@@ -134,15 +156,16 @@
 | 跨模态学习 / LLM | moa_operators、llm_hierarchy |
 | 数值分析 | high_order_pde、adaptive_checkpointed |
 | 分布式系统 | distributed_sequence_parallel、deepspeed_plugin |
-| 生物医学 / 分子生物学 | viral_invasion |
+| 载荷 / 对抗性输入（模型安全） | payload 家族 9 件 |
 
 ---
 
 ## 一句话总结
 
 - **A1 7 个 + A2 3 个**：统一 `[B,L,D] → [B,L,D]` 协议，但内层仍是注意力。
-- **B 2 个 + C 1 个**：结构上确实不是 Transformer，是目前最有突破潜力的三个。
+- **B 1 个 + C 1 个**：结构上确实不是 Transformer。
+- **P 载荷算子族 9 个**：宿主是模型、病原是载荷，五层 + 三段投递链路；**不参与 token 混合**，是独立的方向变更（细胞级那条线已收进上游 `legacy/bio/`）。
 - **D 2 个 + E 1 个**：只做逐 token / 局部卷积变换。
 - **基础设施 5 个 + 扩展模型 3 个**：换实现方式或封装既有架构，不改 token 混合语义。
 
-> 审计口径：`operator_independence_verification.py` 的 **Dimension I 文件隔离覆盖全部 25 个算子模块**（审计脚本自身不在其列表内），**Dimension II–V 的五维独立性分析覆盖 14 个领域算子**（扩展模型与基础设施不参与，因为它们没有统一的参数化接口）。
+> 审计口径：`operator_independence_verification.py` 的 **Dimension I 文件隔离覆盖全部 33 个算子模块**（审计脚本自身不在其列表内），**Dimension II–V 的五维独立性分析覆盖 14 个领域算子**（扩展模型与基础设施不参与，因为它们没有统一的参数化接口）。
