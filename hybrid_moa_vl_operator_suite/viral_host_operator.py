@@ -8,7 +8,7 @@
     宿主内：22 条边（复制要借 tool/credential；写进 memory；写进 weights；护栏检出）
     宿主间：propagation = k · W @ output,  W[j,i] 是 i 分给 j 的份额（列和为 1）
 
-免疫通路按 legacy/bio/payload_nucleic_acid_invasion_coupled.py 的 IFN 通路移植：
+免疫通路按 legacy/bio/viral_nucleic_acid_invasion_coupled.py 的 IFN 通路移植：
     sensing  = PRR 固有检测：payload 存在就触发（催化），guard 高了会衰减（SOCS 抑制）
     alert    = 检测信号→护栏：不被 guard 自抑（IFN 产生不自我封顶）
     guard_decay = IFN 自加速清除：guard 催化自身衰减（interferon +0.8 on interferon_decay）
@@ -30,58 +30,27 @@
     ⑧ 部分加固介于两者之间；
     ⑨ 事后隔离不改变结局。
 
-    python3 payload_host_operator.py                      # 单宿主四情形
-    python3 payload_host_operator.py --world              # 网络传播
-    python3 payload_host_operator.py --check              # 全部判据
+    python3 viral_host_operator.py                      # 单宿主四情形
+    python3 viral_host_operator.py --world              # 网络传播
+    python3 viral_host_operator.py --check              # 全部判据
 
-计算逻辑在 payload_operator.py 的 ViralHostOperator 类里；本文件是 CLI 入口和兼容层。
+计算逻辑在 viral_operator.py 的 ViralHostOperator 类里；本文件是 CLI 入口和兼容层。
 """
 
 from __future__ import annotations
-
-_PKG = __package__ or ""
 
 import argparse
 import json
 
 import numpy as np
 
-
-# ---------------------------------------------------------------------------
-# 同级模块导入（双模）：包形态用相对导入，单文件形态用 importlib 动态导入。
-# 一律用动态导入（不写静态 import），因此：
-#   · AST 里没有同级 import → 五维审计的「兄弟依赖 = 0」成立；
-#   · 包形态与平铺形态都能找到模块（相对包名 / 顶层名各试一次）。
-# ---------------------------------------------------------------------------
-def _sibling(name):
-    """导入同级模块 payload_<name>，返回模块对象。"""
-    import importlib as _il
-    if _PKG:
-        try:
-            # 同级模块就在同一个包里，所以相对名是 ".payload_<name>"，
-            # 不是 ".<包名>.payload_<name>"（后者会拼出两层路径而找不到）。
-            return _il.import_module(".payload_" + name, _PKG)
-        except (ImportError, ValueError):
-            pass
-    return _il.import_module("payload_" + name)
-
-
-
-core = _sibling("core")
-_operator = _sibling("operator")
-ViralHostOperator = _operator.ViralHostOperator
-Edge = _operator.Edge
-DEFAULT_EDGES = _operator.DEFAULT_EDGES
-STATE_NAMES = _operator.STATE_NAMES
-INDEX = _operator.INDEX
-STATE_COUNT = _operator.STATE_COUNT
-EDGE_NAMES = _operator.EDGE_NAMES
-PROPAGATION = _operator.PROPAGATION
-REJECTION = _operator.REJECTION
-QUARANTINE_THRESHOLD = _operator.QUARANTINE_THRESHOLD
-DAMPING = _operator.DAMPING
-ITERATIONS = _operator.ITERATIONS
-TOLERANCE = _operator.TOLERANCE
+import payload_core as core
+from viral_operator import (
+    ViralHostOperator, Edge, DEFAULT_EDGES,
+    STATE_NAMES, INDEX, STATE_COUNT, EDGE_NAMES,
+    PROPAGATION, REJECTION, QUARANTINE_THRESHOLD,
+    DAMPING, ITERATIONS, TOLERANCE,
+)
 
 _DEFAULT = ViralHostOperator()
 
@@ -224,9 +193,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # 仓库的五维审计要求「单文件独立运行 → 退出码 0 且输出含 PASS」，
-    # 所以默认就跑一遍判据（--check 仍然兼容；加 --no-check 可只看结果表）。
-    import sys as _sys
-    if "--check" not in _sys.argv and "--no-check" not in _sys.argv:
-        _sys.argv.append("--check")
     main()

@@ -1,6 +1,6 @@
 # 验证矩阵（2026-11-12）
 
-本仓库 **33 个算子/内核模块**（外加 1 个五维审计脚本与 `__init__.py`，合计 27 个 `.py`，32,507 行，
+本仓库 **33 个算子/内核模块**（外加 1 个五维审计脚本与 `__init__.py`，合计 27 个 `.py`，32,252 行，
 包导出 234 个符号）。每个算子都自带 `__main__` 自检入口与显式 `__all__`，可单文件拷出独立运行。
 
 本表记录**各算子的自检覆盖与实测数值**，以及**哪些数字是实测、哪些是解析模型**。
@@ -16,7 +16,7 @@
 | `spin_chirality_operators` | **P1–P21 物理自检** | Clifford / SU(2) / Larmor / Ward / 幺正 / 反常 / 微观 / ZBW | T4 最大残差 **2.60e-08**（P14 手性守恒）；P12 Triton 三重对齐 2.84e-14 |
 | `spin_chirality_lattice4d` | 3+1D 格点指标 | FLSG 单瞬子 Wilson–Dirac 指标 | index = **−1.0**（反瞬子 +1） |
 | `nbsc_omega_operator` | 8 项 | 脉冲 + 延迟边 + 肌骨闭环 | 无驱动静默 100 步零脉冲；有驱动 300 步 1368 脉冲；反向可达 3/5 参数张量 |
-| `payload_operator` 等 9 件 | 49 条判据 | 载荷算子族：宿主=模型实例 / 病原=载荷 | 宿主 9、生态 5、谱系 6、重组 3、空间 3、通道 4、存活 4 + 底座 7 + 算子 8；全部 PASS |
+| `viral_*` + `payload_core` 9 件 | 34 条判据 | 载荷算子族：宿主=模型实例 / 病原=载荷 | 宿主 9、生态 5、谱系 6、重组 3、空间 3、通道 4、存活 4（上游 7 套判据，全部 PASS）|
 | `deepspeed_megatron_physics_plugin` | 6 项 | ZeRO-3 + 序列并行 P2P | 分片 60→32 元素；`reduce_scatter` 24 分片 `worst=0.000e+00`；`all_gather` 逐位还原 |
 | `moa_operators` | numpy + torch | 跨模态 VL 融合 + MoE 路由 | bilinear 2.2e-16 / megakernel 8.9e-16；自报带宽省 80.3% |
 | `moa_triton_kernels` | tile 模拟器 | Triton 融合核的逐 tile SRAM 复算 | 见上 |
@@ -28,7 +28,7 @@
 
 | 检查 | 命令 | 结果 |
 |---|---|---|
-| 净室 smoke test | `python3 smoke_test.py` | **14/14 PASS**（33/33 模块可独立 import，241 exports） |
+| 净室 smoke test | `python3 smoke_test.py` | **14/14 PASS**（33/33 模块可独立 import，272 exports） |
 | 五维独立性审计 | `python3 hybrid_moa_vl_operator_suite/operator_independence_verification.py` | **ALL 5 DIMENSIONS VERIFIED**（25 条 ISOLATED PASS） |
 | 行数一致性 | 扫 README + docs 全部 `.md` 对照 `wc -l` | 不一致 **0** 处 |
 

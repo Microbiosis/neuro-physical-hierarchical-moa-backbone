@@ -22,34 +22,11 @@
 
 from __future__ import annotations
 
-_PKG = __package__ or ""
-
 import argparse
 
 import numpy as np
 
-
-# ---------------------------------------------------------------------------
-# 同级模块导入（双模）：包形态用相对导入，单文件形态用 importlib 动态导入。
-# 一律用动态导入（不写静态 import），因此：
-#   · AST 里没有同级 import → 五维审计的「兄弟依赖 = 0」成立；
-#   · 包形态与平铺形态都能找到模块（相对包名 / 顶层名各试一次）。
-# ---------------------------------------------------------------------------
-def _sibling(name):
-    """导入同级模块 payload_<name>，返回模块对象。"""
-    import importlib as _il
-    if _PKG:
-        try:
-            # 同级模块就在同一个包里，所以相对名是 ".payload_<name>"，
-            # 不是 ".<包名>.payload_<name>"（后者会拼出两层路径而找不到）。
-            return _il.import_module(".payload_" + name, _PKG)
-        except (ImportError, ValueError):
-            pass
-    return _il.import_module("payload_" + name)
-
-
-
-core = _sibling("core")
+import payload_core as core
 
 DOC_WORDS = 220
 CORPUS = 60
@@ -210,9 +187,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # 仓库的五维审计要求「单文件独立运行 → 退出码 0 且输出含 PASS」，
-    # 所以默认就跑一遍判据（--check 仍然兼容；加 --no-check 可只看结果表）。
-    import sys as _sys
-    if "--check" not in _sys.argv and "--no-check" not in _sys.argv:
-        _sys.argv.append("--check")
     main()

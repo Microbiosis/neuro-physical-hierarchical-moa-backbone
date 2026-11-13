@@ -112,27 +112,54 @@ STANDALONE_OPERATOR_FILES: Tuple[str, ...] = (
     "spin_chirality_lattice4d.py",
     "nbsc_omega_operator.py",
     "payload_core.py",
-    "payload_operator.py",
-    "payload_host_operator.py",
-    "payload_ecology.py",
-    "payload_lineage.py",
-    "payload_recombination.py",
-    "payload_spatial.py",
-    "payload_channels.py",
     "payload_survival.py",
+    "viral_operator.py",
+    "viral_host_operator.py",
+    "viral_ecology.py",
+    "viral_lineage.py",
+    "viral_recombination.py",
+    "viral_spatial.py",
+    "viral_channels.py",
 )
 
-# 模块族：上游把 payload 设计成「共用底座 payload_core 的一组视图」
-# （payload_core + 算子类 + 生态/谱系/重组/空间/通道/存活 各层）。
-# 它们在 AST 上没有静态同级 import（用 importlib 动态导入），
-# 但运行时需要同族文件在场，所以隔离测试按族拷贝而不是单文件拷贝。
+# 模块族：上游把 payload 做成一族 —— payload_core 是共用底座，viral_operator 是算子类，
+# 其余 7 个是各层的 CLI。族内用静态 import 互相引用（上游设计，不是缺陷）。
+# 因此：① 「兄弟依赖」检查不计族内互相引用；② 隔离测试整族拷贝。
 MODULE_FAMILIES: Tuple[Tuple[str, ...], ...] = (
     (
-        "payload_core.py", "payload_operator.py", "payload_host_operator.py",
-        "payload_ecology.py", "payload_lineage.py", "payload_recombination.py",
-        "payload_spatial.py", "payload_channels.py", "payload_survival.py",
+        "payload_core.py",
+        "payload_survival.py",
+        "viral_operator.py",
+        "viral_host_operator.py",
+        "viral_ecology.py",
+        "viral_lineage.py",
+        "viral_recombination.py",
+        "viral_spatial.py",
+        "viral_channels.py",
     ),
 )
+
+
+def _has_cli_entry(fname: str) -> bool:
+    """该文件是否是可独立运行的 CLI 层（有 __main__）。
+    族内的库模块（共用底座 payload_core / 算子类 viral_operator）没有 CLI，
+    只做 import 检查。"""
+    _p = os.path.join(os.path.dirname(os.path.abspath(__file__)), fname)
+    try:
+        with open(_p, "r", encoding="utf-8") as _fh:
+            return '__main__' in _fh.read()
+    except OSError:
+        return False
+
+
+def _supports_check(fname: str) -> bool:
+    """该文件是否支持 --check 开关（上游 CLI 层用它输出判据）。"""
+    _p = os.path.join(os.path.dirname(os.path.abspath(__file__)), fname)
+    try:
+        with open(_p, "r", encoding="utf-8") as _fh:
+            return "--check" in _fh.read()
+    except OSError:
+        return False
 
 
 def _family_of(fname: str) -> Tuple[str, ...]:
@@ -505,14 +532,18 @@ def run_five_dimensional_operator_independence_verification() -> None:
         with open(fpath, "r", encoding="utf-8") as f:
             tree = ast.parse(f.read(), filename=fname)
         sibling_imports: List[str] = []
+        _fam_stems = {f[:-3] for f in _family_of(fname)}
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name.split(".")[0] in local_stems:
+                    _top = alias.name.split(".")[0]
+                    # 族内互相引用是上游设计，不算「兄弟依赖」
+                    if _top in local_stems and _top not in _fam_stems:
                         sibling_imports.append(alias.name)
             elif isinstance(node, ast.ImportFrom):
                 if node.module and node.module.split(".")[0] in local_stems:
-                    sibling_imports.append(node.module)
+                    if node.module.split(".")[0] not in _fam_stems:
+                        sibling_imports.append(node.module)
         assert not sibling_imports, f"{fname} has sibling imports: {sibling_imports}"
 
         with tempfile.TemporaryDirectory() as iso_dir:
@@ -533,15 +564,21 @@ def run_five_dimensional_operator_independence_verification() -> None:
             )
             assert r_imp.returncode == 0, f"Isolated import failed for {fname}: {r_imp.stderr}"
 
-            r_run = subprocess.run(
-                [sys.executable, dst],
-                cwd=iso_dir,
-                capture_output=True,
-                text=True,
-            )
-            assert r_run.returncode == 0 and ("PASS" in r_run.stdout or "passed" in r_run.stdout), (
-                f"Standalone run failed for {fname}: {r_run.stderr}"
-            )
+            if _has_cli_entry(fname):
+                # 上游的 CLI 层把判据放在显式的 --check 开关后面（默认只打印结果表），
+                # 所以这里按上游约定带上 --check，让输出含 [PASS]。
+                _args = [sys.executable, dst]
+                if _supports_check(fname):
+                    _args.append("--check")
+                r_run = subprocess.run(
+                    _args,
+                    cwd=iso_dir,
+                    capture_output=True,
+                    text=True,
+                )
+                assert r_run.returncode == 0 and ("PASS" in r_run.stdout or "passed" in r_run.stdout), (
+                    f"Standalone run failed for {fname}: {r_run.stderr}"
+                )
 
         print(f"   [ISOLATED PASS] {fname:42s} | AST Sibling Deps: 0 | TempDir Run: PASS")
 

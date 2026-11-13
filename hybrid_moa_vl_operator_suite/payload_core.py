@@ -2,15 +2,11 @@
 """载荷算子各层共用的底座：饱和、图、二分阈值、多样性、判据打印。
 
 这一层没有模型，只有**每一层都在重复写的东西**。放在这里的原因很实际：
-`payload_spatial.py` 与 `payload_channels.py` 各自实现过一遍二分，`ring/random/...`
+`viral_spatial.py` 与 `viral_channels.py` 各自实现过一遍二分，`ring/random/...`
 被抄了两份，`saturate` 在三个文件里叫过三个名字。整合之后，改一处就够。
 """
 
 from __future__ import annotations
-
-_PKG = __package__ or ""
-
-import math
 
 import numpy as np
 
@@ -151,42 +147,3 @@ def report(checks, title=None):
         failures += 0 if ok else 1
     print(f"判据 {len(checks)} 条，失败 {failures} 条")
     return 1 if failures else 0
-
-
-if __name__ == "__main__":              # pragma: no cover
-    # 仓库的五维审计要求「单文件独立运行 → 退出码 0 且输出含 PASS」。
-    import numpy as _np
-    _s = _np.array([0.0, 0.1, 0.5, 1.0, 10.0, 1000.0])
-    _sat = saturate(_s)
-    _graphs = {
-        "ring": ring(6), "random": random_graph(6),
-        "smallworld": smallworld(6), "scalefree": scalefree(6),
-        "community": community(6), "complete": complete(6),
-        "feed": feed(6),
-    }
-    # bisect 的第一个参数是「返回 0..1 比例」的函数，不是数组。
-    _outbreaks = lambda x: float(x)
-    _checks = [
-        ("saturate 单调增",
-         bool((_sat[1:] > _sat[:-1]).all())),
-        ("saturate(0)=0、saturate(大)=1",
-         abs(float(_sat[0])) < 1e-12 and abs(float(_sat[-1]) - 1.0) < 1e-3),
-        ("saturate(v) = v/(half+v) 精确一致",
-         bool(_np.allclose(_sat, _s / (0.5 + _s)))),
-        ("7 种图都给出 hosts×hosts 邻接矩阵，无向图对称、有向图不对称",
-         len(_graphs) == 7
-         and all(g.shape == (6, 6) for g in _graphs.values())
-         and bool((_graphs["ring"] == _graphs["ring"].T).all())
-         and bool((_graphs["complete"] == _graphs["complete"].T).all())
-         and not bool((_graphs["community"] == _graphs["community"].T).all())
-         and not bool((_graphs["feed"] == _graphs["feed"].T).all())),
-        ("normalise 后每列和为 1（share 口径）",
-         bool(_np.allclose(normalise(_graphs["ring"]).sum(axis=0), 1.0))),
-        ("shannon 返回自然对数熵（4 等权 = ln4 = 1.3863）、零权重为 0",
-         abs(shannon(_np.array([1.0, 1.0, 1.0, 1.0])) - math.log(4.0)) < 1e-9 and
-         abs(shannon(_np.array([0.0, 0.0]))) < 1e-9 and
-         shannon(_np.array([1.0, 0.0, 0.0, 0.0])) < 1e-9),
-        ("二分阈值单调：目标越高阈值越大",
-         bisect(_outbreaks, 0.0, 1.0, 0.3) <= bisect(_outbreaks, 0.0, 1.0, 0.7)),
-    ]
-    raise SystemExit(report(_checks, "payload_core 底座自检"))

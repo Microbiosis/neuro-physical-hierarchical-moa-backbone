@@ -1,6 +1,6 @@
 # 算子清单与区分
 
-本包共 **33 个算子/内核模块**（外加 1 个五维审计文件与 `__init__.py`，合计 35 个 .py，32,507 行），包导出 234 个符号。
+本包共 **33 个算子/内核模块**（外加 1 个五维审计文件与 `__init__.py`，合计 35 个 .py，32,252 行），包导出 234 个符号。
 
 编排层 `unified_hybrid_moa_architecture.py` 已于 2026-11-10 删除，**所有算子之间零依赖**，可单文件拷出独立运行，也可自行组合。
 
@@ -48,20 +48,22 @@
 
 | 文件 | 行数 | 层 | 机制 |
 |---|---|---|---|
-| `payload_operator.py` | 368 | 核心 | `ViralHostOperator` + `Edge` dataclass |
-| `payload_core.py` | 192 | 共用底座 | 饱和、7 种图、二分阈值、Shannon、判据打印 |
-| `payload_host_operator.py` | 232 | 宿主 | 13 状态 / 22 边，9 条判据 |
-| `payload_ecology.py` | 235 | 生态 | 多株竞争 + 平台 + 桥，5 条判据 |
-| `payload_lineage.py` | 262 | 谱系 | 可突变基因组 + 选择，6 条判据 |
-| `payload_recombination.py` | 248 | 重组 | 位点交换，3 条判据 |
-| `payload_spatial.py` | 268 | 空间 | 拓扑 → 阈值，3 条判据 |
-| `payload_channels.py` | 140 | 投递链路 | 扇出/口径 → 临界成功率，4 条判据 |
-| `payload_survival.py` | 218 | 存活率 | 切块→检索→截断，4 条判据 |
 
-**这一族共用 `payload_core` 底座**，因此在仓库的平铺布局下用 importlib 动态导入同族模块
-（AST 里没有静态同级 import，兄弟依赖仍为 0），隔离测试按族拷贝。
+**这一族共用 `payload_core` 底座**，族内用顶层静态 import 互相引用（上游设计）。
+仓库的平铺布局下：`__init__.py` 把包目录放进 `sys.path` 让顶层 import 可解析；
+「兄弟依赖」检查不计族内互相引用；隔离测试整族拷贝。
 设计文档见 `docs/payload/`（README / DESIGN / EVIDENCE / LIMITS）。
 
+
+| `viral_operator.py` | 314 | 核心 | 载荷算子核心：宿主是模型实例、病原是能改写其输入/参数的载荷；`ViralHostOperator` + `Edge` |
+| `payload_core.py` | 149 | 共用底座 | 载荷算子共用底座：饱和、7 种图、二分阈值、Shannon、判据打印 |
+| `viral_host_operator.py` | 196 | 宿主 | 宿主层：13 状态 / 22 边，9 条判据（无工具必死、有工具放大、清空上下文后由权重复活） |
+| `viral_ecology.py` | 207 | 生态 | 生态层：多株竞争 + 平台 + 桥，5 条判据 |
+| `viral_lineage.py` | 234 | 谱系 | 谱系层：可突变基因组 + 选择，6 条判据 |
+| `viral_recombination.py` | 220 | 重组 | 重组层：位点交换，3 条判据 |
+| `viral_spatial.py` | 240 | 空间 | 空间层：拓扑 → 阈值，3 条判据 |
+| `viral_channels.py` | 112 | 投递链路 | 投递链路：扇出/口径 → 临界成功率，4 条判据 |
+| `payload_survival.py` | 190 | 存活率 | 载荷存活率：切块→检索→截断，4 条判据 |
 
 ## C   快权重 Delta 规则（1 个）
 

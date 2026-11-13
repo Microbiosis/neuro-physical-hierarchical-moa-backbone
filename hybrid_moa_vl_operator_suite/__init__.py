@@ -19,11 +19,20 @@ import importlib
 import inspect
 import os
 import pkgutil
+import sys
 from types import ModuleType
 from typing import Dict, List
 
 _MISSING = object()
 _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 上游的 payload 族用顶层静态 import（`import payload_core as core`）互相引用，
+# 这在「包目录在 sys.path 上」时成立。作为 `hybrid_moa_vl_operator_suite.xxx`
+# 被导入时顶层名不在 sys.path，会 ModuleNotFoundError —— 而自动发现的容错分支会
+# 把这个错误吞掉，导致这些模块静默没有加载。
+# 因此把包目录放进 sys.path：顶层 import 能解析，模块也能正常注册到包命名空间下。
+if _PKG_DIR not in sys.path:
+    sys.path.insert(0, _PKG_DIR)
 _LOADED_MODULES: Dict[str, ModuleType] = {}
 __all__: List[str] = []
 

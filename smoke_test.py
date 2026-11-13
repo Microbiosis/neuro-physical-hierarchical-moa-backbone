@@ -66,14 +66,14 @@ MODULES = [
     "spin_chirality_lattice4d",
     "nbsc_omega_operator",
     "payload_core",
-    "payload_operator",
-    "payload_host_operator",
-    "payload_ecology",
-    "payload_lineage",
-    "payload_recombination",
-    "payload_spatial",
-    "payload_channels",
     "payload_survival",
+    "viral_operator",
+    "viral_host_operator",
+    "viral_ecology",
+    "viral_lineage",
+    "viral_recombination",
+    "viral_spatial",
+    "viral_channels",
 ]
 # 全部算子模块（编排层已于 2026-11-10 删除，这里是全部 24 个）
 STANDALONE = list(MODULES)
@@ -165,9 +165,7 @@ def test_module_isolation():
     # 模块族（如 payload_* 共用 payload_core 底座）需整族一起拷贝，
     # 否则同族文件在空目录里找不到彼此。
     families = [
-        ("payload_core", "payload_operator", "payload_host_operator",
-         "payload_ecology", "payload_lineage", "payload_recombination",
-         "payload_spatial", "payload_channels", "payload_survival"),
+        ("payload_core", "payload_survival", "viral_operator", "viral_host_operator", "viral_ecology", "viral_lineage", "viral_recombination", "viral_spatial", "viral_channels"),
     ]
     for name in STANDALONE:
         with tempfile.TemporaryDirectory() as td:

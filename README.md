@@ -25,13 +25,13 @@ and the package `__init__.py` (134 lines); a clean-room smoke test covers 14 che
 └── hybrid_moa_vl_operator_suite/     算子包（Python package）
     ├── __init__.py                   动态初始化（零硬编码表）→ 234 个公开导出
     ├── README.md                     包内说明（原始版本文档）
-    ├── quantum_resource_phasing_operators.py   量子资源相位（32,507 行）
-    ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（32,507 行）
-    ├── moa_operators.py              系统级 MoA + 跨模态图文融合（32,507 行）
-    ├── sleep_subconscious_neuro_operators.py    睡眠/潜意识（32,507 行）
-    ├── operator_independence_verification.py    五维独立性审计（32,507 行）
-    ├── moa_triton_kernels.py         Triton 内核 + tile 模拟器（32,507 行）
-    ├── vacuum_zpe_fluctuation_operators.py      真空零点能涨落（32,507 行）
+    ├── quantum_resource_phasing_operators.py   量子资源相位（32,252 行）
+    ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（32,252 行）
+    ├── moa_operators.py              系统级 MoA + 跨模态图文融合（32,252 行）
+    ├── sleep_subconscious_neuro_operators.py    睡眠/潜意识（32,252 行）
+    ├── operator_independence_verification.py    五维独立性审计（32,252 行）
+    ├── moa_triton_kernels.py         Triton 内核 + tile 模拟器（32,252 行）
+    ├── vacuum_zpe_fluctuation_operators.py      真空零点能涨落（32,252 行）
     └── … 其余 33 个算子模块（另有 operator_independence_verification.py 已在上方列出）
 ```
 
@@ -59,7 +59,7 @@ together with four further independence dimensions).
 |---|---|---|
 | `cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,324 |
 | `quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门 → **Stage I.C** | 1,086 |
-| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献）；文件隔离覆盖 25 个模块，五维独立性分析覆盖 14 个领域算子 | 700 |
+| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献）；文件隔离覆盖 25 个模块，五维独立性分析覆盖 14 个领域算子 | 737 |
 | `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,039 |
 | `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,176 |
 | `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 962 |
@@ -82,15 +82,15 @@ together with four further independence dimensions).
 | `spin_chirality_operators.py` | 4 分量 Dirac 旋量（Weyl 表象）单粒子传播子：真 SU(2) 手性规范（左 U / 右 U†）/ Larmor 进动 / Dirac 质量项 / 非厄米吸收 / 轴矢流 j⁵ 与手性荷 Q5；P1–P21 物理自检（T4 最大残差 2.60e-08）| 1,837 |
 | `spin_chirality_lattice4d.py` | 3+1 维格点指标：FLSG 单瞬子背景的 Wilson–Dirac 指标（FFT–Schur 惯性法，8N⁴ 维稀疏算符而核心维与 N 无关）；需 scipy | 375 |
 | `nbsc_omega_operator.py` | 脉冲神经元 + 脊髓牵张反射 + 肌骨力学 + STDP（42 神经元 / 202 边 / 858 参数，独立模型） | 516 |
-| `payload_operator.py` | 载荷算子核心：宿主是模型实例、病原是能改写其输入/参数的载荷；`ViralHostOperator` + `Edge` | 368 |
-| `payload_core.py` | 载荷算子共用底座：饱和、7 种图、二分阈值、Shannon、判据打印 | 192 |
-| `payload_host_operator.py` | 宿主层：13 状态 / 22 边，9 条判据（无工具必死、有工具放大、清空上下文后由权重复活） | 232 |
-| `payload_ecology.py` | 生态层：多株竞争 + 平台 + 桥，5 条判据 | 235 |
-| `payload_lineage.py` | 谱系层：可突变基因组 + 选择，6 条判据 | 262 |
-| `payload_recombination.py` | 重组层：位点交换，3 条判据 | 248 |
-| `payload_spatial.py` | 空间层：拓扑 → 阈值，3 条判据 | 268 |
-| `payload_channels.py` | 投递链路：扇出/口径 → 临界成功率，4 条判据 | 140 |
-| `payload_survival.py` | 载荷存活率：切块→检索→截断，4 条判据 | 218 |
+| `viral_operator.py` | 载荷算子核心：宿主是模型实例、病原是能改写其输入/参数的载荷；`ViralHostOperator` + `Edge` | 314 |
+| `payload_core.py` | 载荷算子共用底座：饱和、7 种图、二分阈值、Shannon、判据打印 | 149 |
+| `viral_host_operator.py` | 宿主层：13 状态 / 22 边，9 条判据（无工具必死、有工具放大、清空上下文后由权重复活） | 196 |
+| `viral_ecology.py` | 生态层：多株竞争 + 平台 + 桥，5 条判据 | 207 |
+| `viral_lineage.py` | 谱系层：可突变基因组 + 选择，6 条判据 | 234 |
+| `viral_recombination.py` | 重组层：位点交换，3 条判据 | 220 |
+| `viral_spatial.py` | 空间层：拓扑 → 阈值，3 条判据 | 240 |
+| `viral_channels.py` | 投递链路：扇出/口径 → 临界成功率，4 条判据 | 112 |
+| `payload_survival.py` | 载荷存活率：切块→检索→截断，4 条判据 | 190 |
 
 ## What this edition contains
 
