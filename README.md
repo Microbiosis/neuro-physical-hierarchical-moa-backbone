@@ -88,11 +88,11 @@ together with four further independence dimensions).
 | `tulpa_neuro_operators/tulpa_neuro_operators.py` | 多子人格吸引子、精度加权自由能路由、Agency 比较器 | 879 |
 | `dissociative_trauma_neuro_operators/dissociative_trauma_neuro_operators.py` | Stage-I 前门控：杏仁核超唤醒、PAG 过载关断、ANP/EP 隔离 + 独立验证套件 | 736 |
 | `moa_triton_kernels/moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 468 |
-| `physical_wave_dynamics_operators/physical_wave_dynamics_operators.py` | Schwinger ZPE 波包 / 阻尼辛谐振 / 2D 反应扩散 / DBI 规范膜阻尼（6 类 10 个 Triton 内核） | 2,063 |
-| `high_order_pde_ode_megakernels/high_order_pde_ode_megakernels.py` | Störmer-Verlet 辛蛙跳 / Crank-Nicolson IMEX / RK2 中点 / DBI 规范膜 + Roofline 分析器 | 1,879 |
-| `adaptive_checkpointed_adjoint_megakernels/adaptive_checkpointed_adjoint_megakernels.py` | O(√L·D) 分段检查点伴随 + 局部相空间误差自适应步长 | 1,584 |
-| `deepspeed_megatron_physics_plugin/deepspeed_megatron_physics_plugin.py` | 4 个物理阶段的 DeepSpeed/Megatron 即插即用层 + ZeRO-3 分片引擎 + SP P2P | 1,891 |
-| `distributed_sequence_parallel_adjoint/distributed_sequence_parallel_adjoint.py` | Ring/Ulysses 序列并行、伴随交接、计算-通信重叠 | 854 |
+| `physical_wave_dynamics_operators/physical_wave_dynamics_operators.py` | Schwinger ZPE 波包 / 阻尼辛谐振 / 2D 反应扩散 / DBI 规范膜阻尼（6 类 10 个 Triton 内核） | 2,062 |
+| `high_order_pde_ode_megakernels/high_order_pde_ode_megakernels.py` | Störmer-Verlet 辛蛙跳 / Crank-Nicolson IMEX / RK2 中点 / DBI 规范膜 + Roofline 分析器 | 1,878 |
+| `adaptive_checkpointed_adjoint_megakernels/adaptive_checkpointed_adjoint_megakernels.py` | O(√L·D) 分段检查点伴随 + 局部相空间误差自适应步长 | 1,583 |
+| `deepspeed_megatron_physics_plugin/deepspeed_megatron_physics_plugin.py` | 4 个物理阶段的 DeepSpeed/Megatron 即插即用层 + ZeRO-3 分片引擎 + SP P2P | 1,890 |
+| `distributed_sequence_parallel_adjoint/distributed_sequence_parallel_adjoint.py` | Ring/Ulysses 序列并行、伴随交接、计算-通信重叠 | 853 |
 | `llm_hierarchy_operators/llm_hierarchy_operators.py` | 完整 LLM 计算层次六算子 × 六空间：Embedding / RMSNorm+RoPE / 因果 GQA 注意力 / SwiGLU / 残差流 / 词表头；修复双重 RoPE（仅在 Q/K 线性投射后施加并回传可学频率 `omega` 梯度）、零拷贝 5D GQA、预分配静态 KV-Cache $O(1)$ 解码、12 个 `@triton.jit` 融合核（含纯 RMSNorm、寄存器内成对旋转 norm+RoPE、FlashAttention 核内可学 `omega` & `offset`、SwiGLU）| 2,964 |
 | `spin_chirality/operator.py` | 4 分量 Dirac 旋量单粒子传播子：真 SU(2) 手性规范（`"protocol"` / `"generator"` + 二阶 Strang 分裂）、零轴光滑指数 `su2_exp`、时变序列传播 `forward_sequence`、实数等变包装 `RealSpinChiralityOperator` 与闭式 `fit_chiral_procrustes` / `fit_su2_procrustes`；P1–P45 物理自检（最大残差 ≤ 9.58e-07）| 3,810 |
 | `spin_chirality/lattice4d.py` | 3+1 维格点指标（P17）：FLSG 单瞬子背景的 Wilson–Dirac 指标（FFT–Schur 惯性法，8N⁴ 维稀疏算符而核心维与 N 无关）；需 scipy | 346 |
@@ -108,7 +108,7 @@ together with four further independence dimensions).
 | `spin_chirality/ks_photon_weight.py` | 电场矩阵元、谱权重、动量分解与求和规则（P38） | 901 |
 | `spin_chirality/ks_photon_mass.py` | 电场零模份额 $\kappa(n)$ 定位光子与 $m_\gamma$ 双外推（P39） | 776 |
 | `spin_chirality/ks_dispersion.py` | 光子色散截距拟合与三种 $x\to 0$ 外推闭合判据（P40） | 825 |
-| `spin_chirality/ks_omega.py` | `(mask, E)` 动量扇区光子色散 $\omega(k)$ 与二维有限尺寸联合外推（P42） | 547 |
+| `spin_chirality/ks_omega.py` | `(mask, E)` 动量扇区光子色散 $\omega(k)$ 与二维有限尺寸联合外推（P42） | 545 |
 | `nbsc_omega_operator/nbsc_omega_operator.py` | 脉冲神经元 + 脊髓牵张反射 + 肌骨力学 + STDP（42 神经元 / 202 边 / 858 参数，独立模型） | 516 |
 | `payload/viral_operator.py` | 载荷算子核心：宿主是模型实例、病原是能改写其输入/参数的载荷；`ViralHostOperator` + `Edge` | 328 |
 | `payload/payload_core.py` | 载荷算子共用底座：饱和、7 种图、二分阈值、Shannon、判据打印 | 166 |

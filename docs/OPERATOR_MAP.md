@@ -104,11 +104,11 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `physical_wave_dynamics_operators/physical_wave_dynamics_operators.py` | 2,063 | Schwinger 波包 / 辛谐振 / 反应扩散 / DBI 膜 |
-| `high_order_pde_ode_megakernels/high_order_pde_ode_megakernels.py` | 1,879 | Störmer-Verlet / CN-IMEX / RK2 + Roofline |
-| `adaptive_checkpointed_adjoint_megakernels/adaptive_checkpointed_adjoint_megakernels.py` | 1,584 | O(√L·D) 分段检查点伴随 |
-| `distributed_sequence_parallel_adjoint/distributed_sequence_parallel_adjoint.py` | 854 | Ring/Ulysses 序列并行伴随交接 |
-| `deepspeed_megatron_physics_plugin/deepspeed_megatron_physics_plugin.py` | 1,891 | ZeRO-3 分片 + SP P2P |
+| `physical_wave_dynamics_operators/physical_wave_dynamics_operators.py` | 2,062 | Schwinger 波包 / 辛谐振 / 反应扩散 / DBI 膜 |
+| `high_order_pde_ode_megakernels/high_order_pde_ode_megakernels.py` | 1,878 | Störmer-Verlet / CN-IMEX / RK2 + Roofline |
+| `adaptive_checkpointed_adjoint_megakernels/adaptive_checkpointed_adjoint_megakernels.py` | 1,583 | O(√L·D) 分段检查点伴随 |
+| `distributed_sequence_parallel_adjoint/distributed_sequence_parallel_adjoint.py` | 853 | Ring/Ulysses 序列并行伴随交接 |
+| `deepspeed_megatron_physics_plugin/deepspeed_megatron_physics_plugin.py` | 1,890 | ZeRO-3 分片 + SP P2P |
 
 ## 扩展模型（不参与独立性分析）（16 个）
 
@@ -131,7 +131,7 @@
 | `spin_chirality/ks_photon_weight.py` | 901 | 电场矩阵元、谱权重、动量分解与求和规则（P38） |
 | `spin_chirality/ks_photon_mass.py` | 776 | 电场零模份额 $\kappa(n)$ 定位光子与 $m_\gamma$ 双外推（P39） |
 | `spin_chirality/ks_dispersion.py` | 825 | 光子色散截距拟合与三种 $x\to 0$ 外推闭合判据（P40） |
-| `spin_chirality/ks_omega.py` | 547 | `(mask, E)` 动量扇区光子色散 $\omega(k)$ 与二维有限尺寸联合外推（P42） |
+| `spin_chirality/ks_omega.py` | 545 | `(mask, E)` 动量扇区光子色散 $\omega(k)$ 与二维有限尺寸联合外推（P42） |
 
 ---
 
