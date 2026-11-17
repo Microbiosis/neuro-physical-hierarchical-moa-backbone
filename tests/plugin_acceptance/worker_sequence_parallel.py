@@ -11,8 +11,10 @@ dist.init_process_group("nccl", rank=rank, world_size=world)
 torch.cuda.set_device(rank)
 
 _here = os.path.dirname(os.path.abspath(__file__))
-PKG = os.path.abspath(os.path.join(_here, "..", "..", "hybrid_moa_vl_operator_suite",
-                                   "deepspeed_megatron_physics_plugin.py"))
+PKG = os.path.abspath(os.path.join(
+    _here, "..", "..", "hybrid_moa_vl_operator_suite",
+    "deepspeed_megatron_physics_plugin", "deepspeed_megatron_physics_plugin.py",
+))
 spec = importlib.util.spec_from_file_location("plugin_mod", PKG)
 m = importlib.util.module_from_spec(spec)
 sys.modules["plugin_mod"] = m

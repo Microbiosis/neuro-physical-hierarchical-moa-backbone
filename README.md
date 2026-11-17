@@ -1,7 +1,7 @@
 # Neuro-Physical Hierarchical MoA Backbone
 
-**Hybrid MoA Vision-Language & Tri-ISA Self-Bootstrapping Operator Suite** — 25 standalone
-neural operator modules covering physical, neurobiological, computer-architecture,
+**Hybrid MoA Vision-Language & Tri-ISA Self-Bootstrapping Operator Suite** — 33 standalone
+neural operator and infrastructure modules covering physical, neurobiological, computer-architecture,
 numerical and distributed domains. Each module is independently importable and runnable;
 there is no orchestrator layer — the operators are the deliverable.
 
@@ -10,8 +10,8 @@ kernels, `torch.nn.Module` operators, and fused `autograd.Function` / `@triton.j
 implementations — and every layer is importable even without torch installed
 (fallback stubs raise a clear `ImportError` only when instantiated).
 
-Totals: **25 operator modules** plus the 5-dimensional independence audit (667 lines)
-and the package `__init__.py` (134 lines); a clean-room smoke test covers 14 checks.
+Totals: **46 operator/infrastructure modules** plus the 5-dimensional independence audit (819 lines),
+26 package `__init__.py` initializers (577 lines), and 1 `__main__.py` entry (20 lines) — 74 `.py` files, 41,300 lines in total (organized into 25 subpackages); a clean-room smoke test covers 14 checks.
 
 ---
 
@@ -19,78 +19,106 @@ and the package `__init__.py` (134 lines); a clean-room smoke test covers 14 che
 
 ```
 .
-├── LICENSE / NOTICE                  Apache-2.0 + provenance
-├── smoke_test.py                     clean-room verification (14/14)
-├── README.md                         本文件
-└── hybrid_moa_vl_operator_suite/     算子包（Python package）
-    ├── __init__.py                   动态初始化（零硬编码表）→ 234 个公开导出
-    ├── README.md                     包内说明（原始版本文档）
-    ├── quantum_resource_phasing_operators.py   量子资源相位（32,252 行）
-    ├── cpu_gpu_self_bootstrapping_operators.py  Tri-ISA CPU + SIMT GPU 自举（32,252 行）
-    ├── moa_operators.py              系统级 MoA + 跨模态图文融合（32,252 行）
-    ├── sleep_subconscious_neuro_operators.py    睡眠/潜意识（32,252 行）
-    ├── operator_independence_verification.py    五维独立性审计（32,252 行）
-    ├── moa_triton_kernels.py         Triton 内核 + tile 模拟器（32,252 行）
-    ├── vacuum_zpe_fluctuation_operators.py      真空零点能涨落（32,252 行）
-    └── … 其余 33 个算子模块（另有 operator_independence_verification.py 已在上方列出）
+├── LICENSE / NOTICE                          Apache-2.0 + provenance
+├── smoke_test.py                             clean-room verification (14/14)
+├── README.md                                 本文件
+├── docs/assets/                              两张架构演化蓝图 PNG
+└── hybrid_moa_vl_operator_suite/             算子包（Python package）
+    ├── __init__.py                           递归子包动态初始化（零硬编码表）→ 302 个公开导出
+    ├── README.md                             包内说明（子目录版本文档）
+    ├── audit/
+    │   └── operator_independence_verification.py   五维独立性审计（819 行）
+    ├── quantum_resource_phasing_operators/
+    │   └── quantum_resource_phasing_operators.py   量子资源相位（1,086 行）
+    ├── cpu_gpu_self_bootstrapping_operators/
+    │   └── cpu_gpu_self_bootstrapping_operators.py Tri-ISA CPU + SIMT GPU 自举（2,324 行）
+    ├── moa_operators/
+    │   └── moa_operators.py                        系统级 MoA + 跨模态图文融合（1,176 行）
+    ├── sleep_subconscious_neuro_operators/
+    │   └── sleep_subconscious_neuro_operators.py   睡眠/潜意识（1,039 行）
+    ├── moa_triton_kernels/
+    │   └── moa_triton_kernels.py                   Triton 内核 + tile 模拟器（468 行）
+    ├── vacuum_zpe_fluctuation_operators/
+    │   └── vacuum_zpe_fluctuation_operators.py     真空零点能涨落（960 行）
+    ├── spin_chirality/                             自旋手性拓扑算子族（P1–P45，15 个模块 + __init__.py + __main__.py）
+    ├── payload/                                    病毒宿主载荷算子族（9 个模块，基于 payload_core）
+    └── … 其余 16 个单算子子包（共 25 个子包：24 个算子子包 + audit/）
 ```
 
-Two import styles are supported:
+Two import styles are supported (strict subpackage layout, no legacy flat aliases):
 
 ```python
 # 1) 作为包导入（推荐）
-from hybrid_moa_vl_operator_suite import MoAOperatorConfig, NumpyMoAOperatorKernels
+from hybrid_moa_vl_operator_suite import MoAOperatorConfig, NumpyMoAOperatorKernels, ViralHostOperator
 from hybrid_moa_vl_operator_suite.moa_operators import CrossModalVisionLanguageFusionSubOp
+from hybrid_moa_vl_operator_suite.payload import ViralHostOperator
+from hybrid_moa_vl_operator_suite.payload.payload_core import Edge
+from hybrid_moa_vl_operator_suite.spin_chirality import SpinChiralityOperator, RealSpinChiralityOperator
 
-# 2) 平目录 / 直接跑单个模块的验证套件
-#    python3 hybrid_moa_vl_operator_suite/moa_operators.py
+# 2) 直接运行单个模块或子包的验证套件
+#    python3 hybrid_moa_vl_operator_suite/moa_operators/moa_operators.py
+#    python3 -m hybrid_moa_vl_operator_suite.spin_chirality
 ```
 
 Import mode is selected with `if __package__:` (not `try/except ImportError`), so a
 missing-symbol `ImportError` surfaces with the real module and symbol name instead of
-being masked by the fallback branch. The 25 standalone modules have zero sibling
-dependencies — each one imports on its own in an empty directory
-(`smoke_test.py` verifies this; `operator_independence_verification.py` audits it
+being masked by the fallback branch. The 46 operator/kernel modules have zero cross-family sibling
+dependencies — each single-operator subpackage imports on its own in an empty directory
+(the `payload/` 9-file family shares `payload_core`, and `spin_chirality/` groups its 15 modules)
+(`smoke_test.py` verifies this; `audit/operator_independence_verification.py` audits it
 together with four further independence dimensions).
 
 ## Modules
 
 | Module | Domain | Lines |
 |---|---|---|
-| `cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,324 |
-| `quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门 → **Stage I.C** | 1,086 |
-| `operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献）；文件隔离覆盖 25 个模块，五维独立性分析覆盖 14 个领域算子 | 737 |
-| `sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,039 |
-| `moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,176 |
-| `corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 962 |
-| `spinal_cord_pathway_operators.py` | 脊髓节段通路、Melzack-Wall 门控、Renshaw 递归 | 959 |
-| `vacuum_zpe_fluctuation_operators.py` | 真空零点能下限、Casimir 压力、Schwinger 对产生、虚玻色子传播子 | 960 |
-| `baryogenesis_parity_operators.py` | 宇称不守恒、CKM 相位干涉、正反物质湮灭余量 | 922 |
-| `supermembrane_spacetime_operators.py` | 11 维超膜 DBI、Randall-Sundrum 翘曲 KK 模态 | 888 |
-| `quantum_tidal_operators.py` | WKB 隧穿、Schwarzschild 四极潮汐张量 | 886 |
-| `neuro_nonlinear_operators.py` | 树突 NMDA 镁门控、FitzHugh-Nagumo、Kuramoto 相位耦合 | 817 |
-| `local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 + 自举编译接口 + **persistent SRAM 单次 launch 前反向** | 1,757 |
-| `tulpa_neuro_operators.py` | 多子人格吸引子、精度加权自由能路由、Agency 比较器 | 879 |
-| `dissociative_trauma_neuro_operators.py` | Stage-I 前门控：杏仁核超唤醒、PAG 过载关断、ANP/EP 隔离 + 独立验证套件 | 736 |
-| `moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 468 |
-| `physical_wave_dynamics_operators.py` | Schwinger ZPE 波包 / 阻尼辛谐振 / 2D 反应扩散 / DBI 规范膜阻尼（6 类 10 个 Triton 内核） | 2,062 |
-| `high_order_pde_ode_megakernels.py` | Störmer-Verlet 辛蛙跳 / Crank-Nicolson IMEX / RK2 中点 / DBI 规范膜 + Roofline 分析器 | 1,878 |
-| `adaptive_checkpointed_adjoint_megakernels.py` | O(√L·D) 分段检查点伴随 + 局部相空间误差自适应步长 | 1,583 |
-| `deepspeed_megatron_physics_plugin.py` | 4 个物理阶段的 DeepSpeed/Megatron 即插即用层 + ZeRO-3 分片引擎 + SP P2P | 1,890 |
-| `distributed_sequence_parallel_adjoint.py` | Ring/Ulysses 序列并行、伴随交接、计算-通信重叠 | 853 |
-| `llm_hierarchy_operators.py` | 完整 LLM 计算层次六算子 × 六空间：Embedding / RMSNorm+RoPE / 因果 GQA 注意力 / SwiGLU / 残差流 / 词表头；含 KV-Cache、generate、8 个 Triton 融合核（FlashAttention 含核内 RoPE / norm+RoPE / SwiGLU）| 2,657 |
-| `spin_chirality_operators.py` | 4 分量 Dirac 旋量（Weyl 表象）单粒子传播子：真 SU(2) 手性规范（左 U / 右 U†）/ Larmor 进动 / Dirac 质量项 / 非厄米吸收 / 轴矢流 j⁵ 与手性荷 Q5；P1–P21 物理自检（T4 最大残差 2.60e-08）| 1,837 |
-| `spin_chirality_lattice4d.py` | 3+1 维格点指标：FLSG 单瞬子背景的 Wilson–Dirac 指标（FFT–Schur 惯性法，8N⁴ 维稀疏算符而核心维与 N 无关）；需 scipy | 375 |
-| `nbsc_omega_operator.py` | 脉冲神经元 + 脊髓牵张反射 + 肌骨力学 + STDP（42 神经元 / 202 边 / 858 参数，独立模型） | 516 |
-| `viral_operator.py` | 载荷算子核心：宿主是模型实例、病原是能改写其输入/参数的载荷；`ViralHostOperator` + `Edge` | 314 |
-| `payload_core.py` | 载荷算子共用底座：饱和、7 种图、二分阈值、Shannon、判据打印 | 149 |
-| `viral_host_operator.py` | 宿主层：13 状态 / 22 边，9 条判据（无工具必死、有工具放大、清空上下文后由权重复活） | 196 |
-| `viral_ecology.py` | 生态层：多株竞争 + 平台 + 桥，5 条判据 | 207 |
-| `viral_lineage.py` | 谱系层：可突变基因组 + 选择，6 条判据 | 234 |
-| `viral_recombination.py` | 重组层：位点交换，3 条判据 | 220 |
-| `viral_spatial.py` | 空间层：拓扑 → 阈值，3 条判据 | 240 |
-| `viral_channels.py` | 投递链路：扇出/口径 → 临界成功率，4 条判据 | 112 |
-| `payload_survival.py` | 载荷存活率：切块→检索→截断，4 条判据 | 190 |
+| `cpu_gpu_self_bootstrapping_operators/cpu_gpu_self_bootstrapping_operators.py` | Tri-ISA CPU（x86-64 CISC/TSO/ROB · ARM64 RISC/LDAR-STLR/SVE · RISC-V RV64GC/RVV/RVWMO）+ SIMT GPU warp 调度 + 自举编译 | 2,324 |
+| `quantum_resource_phasing_operators/quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门 → **Stage I.C** | 1,086 |
+| `audit/operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献）；文件隔离覆盖 46 个模块，五维独立性分析覆盖 14 个领域算子 | 819 |
+| `sleep_subconscious_neuro_operators/sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,039 |
+| `moa_operators/moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,176 |
+| `corticospinal_chaotic_operators/corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 962 |
+| `spinal_cord_pathway_operators/spinal_cord_pathway_operators.py` | 脊髓节段通路、Melzack-Wall 门控、Renshaw 递归 | 959 |
+| `vacuum_zpe_fluctuation_operators/vacuum_zpe_fluctuation_operators.py` | 真空零点能下限、Casimir 压力、Schwinger 对产生、虚玻色子传播子 | 960 |
+| `baryogenesis_parity_operators/baryogenesis_parity_operators.py` | 宇称不守恒、CKM 相位干涉、正反物质湮灭余量 | 922 |
+| `supermembrane_spacetime_operators/supermembrane_spacetime_operators.py` | 11 维超膜 DBI、Randall-Sundrum 翘曲 KK 模态 | 888 |
+| `quantum_tidal_operators/quantum_tidal_operators.py` | WKB 隧穿、Schwarzschild 四极潮汐张量 | 886 |
+| `neuro_nonlinear_operators/neuro_nonlinear_operators.py` | 树突 NMDA 镁门控、FitzHugh-Nagumo、Kuramoto 相位耦合 | 817 |
+| `local_self_modifying_operators/local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 + 自举编译接口 + **persistent SRAM 单次 launch 前反向** | 1,757 |
+| `tulpa_neuro_operators/tulpa_neuro_operators.py` | 多子人格吸引子、精度加权自由能路由、Agency 比较器 | 879 |
+| `dissociative_trauma_neuro_operators/dissociative_trauma_neuro_operators.py` | Stage-I 前门控：杏仁核超唤醒、PAG 过载关断、ANP/EP 隔离 + 独立验证套件 | 736 |
+| `moa_triton_kernels/moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 468 |
+| `physical_wave_dynamics_operators/physical_wave_dynamics_operators.py` | Schwinger ZPE 波包 / 阻尼辛谐振 / 2D 反应扩散 / DBI 规范膜阻尼（6 类 10 个 Triton 内核） | 2,063 |
+| `high_order_pde_ode_megakernels/high_order_pde_ode_megakernels.py` | Störmer-Verlet 辛蛙跳 / Crank-Nicolson IMEX / RK2 中点 / DBI 规范膜 + Roofline 分析器 | 1,879 |
+| `adaptive_checkpointed_adjoint_megakernels/adaptive_checkpointed_adjoint_megakernels.py` | O(√L·D) 分段检查点伴随 + 局部相空间误差自适应步长 | 1,584 |
+| `deepspeed_megatron_physics_plugin/deepspeed_megatron_physics_plugin.py` | 4 个物理阶段的 DeepSpeed/Megatron 即插即用层 + ZeRO-3 分片引擎 + SP P2P | 1,891 |
+| `distributed_sequence_parallel_adjoint/distributed_sequence_parallel_adjoint.py` | Ring/Ulysses 序列并行、伴随交接、计算-通信重叠 | 854 |
+| `llm_hierarchy_operators/llm_hierarchy_operators.py` | 完整 LLM 计算层次六算子 × 六空间：Embedding / RMSNorm+RoPE / 因果 GQA 注意力 / SwiGLU / 残差流 / 词表头；修复双重 RoPE（仅在 Q/K 线性投射后施加并回传可学频率 `omega` 梯度）、零拷贝 5D GQA、预分配静态 KV-Cache $O(1)$ 解码、12 个 `@triton.jit` 融合核（含纯 RMSNorm、寄存器内成对旋转 norm+RoPE、FlashAttention 核内可学 `omega` & `offset`、SwiGLU）| 2,964 |
+| `spin_chirality/operator.py` | 4 分量 Dirac 旋量单粒子传播子：真 SU(2) 手性规范（`"protocol"` / `"generator"` + 二阶 Strang 分裂）、零轴光滑指数 `su2_exp`、时变序列传播 `forward_sequence`、实数等变包装 `RealSpinChiralityOperator` 与闭式 `fit_chiral_procrustes` / `fit_su2_procrustes`；P1–P45 物理自检（最大残差 ≤ 9.58e-07）| 3,810 |
+| `spin_chirality/lattice4d.py` | 3+1 维格点指标（P17）：FLSG 单瞬子背景的 Wilson–Dirac 指标（FFT–Schur 惯性法，8N⁴ 维稀疏算符而核心维与 N 无关）；需 scipy | 346 |
+| `spin_chirality/lattice1d.py` | 1+1 维格点 Dirac 色散/费米子倍增、Jackiw–Rebbi 畴壁零模、Peierls 规范场、海手征荷与 Landau–Zener 对产生（P22/P23/P25/P26/P28/P30） | 402 |
+| `spin_chirality/fock.py` | 二次量子化 Fock 空间（反对易 / Pauli / Slater，P27） | 138 |
+| `spin_chirality/schwinger.py` | 1+1D Schwinger 规范场反作用与等离子体频率（P31/P32） | 191 |
+| `spin_chirality/kogut_susskind.py` | 高斯定律与弦张力禁闭 $\sigma=g^2/2$（P33） | 80 |
+| `spin_chirality/ks_ed.py` | Kogut–Susskind 精确对角化与高斯定律投影（P34） | 137 |
+| `spin_chirality/ks_basis.py` | `(mask, E)` 平移协变基、纯置换平移算符 $T$ 与动量扇区 Fourier 分解（P41） | 346 |
+| `spin_chirality/ks_lanczos.py` | 矩阵自由 Lanczos 与质量隙连续极限（P35） | 449 |
+| `spin_chirality/ks_mps.py` | MPS/DMRG 两格点扫描、正交激发态与电场关联（P36） | 947 |
+| `spin_chirality/ks_photon.py` | 扭曲边界磁通 $\phi$ 下光子/弦态分辨与连通电场关联（P37） | 399 |
+| `spin_chirality/ks_photon_weight.py` | 电场矩阵元、谱权重、动量分解与求和规则（P38） | 901 |
+| `spin_chirality/ks_photon_mass.py` | 电场零模份额 $\kappa(n)$ 定位光子与 $m_\gamma$ 双外推（P39） | 776 |
+| `spin_chirality/ks_dispersion.py` | 光子色散截距拟合与三种 $x\to 0$ 外推闭合判据（P40） | 825 |
+| `spin_chirality/ks_omega.py` | `(mask, E)` 动量扇区光子色散 $\omega(k)$ 与二维有限尺寸联合外推（P42） | 547 |
+| `nbsc_omega_operator/nbsc_omega_operator.py` | 脉冲神经元 + 脊髓牵张反射 + 肌骨力学 + STDP（42 神经元 / 202 边 / 858 参数，独立模型） | 516 |
+| `payload/viral_operator.py` | 载荷算子核心：宿主是模型实例、病原是能改写其输入/参数的载荷；`ViralHostOperator` + `Edge` | 328 |
+| `payload/payload_core.py` | 载荷算子共用底座：饱和、7 种图、二分阈值、Shannon、判据打印 | 166 |
+| `payload/viral_host_operator.py` | 宿主层：13 状态 / 22 边，9 条判据（无工具必死、有工具放大、清空上下文后由权重复活） | 217 |
+| `payload/viral_ecology.py` | 生态层：多株竞争 + 平台 + 桥，5 条判据 | 221 |
+| `payload/viral_lineage.py` | 谱系层：可突变基因组 + 选择，6 条判据 | 244 |
+| `payload/viral_recombination.py` | 重组层：位点交换，3 条判据 | 233 |
+| `payload/viral_spatial.py` | 空间层：拓扑 → 阈值，3 条判据 | 251 |
+| `payload/viral_channels.py` | 投递链路：扇出/口径 → 临界成功率，4 条判据 | 116 |
+| `payload/payload_survival.py` | 载荷存活率：切块→检索→截断，4 条判据 | 204 |
 
 ## What this edition contains
 
@@ -238,35 +266,38 @@ out, cache = k.cross_modal_vl_bilinear_fusion_forward(
 
 `__init__.py` is no longer a hand-written export table. It now:
 
-1. discovers every submodule via `pkgutil.iter_modules` (ordering standalone
-   operator/kernel modules before the verification module);
-2. scans each submodule's `__all__` (each module now also generates its own
-   `__all__` from its own namespace) and resolves every symbol through `getattr`
-   with a fault-tolerant fallback into nested `*Kernels` / `*Simulator` /
-   `*Engine` classes;
+1. recursively discovers every subpackage (22 single-operator folders, `spin_chirality/`,
+   `payload/`, and `audit/`) and leaf module via `pkgutil.iter_modules` (ordering
+   standalone operator/kernel modules before `audit.*`, and exposing canonical subpackage
+   paths with **no** legacy flat module aliases);
+2. scans each leaf submodule's `__all__` (each module generates its own `__all__`) and
+   resolves every symbol through `getattr` with graceful handling when optional dependencies
+   (`torch` / `triton` / `scipy`) are absent and fallback into nested `*Kernels` /
+   `*Simulator` / `*Engine` classes;
 3. exposes a PEP 562 module-level `__getattr__` for on-demand cross-submodule lookup.
 
 Effect: renaming or moving a symbol in one operator module no longer breaks
 `import hybrid_moa_vl_operator_suite` — the three earlier import failures
 (v2: 20 missing class names; v8/v9: 2 missing module-level functions) become
-impossible by construction. Measured: **272 exports, package imports with no patch.**
+impossible by construction. Measured: **302 exports across 25 subpackages, package imports cleanly with no `sys.path` mutation.**
 
 ## Verification
 
 `smoke_test.py` is the clean-room test: fresh interpreter, CPU only, no Triton.
-It takes roughly 5 minutes, most of which is the 25 isolated-subprocess imports.
+It executes isolated-subprocess imports across all 46 operator modules plus numerical/torch
+and strict-subpackage-path checks.
 
 ```bash
 python smoke_test.py            # everything available
 python smoke_test.py --quick    # imports + numpy kernels only
 ```
 
-Result: **14/14 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
+Result: **14/14 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU; re-verified on numpy 2.5.1 + torch 2.14.1+cu132).
 
 | Check | Result |
 |---|---|
-| package imports (33 modules, 272 exports) | 33/33 |
-| module isolation: 33 standalone modules import alone in an empty dir | 33/33 |
+| package imports (46 modules, 302 exports) | 46/46 |
+| module isolation: 46 modules import in isolated directories | 46/46 |
 | branch RMSNorm fwd/bwd + finite-difference gradient | fwd 1.8e-15, grad 2.7e-09 |
 | cross-modal anchor co-attention (zero decay, both attentions normalised) | 0.0e+00, head/tail = 1.003 |
 | VL Hadamard-bilinear fusion: closed form, β=0 degeneration, gate saturation, backward gradient | fwd 8.9e-16, grad 7.7e-11 |
@@ -280,7 +311,7 @@ Result: **14/14 checks passed** (numpy 2.2.6 + torch 2.10.0 CPU).
 | mechanism: Stage 0/III/IV/V/VI vs Trauma decoupling + regime gates | 七组全部精确 0.0e+00（含新增 Stage IV Tri-ISA；创伤通路自身变化 20.9 作对照）；G_shut 0.756 → 7.12e-218；DPDR 压缩 40.2× |
 | Triton tile simulators vs analytical references | 2.2e-16 / 8.9e-16 |
 
-Upstream benchmarks shipped with the package (`python3 <module>.py` inside the package):
+Upstream benchmarks shipped with the package (`python3 <subpkg>/<module>.py` inside the package):
 
 - `FusedCrossModalVLBilinear`: diff **0.00e+00**, launches 12 → 1, **HBM traffic −80.5%**
 - `PersistentNormSparseTopKMegakernel` (top-2/4): diff 2.66e-15, launches 17 → 1, **HBM −90.7%**
@@ -291,7 +322,7 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 - Eager vs fused Triton megakernel path < 1e-14
 - Dissociative trauma gradcheck: 7 variables, relative L2 error 6.7e-11 – 7.5e-10;
   extreme +50.0 shock output bounded at 1.32 (< 5.0), PAG shutdown gate 7.1e-218
-- **Tri-ISA CPU-GPU self-bootstrapping** (`cpu_gpu_self_bootstrapping_operators.py`):
+- **Tri-ISA CPU-GPU self-bootstrapping** (`cpu_gpu_self_bootstrapping_operators/cpu_gpu_self_bootstrapping_operators.py`):
   I-cache gradcheck 8.7e-10; quad-backend equivalence (numpy / AST / native `.so` /
   Triton tile) **4.44e-16**; 4-sub-architecture subspace rank **4/4 full**;
   per-ISA gates x86-64 G=0.4427 / R_tso=0.7279, ARM64 P_sve=0.4980 / B_ldar=0.8827,
@@ -306,14 +337,14 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
 
   | Dimension | Result |
   |---|---|
-  | I · file & runtime isolation | **33/33 modules**: zero sibling imports, standalone run PASS |
+  | I · file & runtime isolation | **46/46 modules**: zero sibling imports, standalone run PASS |
   | II · forward-representation independence | joint subspace rank **14/14 full**; mean off-diag \|cos\| **0.0762**; max VIF **1.74** (< 2.0) |
   | III · input-gradient subspace independence | gradient matrix rank **14/14**; max gradient VIF < 5.0 |
   | IV · parameter cross-sensitivity Jacobian | off-diagonal cross-talk **exactly 0.00e+00**; all 14 active |
   | V · leave-one-operator-out (CV) | full-ensemble CV R² **0.9997**; every operator irreplaceable |
 
   五维独立性分析覆盖 **14 个领域算子**（新增 `14:QuantumResource_Phasing`）；文件隔离维度
-  已扩展到全部 33 个算子模块。Kaggle GPU kernel
+  覆盖全部 46 个算子/内核模块。Kaggle GPU kernel
   `redmingwei/hetero-moe-operator-independence-v8`，1.1 min 跑完，日志见
   `docs/operator_independence_audit.log`。
   Note: the script's header says "5-Fold CV" while its result line prints "4-Fold CV R²";
@@ -323,7 +354,7 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
   <https://www.kaggle.com/code/redmingwei/hetero-moe-operator-independence>
   (private kernel; it downloads this package at a pinned commit SHA and runs
   `operator_independence_verification.py`, archiving the log into the kernel output).
-  Locally it is also runnable — `python3 hybrid_moa_vl_operator_suite/operator_independence_verification.py`
+  Locally it is also runnable — `python3 hybrid_moa_vl_operator_suite/audit/operator_independence_verification.py`
   — but on a constrained sandbox CPU Dimension I alone (13 fresh interpreters) can take
   much longer than the 60 s it needs on a normal machine.
 
@@ -333,9 +364,12 @@ Upstream benchmarks shipped with the package (`python3 <module>.py` inside the p
   used inside [hetero-moe](https://github.com/Microbiosis/hetero-moe)
   (`research/aligner/v62_dimension_projection_space/`) are modified for that project
   and are maintained there.
-- Everything under `hybrid_moa_vl_operator_suite/` is byte-identical to the shipped
-  archive. The only files written for this repository are `smoke_test.py`, `README.md`,
-  `NOTICE`, `.gitignore` and the files under `docs/`.
+- `hybrid_moa_vl_operator_suite/` organizes all 47 implementation/audit modules + 26 `__init__.py` initializers + 1 `__main__.py` entry into 25 subpackages (22 single-operator folders, `payload/`, `spin_chirality/`, and `audit/`) with strict subpackage import paths (no legacy flat module aliases). The two architecture blueprint PNGs (`unified_6stage_11domain_architecture_blueprint.png` and `unified_7stage_12domain_architecture_blueprint.png`) reside under `docs/assets/`.
+- `docs/payload/` matches upstream `e:\病毒算子`, and the modules inside
+  `hybrid_moa_vl_operator_suite/` apply dual-mode (`if __package__:`) imports, explicit
+  collision-free `__all__`, and kwargs parameterization without mutating `sys.path` or
+  module globals. The files added for repository infrastructure are `smoke_test.py`,
+  `README.md`, `NOTICE`, `.gitignore` and the files under `docs/`.
 - `docs/VERIFICATION_MATRIX.md` is the per-operator verification matrix: what each
   operator's self-test covers, the measured numbers, and which figures are
   analytic models rather than measurements.

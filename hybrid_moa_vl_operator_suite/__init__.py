@@ -1,16 +1,19 @@
 """
 Interdisciplinary Hybrid MoA Operator Suite (`hybrid_moa_vl_operator_suite`).
 
-25 standalone operator modules; there is no orchestration layer - every module is
-independently importable and carries its own verification suite.
+Organizes each standalone operator into its own subpackage directory alongside grouped
+families (`payload/`, `spin_chirality/`) and the 5D verification suite (`audit/`);
+there is no orchestration layer - every module is independently importable and carries
+its own verification suite.
 
 Zero-hardcoded-table dynamic package initializer:
-1. Automatically discovers all `.py` submodules in the package directory via `pkgutil.iter_modules`
-   (ordering standalone operator/kernel modules before the verification module).
-2. Dynamically scans each submodule's `__all__` (or inspects objects whose `__module__ == mod.__name__`)
+1. Recursively discovers all leaf `.py` operator/kernel modules across subpackages via
+   `pkgutil.iter_modules` (ordering `moa_*` first and `audit.*` verification modules last).
+2. Dynamically scans each module's `__all__` (or inspects objects defined in `mod.__name__`)
    and resolves every symbol via `getattr` with fault-tolerant fallback to nested `*Kernels`,
    `*Simulator`, and `*Engine` classes.
-3. Provides a PEP 562 module-level `__getattr__` hook for on-demand cross-submodule lookup.
+3. Strictly switches to grouped subpackage paths (no legacy flat leaf module aliases).
+4. Provides a PEP 562 module-level `__getattr__` hook for on-demand cross-submodule lookup.
 """
 
 from __future__ import annotations
@@ -19,48 +22,53 @@ import importlib
 import inspect
 import os
 import pkgutil
-import sys
 from types import ModuleType
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 _MISSING = object()
 _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# 上游的 payload 族用顶层静态 import（`import payload_core as core`）互相引用，
-# 这在「包目录在 sys.path 上」时成立。作为 `hybrid_moa_vl_operator_suite.xxx`
-# 被导入时顶层名不在 sys.path，会 ModuleNotFoundError —— 而自动发现的容错分支会
-# 把这个错误吞掉，导致这些模块静默没有加载。
-# 因此把包目录放进 sys.path：顶层 import 能解析，模块也能正常注册到包命名空间下。
-if _PKG_DIR not in sys.path:
-    sys.path.insert(0, _PKG_DIR)
+os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")
+_OPTIONAL_EXTERNAL_DEPS = {"torch", "triton", "scipy"}
+_CLI_ONLY_SYMBOLS = {"main"}
 _LOADED_MODULES: Dict[str, ModuleType] = {}
 __all__: List[str] = []
 
 
-def _discover_submodule_names() -> List[str]:
-    """Automatically discover all submodule names in `_PKG_DIR` without a hardcoded file list."""
-    names = [
-        info.name
-        for info in pkgutil.iter_modules([_PKG_DIR])
-        if not info.ispkg and not info.name.startswith("_")
-    ]
+def _discover_leaf_modules() -> List[Tuple[str, str, str]]:
+    """Discover `(subpkg_name, leaf_name, rel_mod_path)` entries without a hardcoded list."""
+    entries: List[Tuple[str, str, str]] = []
+    for pkg_info in pkgutil.iter_modules([_PKG_DIR]):
+        if pkg_info.name.startswith("_"):
+            continue
+        if pkg_info.ispkg:
+            subpkg_dir = os.path.join(_PKG_DIR, pkg_info.name)
+            for mod_info in pkgutil.iter_modules([subpkg_dir]):
+                if not mod_info.ispkg and not mod_info.name.startswith("_"):
+                    entries.append(
+                        (pkg_info.name, mod_info.name, f"{pkg_info.name}.{mod_info.name}")
+                    )
+        else:
+            entries.append(("", pkg_info.name, pkg_info.name))
 
-    def _sort_key(name: str) -> tuple:
-        if name.startswith("moa_"):
-            return (0, name)
-        if name.endswith(("_operators", "_kernels")):
-            return (1, name)
-        if "architecture" in name:
-            return (2, name)
-        return (3, name)
+    def _sort_key(entry: Tuple[str, str, str]) -> tuple:
+        subpkg_name, leaf_name, rel_path = entry
+        if leaf_name.startswith("moa_"):
+            return (0, rel_path)
+        if leaf_name.endswith(("_operators", "_kernels")):
+            return (1, rel_path)
+        if "architecture" in leaf_name:
+            return (2, rel_path)
+        if subpkg_name == "audit":
+            return (4, rel_path)
+        return (3, rel_path)
 
-    return sorted(names, key=_sort_key)
+    return sorted(entries, key=_sort_key)
 
 
-def _load_submodule(mod_name: str) -> ModuleType:
+def _load_submodule(rel_mod_path: str) -> ModuleType:
     if __package__:
-        return importlib.import_module(f".{mod_name}", __package__)
-    return importlib.import_module(mod_name)
+        return importlib.import_module(f".{rel_mod_path}", __package__)
+    return importlib.import_module(rel_mod_path)
 
 
 def _discover_module_symbols(mod: ModuleType) -> List[str]:
@@ -91,18 +99,50 @@ def _resolve_symbol_from_module(mod: ModuleType, name: str) -> object:
     return _MISSING
 
 
+def _is_optional_dep_missing(exc: ModuleNotFoundError) -> bool:
+    top_name = (exc.name or "").split(".")[0]
+    return top_name in _OPTIONAL_EXTERNAL_DEPS
+
+
 def _bootstrap_package_namespace() -> None:
     g = globals()
-    for mod_name in _discover_submodule_names():
+    for subpkg_name, leaf_name, rel_mod_path in _discover_leaf_modules():
         try:
-            mod = _load_submodule(mod_name)
-        except Exception:
-            continue
-        _LOADED_MODULES[mod_name] = mod
-        g[mod_name] = mod
+            mod = _load_submodule(rel_mod_path)
+        except ModuleNotFoundError as exc:
+            if _is_optional_dep_missing(exc):
+                continue
+            raise
+        _LOADED_MODULES[rel_mod_path] = mod
+        if subpkg_name:
+            if subpkg_name not in g:
+                g[subpkg_name] = _load_submodule(subpkg_name)
+        else:
+            g[leaf_name] = mod
 
-        for sym in _discover_module_symbols(mod):
-            val = _resolve_symbol_from_module(mod, sym)
+        subpkg_mod = g.get(subpkg_name) if subpkg_name else None
+        if subpkg_name == "spin_chirality" and subpkg_mod is not None:
+            if leaf_name == "operator":
+                mod_symbols = [
+                    str(s)
+                    for s in getattr(subpkg_mod, "__all__", ())
+                    if isinstance(s, str)
+                    and not s.startswith("_")
+                    and not isinstance(getattr(subpkg_mod, s, None), ModuleType)
+                ]
+            elif leaf_name == "lattice4d":
+                mod_symbols = _discover_module_symbols(mod)
+            else:
+                mod_symbols = []
+            symbol_source = subpkg_mod if leaf_name == "operator" else mod
+        else:
+            mod_symbols = _discover_module_symbols(mod)
+            symbol_source = mod
+
+        for sym in mod_symbols:
+            if sym in _CLI_ONLY_SYMBOLS:
+                continue
+            val = _resolve_symbol_from_module(symbol_source, sym)
             if val is _MISSING:
                 continue
             if sym in g and sym in __all__:
@@ -127,6 +167,8 @@ _bootstrap_package_namespace()
 
 def __getattr__(name: str) -> object:
     """PEP 562 dynamic fallback lookup across all loaded submodules and their classes."""
+    if name.startswith("_") or name in _CLI_ONLY_SYMBOLS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     if name in globals():
         return globals()[name]
     for mod in _LOADED_MODULES.values():

@@ -23,17 +23,17 @@ g_e(q)  = tanh(γ·Σ_{s∈M_e} frac_s) 或常数
 
 | 层 | 状态 | 加的是什么 | 不加会怎样 |
 | --- | --- | --- | --- |
-| **宿主** `payload_host_operator.py` | 13 维 / 22 边 | 输入 → 上下文 → 载荷；记忆、权重、后门、工具、权限、护栏；感知 → 告警 → 清除 | 没有"侵入"的对象，只剩一条转化率 |
-| **生态** `payload_ecology.py` | `[平台, 宿主, 株, 5]` | 多株、多平台、桥、竞争共享容量 | 只有一种载荷，谈不上选择 |
-| **谱系** `payload_lineage.py` | 谱系池 48 槽 | 基因组可遗传、复制时出错、绝迹回收槽位；可见性有代价（`VISIBILITY_COST`），起点是一组成分 | 株是写死的，演化无从谈起 |
-| **重组** `payload_recombination.py` | 8 个位点 | 同位点交换，造出父母都不具备的组合 | 只能靠点突变，同时改两个性状几乎不可能 |
-| **空间** `payload_spatial.py` | 邻接矩阵 | 拓扑、投递口径、Allee 阈值 | 拓扑无差别（实测：全部饱和） |
+| **宿主** `viral_host_operator.py` | 13 维 / 22 边 | 输入 → 上下文 → 载荷；记忆、权重、后门、工具、权限、护栏；感知 → 告警 → 清除 | 没有"侵入"的对象，只剩一条转化率 |
+| **生态** `viral_ecology.py` | `[平台, 宿主, 株, 5]` | 多株、多平台、桥、竞争共享容量 | 只有一种载荷，谈不上选择 |
+| **谱系** `viral_lineage.py` | 谱系池 48 槽 | 基因组可遗传、复制时出错、绝迹回收槽位；可见性有代价（`VISIBILITY_COST`），起点是一组成分 | 株是写死的，演化无从谈起 |
+| **重组** `viral_recombination.py` | 8 个位点 | 同位点交换，造出父母都不具备的组合 | 只能靠点突变，同时改两个性状几乎不可能 |
+| **空间** `viral_spatial.py` | 邻接矩阵 | 拓扑、投递口径、Allee 阈值 | 拓扑无差别（实测：全部饱和） |
 
 再加三段投递链路，它们不是"层"，是**载荷从发送方到生效之间丢东西的地方**：
 
 | 段 | 加的是什么 | 结论 |
 | --- | --- | --- |
-| 通道 `payload_channels.py` | 扇出、份额/全量口径 | 同扇出下份额比全量难起 5.7 倍 |
+| 通道 `viral_channels.py` | 扇出、份额/全量口径 | 同扇出下份额比全量难起 5.7 倍 |
 | 存活 `payload_survival.py` | 切块、检索、截断 | 完整存活 8%–35%（主题竞争下），预算与切块都影响 |
 
 ## 3. 为什么"宿主的宿主"是模型
@@ -67,12 +67,12 @@ g_e(q)  = tanh(γ·Σ_{s∈M_e} frac_s) 或常数
 
 ```
 payload_core.py            共用底座：饱和、图（7 种）、二分阈值、Shannon、判据打印
-payload_host_operator.py     宿主：13 状态 / 22 边，多宿主 [N,13]
-payload_ecology.py           多株 + 多平台 + 桥
-payload_lineage.py           谱系池：基因组、突变、选择
-payload_recombination.py     位点交换
-payload_spatial.py           拓扑 → 临界传播强度
-payload_channels.py          投递语义 → 临界成功率
+viral_host_operator.py     宿主：13 状态 / 22 边，多宿主 [N,13]
+viral_ecology.py           多株 + 多平台 + 桥
+viral_lineage.py           谱系池：基因组、突变、选择
+viral_recombination.py     位点交换
+viral_spatial.py           拓扑 → 临界传播强度
+viral_channels.py          投递语义 → 临界成功率
 payload_survival.py        切块/检索/截断的存活率
 ```
 

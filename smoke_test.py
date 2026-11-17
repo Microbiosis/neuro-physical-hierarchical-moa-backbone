@@ -6,8 +6,8 @@ automatically when torch is missing. No GPU and no Triton install required.
 
 Checks, in order:
 
-  1. the package imports and all 24 operator modules load under their
-     canonical names
+  1. the package imports cleanly without sys.path side effects and all 46 operator
+     modules load under their canonical names
   2. numpy analytical kernels
        - branch RMSNorm forward/backward (+ finite-difference gradient check)
        - cross-modal anchor co-attention (bidirectional, zero distance decay)
@@ -39,44 +39,59 @@ import traceback
 
 import numpy as np
 
+os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")
+
 PKG = "hybrid_moa_vl_operator_suite"
-MODULES = [
-    "moa_operators",
-    "moa_triton_kernels",
-    "quantum_tidal_operators",
-    "neuro_nonlinear_operators",
-    "local_self_modifying_operators",
-    "supermembrane_spacetime_operators",
-    "spinal_cord_pathway_operators",
-    "tulpa_neuro_operators",
-    "dissociative_trauma_neuro_operators",
-    "corticospinal_chaotic_operators",
-    "baryogenesis_parity_operators",
-    "sleep_subconscious_neuro_operators",
-    "vacuum_zpe_fluctuation_operators",
-    "cpu_gpu_self_bootstrapping_operators",
-    "quantum_resource_phasing_operators",
-    "physical_wave_dynamics_operators",
-    "high_order_pde_ode_megakernels",
-    "adaptive_checkpointed_adjoint_megakernels",
-    "distributed_sequence_parallel_adjoint",
-    "deepspeed_megatron_physics_plugin",
-    "llm_hierarchy_operators",
-    "spin_chirality_operators",
-    "spin_chirality_lattice4d",
-    "nbsc_omega_operator",
-    "payload_core",
-    "payload_survival",
-    "viral_operator",
-    "viral_host_operator",
-    "viral_ecology",
-    "viral_lineage",
-    "viral_recombination",
-    "viral_spatial",
-    "viral_channels",
+SUBMODULES = [
+    "moa_operators.moa_operators",
+    "moa_triton_kernels.moa_triton_kernels",
+    "quantum_tidal_operators.quantum_tidal_operators",
+    "neuro_nonlinear_operators.neuro_nonlinear_operators",
+    "local_self_modifying_operators.local_self_modifying_operators",
+    "supermembrane_spacetime_operators.supermembrane_spacetime_operators",
+    "spinal_cord_pathway_operators.spinal_cord_pathway_operators",
+    "tulpa_neuro_operators.tulpa_neuro_operators",
+    "dissociative_trauma_neuro_operators.dissociative_trauma_neuro_operators",
+    "corticospinal_chaotic_operators.corticospinal_chaotic_operators",
+    "baryogenesis_parity_operators.baryogenesis_parity_operators",
+    "sleep_subconscious_neuro_operators.sleep_subconscious_neuro_operators",
+    "vacuum_zpe_fluctuation_operators.vacuum_zpe_fluctuation_operators",
+    "cpu_gpu_self_bootstrapping_operators.cpu_gpu_self_bootstrapping_operators",
+    "quantum_resource_phasing_operators.quantum_resource_phasing_operators",
+    "physical_wave_dynamics_operators.physical_wave_dynamics_operators",
+    "high_order_pde_ode_megakernels.high_order_pde_ode_megakernels",
+    "adaptive_checkpointed_adjoint_megakernels.adaptive_checkpointed_adjoint_megakernels",
+    "distributed_sequence_parallel_adjoint.distributed_sequence_parallel_adjoint",
+    "deepspeed_megatron_physics_plugin.deepspeed_megatron_physics_plugin",
+    "llm_hierarchy_operators.llm_hierarchy_operators",
+    "spin_chirality.operator",
+    "spin_chirality.lattice4d",
+    "spin_chirality.lattice1d",
+    "spin_chirality.fock",
+    "spin_chirality.schwinger",
+    "spin_chirality.kogut_susskind",
+    "spin_chirality.ks_ed",
+    "spin_chirality.ks_basis",
+    "spin_chirality.ks_lanczos",
+    "spin_chirality.ks_mps",
+    "spin_chirality.ks_photon",
+    "spin_chirality.ks_photon_weight",
+    "spin_chirality.ks_photon_mass",
+    "spin_chirality.ks_dispersion",
+    "spin_chirality.ks_omega",
+    "nbsc_omega_operator.nbsc_omega_operator",
+    "payload.payload_core",
+    "payload.payload_survival",
+    "payload.viral_operator",
+    "payload.viral_host_operator",
+    "payload.viral_ecology",
+    "payload.viral_lineage",
+    "payload.viral_recombination",
+    "payload.viral_spatial",
+    "payload.viral_channels",
 ]
-# 全部算子模块（编排层已于 2026-11-10 删除，这里是全部 24 个）
-STANDALONE = list(MODULES)
+# 全部算子模块（编排层已于 2026-11-10 删除，按子包目录组织的全部 46 个算子/内核模块）
+STANDALONE = list(SUBMODULES)
 
 RESULTS: list[tuple[str, bool, str]] = []
 
@@ -85,10 +100,10 @@ def check(name, fn):
     try:
         detail = fn()
         RESULTS.append((name, True, detail or "ok"))
-        print(f"  PASS  {name}" + (f"  ({detail})" if detail else ""))
+        print(f"  PASS  {name}" + (f"  ({detail})" if detail else ""), flush=True)
     except Exception as exc:  # noqa: BLE001
         RESULTS.append((name, False, f"{type(exc).__name__}: {exc}"))
-        print(f"  FAIL  {name}  {type(exc).__name__}: {exc}")
+        print(f"  FAIL  {name}  {type(exc).__name__}: {exc}", flush=True)
         traceback.print_exc(limit=2)
 
 
@@ -103,7 +118,7 @@ def has_torch() -> bool:
 
 def kernels():
     """NumpyMoAOperatorKernels from the package."""
-    return importlib.import_module(f"{PKG}.moa_operators").NumpyMoAOperatorKernels
+    return importlib.import_module(f"{PKG}.moa_operators.moa_operators").NumpyMoAOperatorKernels
 
 
 # --------------------------------------------------------------------------- #
@@ -112,75 +127,178 @@ def kernels():
 def test_imports():
     pkg = importlib.import_module(PKG)
     assert pkg.__all__, "package exports nothing"
+    pkg_dir = os.path.abspath(os.path.dirname(pkg.__file__))
+    norm_sys_path = [os.path.abspath(p) for p in sys.path if p]
+    assert pkg_dir not in norm_sys_path, f"package polluted sys.path with {pkg_dir}"
+    assert hasattr(pkg, "ViralHostOperator") and hasattr(pkg, "Edge"), (
+        "ViralHostOperator/Edge not exported on package"
+    )
+    for sc_sym in (
+        "SpinChiralityConfig",
+        "SpinChiralityOperator",
+        "RealSpinChiralityOperator",
+        "fit_chiral_procrustes",
+        "fit_su2_procrustes",
+        "su2_exp",
+        "propagator_sequence_numpy",
+        "real_spin_chirality_numpy_forward",
+        "LLMHierarchyConfig",
+        "triton_rmsnorm_forward",
+    ):
+        assert hasattr(pkg, sc_sym), f"{sc_sym} not exported on package"
+    assert "main" not in pkg.__all__, "CLI entry 'main' leaked into package __all__"
     bad = []
-    for name in MODULES:
+    for name in SUBMODULES:
         try:
             importlib.import_module(f"{PKG}.{name}")
         except Exception as exc:  # noqa: BLE001
             bad.append(f"{name}: {exc}")
+    for subpkg in ("payload", "spin_chirality", "audit"):
+        try:
+            importlib.import_module(f"{PKG}.{subpkg}")
+        except Exception as exc:  # noqa: BLE001
+            bad.append(f"{subpkg}: {exc}")
+    importlib.import_module(f"{PKG}.audit.operator_independence_verification")
+
+    for legacy in (
+        "viral_operator",
+        "payload_core",
+        "spin_chirality_operators",
+        "spin_chirality_lattice4d",
+        "operator_independence_verification",
+    ):
+        assert not hasattr(pkg, legacy), f"legacy flat attribute leaked on package: {legacy}"
+        try:
+            importlib.import_module(f"{PKG}.{legacy}")
+        except ModuleNotFoundError:
+            pass
+        else:
+            bad.append(f"legacy flat path unexpectedly still importable: {PKG}.{legacy}")
     if bad:
         raise RuntimeError("; ".join(bad))
-    return f"{len(MODULES)}/{len(MODULES)} modules, {len(pkg.__all__)} exports"
+    return f"{len(SUBMODULES)}/{len(SUBMODULES)} modules, {len(pkg.__all__)} exports"
 
 
 def test_no_silent_skips():
-    """检测「可选依赖缺失被静默跳过」：包形态下逐项跑关键自检入口，
+    """检测「可选依赖或子模块缺失被静默跳过」：包形态下逐项跑关键自检入口，
     任何返回 skipped_* 的项都算失败。
 
-    背景：spin_chirality 的 P17（3+1D 格点指标）在包形态下曾因
-    `from . import lattice4d` 用了错误的平铺名而静默返回 skipped_no_lattice，
-    而 ISOLATED PASS（拷到临时目录单独跑）却能通过 —— 只查 import 存在
-    是抓不到这类问题的。"""
-    # ① 格点模块必须能从包内导入 —— 这正是当初 P17 静默跳过的根因
-    #    （`from . import lattice4d` 用了错误的平铺名）。
-    importlib.import_module(f"{PKG}.spin_chirality_lattice4d")
+    背景：spin_chirality 的 P17（3+1D 格点指标）与 P21/P22/P27/P34/P41/P43–P45
+    在包形态下若子模块解析错误会静默返回 skipped_no_*。"""
+    importlib.import_module(f"{PKG}.spin_chirality.lattice4d")
 
-    spin = importlib.import_module(f"{PKG}.spin_chirality_operators")
+    spin = importlib.import_module(f"{PKG}.spin_chirality.operator")
     skips = []
-    for name in ("_check_index_4d",):
+    for name in (
+        "_check_index_4d",
+        "_check_self_contained",
+        "_check_lattice_1d",
+        "_check_fock_space",
+        "_check_ks_ed",
+        "_check_ks_basis",
+        "_check_axis_smoothness",
+        "_check_strang_time_dependent",
+        "_check_real_wrapper_procrustes",
+    ):
         fn = getattr(spin, name, None)
         if fn is None:
+            skips.append(f"{name}: missing")
             continue
         r = fn()
         if isinstance(r, dict):
             for k, v in r.items():
                 # skipped_no_scipy 是合法的：scipy 是可选依赖，缺它就该跳过。
-                # skipped_no_lattice 才是 bug：模块找不到。
+                # skipped_no_lattice / skipped_no_* 才是 bug：模块找不到。
                 if k.startswith("skipped") and k != "skipped_no_scipy":
                     skips.append(f"{name}: {k}={v}")
+                elif not k.endswith("_magnitude") and not k.startswith("skipped"):
+                    if abs(float(v)) >= 1e-5:
+                        skips.append(f"{name}: {k}={v} >= 1e-5")
     if skips:
-        raise RuntimeError("在包形态下被静默跳过: " + "; ".join(skips))
-    return "spin P17 在包形态下真实执行（未静默跳过）"
+        raise RuntimeError("在包形态下被静默跳过或残差超标: " + "; ".join(skips))
+    return "spin P17/P21/P22/P27/P34/P41/P43–P45 在包形态下真实执行（未静默跳过）"
 
 
 def test_module_isolation():
-    """25 个独立算子模块各自单独放进空目录也能 import（零兄弟依赖）。
+    """46 个算子/内核模块各自单独（或整族）放进空目录也能 import（零跨族依赖）。
 
-    payload_* 是一族（共用 payload_core 底座），隔离时整族拷贝。
+    payload（9 件套）与 spin_chirality（15 个算子/格点/KS 子模块）各自是一族，隔离时整族拷贝。
     """
     import shutil
 
-    pkg_dir = os.path.dirname(importlib.import_module(f"{PKG}.moa_operators").__file__)
+    pkg_dir = os.path.dirname(importlib.import_module(PKG).__file__)
     bad = []
-    # 模块族（如 payload_* 共用 payload_core 底座）需整族一起拷贝，
-    # 否则同族文件在空目录里找不到彼此。
     families = [
-        ("payload_core", "payload_survival", "viral_operator", "viral_host_operator", "viral_ecology", "viral_lineage", "viral_recombination", "viral_spatial", "viral_channels"),
+        (
+            "spin_chirality.operator",
+            "spin_chirality.lattice4d",
+            "spin_chirality.lattice1d",
+            "spin_chirality.fock",
+            "spin_chirality.schwinger",
+            "spin_chirality.kogut_susskind",
+            "spin_chirality.ks_ed",
+            "spin_chirality.ks_basis",
+            "spin_chirality.ks_lanczos",
+            "spin_chirality.ks_mps",
+            "spin_chirality.ks_photon",
+            "spin_chirality.ks_photon_weight",
+            "spin_chirality.ks_photon_mass",
+            "spin_chirality.ks_dispersion",
+            "spin_chirality.ks_omega",
+        ),
+        (
+            "payload.payload_core",
+            "payload.payload_survival",
+            "payload.viral_operator",
+            "payload.viral_host_operator",
+            "payload.viral_ecology",
+            "payload.viral_lineage",
+            "payload.viral_recombination",
+            "payload.viral_spatial",
+            "payload.viral_channels",
+        ),
     ]
-    for name in STANDALONE:
+    tested_families: set[tuple[str, ...]] = set()
+    for mod_path in STANDALONE:
+        subpkg, stem = mod_path.split(".", 1)
+        fam = next((f for f in families if mod_path in f), (mod_path,))
+        if subpkg == "spin_chirality":
+            if fam in tested_families:
+                continue
+            tested_families.add(fam)
+            with tempfile.TemporaryDirectory() as td:
+                sc_dst = os.path.join(td, "spin_chirality")
+                os.makedirs(sc_dst, exist_ok=True)
+                sc_src_dir = os.path.join(pkg_dir, "spin_chirality")
+                for extra in ("__init__.py", "__main__.py", "py.typed"):
+                    p_extra = os.path.join(sc_src_dir, extra)
+                    if os.path.exists(p_extra):
+                        shutil.copy(p_extra, sc_dst)
+                for m in fam:
+                    src = os.path.join(pkg_dir, *m.split(".")) + ".py"
+                    if os.path.exists(src):
+                        shutil.copy(src, sc_dst)
+                imp_stmt = "import " + ", ".join(fam)
+                r = subprocess.run(
+                    [sys.executable, "-c", imp_stmt],
+                    cwd=td, capture_output=True, text=True, timeout=180,
+                )
+                if r.returncode != 0:
+                    tail = r.stderr.strip().splitlines()[-1] if r.stderr else "fail"
+                    bad.append(f"spin_chirality: {tail}")
+            continue
         with tempfile.TemporaryDirectory() as td:
-            fam = next((f for f in families if name in f), (name,))
             for m in fam:
-                src = os.path.join(pkg_dir, f"{m}.py")
+                src = os.path.join(pkg_dir, *m.split(".")) + ".py"
                 if os.path.exists(src):
                     shutil.copy(src, td)
             r = subprocess.run(
-                [sys.executable, "-c", f"import {name}"],
+                [sys.executable, "-c", f"import {stem}"],
                 cwd=td, capture_output=True, text=True, timeout=180,
             )
             if r.returncode != 0:
                 tail = r.stderr.strip().splitlines()[-1] if r.stderr else "fail"
-                bad.append(f"{name}: {tail}")
+                bad.append(f"{mod_path}: {tail}")
     if bad:
         raise RuntimeError("; ".join(bad))
     return f"{len(STANDALONE)}/{len(STANDALONE)} 模块可独立 import"
@@ -358,7 +476,7 @@ def test_numpy_router():
 def test_torch_vl_fusion():
     import torch
 
-    mo = importlib.import_module(f"{PKG}.moa_operators")
+    mo = importlib.import_module(f"{PKG}.moa_operators.moa_operators")
     torch.manual_seed(0)
     op = mo.CrossModalVisionLanguageFusionSubOp(d_model=64, num_anchors=8)
     x = torch.randn(2, 12, 64, requires_grad=True)
@@ -375,7 +493,7 @@ def test_torch_vl_fusion():
 def test_torch_moa_stack():
     import torch
 
-    mo = importlib.import_module(f"{PKG}.moa_operators")
+    mo = importlib.import_module(f"{PKG}.moa_operators.moa_operators")
     torch.manual_seed(1)
     cfg = mo.MoAOperatorConfig(d_model=64, n_heads=4, num_proposers=4,
                                top_k_proposers=2, d_ffn=128, num_cross_modal_anchors=8)
@@ -406,10 +524,10 @@ def test_new_domain_ops():
     """v6/v7 新增的领域算子：睡眠/潜意识、真空零点能、Tri-ISA CPU-GPU 自举。"""
     import torch
 
-    sl = importlib.import_module(f"{PKG}.sleep_subconscious_neuro_operators")
-    vz = importlib.import_module(f"{PKG}.vacuum_zpe_fluctuation_operators")
-    cg = importlib.import_module(f"{PKG}.cpu_gpu_self_bootstrapping_operators")
-    qz = importlib.import_module(f"{PKG}.quantum_resource_phasing_operators")
+    sl = importlib.import_module(f"{PKG}.sleep_subconscious_neuro_operators.sleep_subconscious_neuro_operators")
+    vz = importlib.import_module(f"{PKG}.vacuum_zpe_fluctuation_operators.vacuum_zpe_fluctuation_operators")
+    cg = importlib.import_module(f"{PKG}.cpu_gpu_self_bootstrapping_operators.cpu_gpu_self_bootstrapping_operators")
+    qz = importlib.import_module(f"{PKG}.quantum_resource_phasing_operators.quantum_resource_phasing_operators")
     torch.manual_seed(6)
     x = torch.randn(2, 10, 64)
     specs = [
@@ -439,7 +557,7 @@ def test_upstream_dissociative_suite():
     import contextlib
     import io
 
-    dt = importlib.import_module(f"{PKG}.dissociative_trauma_neuro_operators")
+    dt = importlib.import_module(f"{PKG}.dissociative_trauma_neuro_operators.dissociative_trauma_neuro_operators")
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         dt.run_dissociative_trauma_verification_suite()
@@ -454,8 +572,8 @@ def test_upstream_dissociative_suite():
 def test_domain_ops():
     import torch
 
-    qt = importlib.import_module(f"{PKG}.quantum_tidal_operators")
-    nn_mod = importlib.import_module(f"{PKG}.neuro_nonlinear_operators")
+    qt = importlib.import_module(f"{PKG}.quantum_tidal_operators.quantum_tidal_operators")
+    nn_mod = importlib.import_module(f"{PKG}.neuro_nonlinear_operators.neuro_nonlinear_operators")
     torch.manual_seed(4)
     x = torch.randn(2, 10, 64)
     for name, op in [
@@ -473,7 +591,7 @@ def test_domain_ops():
 # 4. triton tile simulators
 # --------------------------------------------------------------------------- #
 def test_triton_simulators():
-    tk = importlib.import_module(f"{PKG}.moa_triton_kernels")
+    tk = importlib.import_module(f"{PKG}.moa_triton_kernels.moa_triton_kernels")
     k = kernels()
     sim = tk.TritonTileSimulator()
     rng = np.random.default_rng(7)
@@ -528,9 +646,9 @@ def main() -> int:
           + (", torch available" if torch_ok else ", torch MISSING (torch checks skipped)"))
     print("-" * 74)
 
-    check("package imports (25 modules + package exports)", test_imports)
+    check(f"package imports ({len(SUBMODULES)} modules + package exports)", test_imports)
     check("no silent skips in optional-dependency paths", test_no_silent_skips)
-    check("module isolation: 25 个独立模块单独可 import", test_module_isolation)
+    check(f"module isolation: {len(SUBMODULES)} 个独立模块单独可 import", test_module_isolation)
     check("numpy branch RMSNorm fwd/bwd + FD gradient", test_numpy_rmsnorm)
     check("numpy cross-modal anchor co-attention (zero decay)", test_numpy_cross_modal_anchor_co_attention)
     check("numpy VL Hadamard-bilinear fusion + gradient", test_numpy_vl_bilinear_fusion)

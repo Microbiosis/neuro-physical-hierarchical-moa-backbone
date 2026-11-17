@@ -24,7 +24,7 @@ import torch
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.abspath(os.path.join(_HERE, "..", "..")))
 
-from hybrid_moa_vl_operator_suite.nbsc_omega_operator import (  # noqa: E402
+from hybrid_moa_vl_operator_suite.nbsc_omega_operator.nbsc_omega_operator import (  # noqa: E402
     NBSCOperator, NBSCOutput, NBSCState)
 
 

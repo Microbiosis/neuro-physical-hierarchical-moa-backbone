@@ -1,7 +1,7 @@
-# 验证矩阵（2026-11-12）
+# 验证矩阵（2026-11-16）
 
-本仓库 **33 个算子/内核模块**（外加 1 个五维审计脚本与 `__init__.py`，合计 27 个 `.py`，32,252 行，
-包导出 234 个符号）。每个算子都自带 `__main__` 自检入口与显式 `__all__`，可单文件拷出独立运行。
+本仓库 **46 个算子/内核模块**（外加 1 个五维审计脚本、26 个 `__init__.py` 与 1 个 `__main__.py`，分布于 25 个子包，合计 74 个 `.py`，41,300 行，
+包导出 302 个符号）。每个算子都自带自检入口与显式导出，按子目录隔离组织，可单模块或整族拷出独立运行（`spin_chirality/` 15 模块与 `payload/` 9 件套各自按族拷贝）。
 
 本表记录**各算子的自检覆盖与实测数值**，以及**哪些数字是实测、哪些是解析模型**。
 
@@ -13,8 +13,8 @@
 |---|---|---|---|
 | `local_self_modifying_operators` | 12 项 gradcheck + 五维 | 有理 Hebbian + Delta-Oja 快权重 + SRAM 单 launch | gradcheck 1e-10~1e-09；`\|Y_seq−Y_sram\| = 2.78e-16`；launches 1024→1（HBM 省 93.4%） |
 | `llm_hierarchy_operators` | 三引擎对拍 + Gradcheck + 训练冒烟 + 五维 | LLM 六算子 × 六空间 | 前向 ≤6.66e-16；整模型 1.22e-15；Gradcheck 参数 6.87e-09；40 步 AdamW loss 4.8293→0.0050 |
-| `spin_chirality_operators` | **P1–P21 物理自检** | Clifford / SU(2) / Larmor / Ward / 幺正 / 反常 / 微观 / ZBW | T4 最大残差 **2.60e-08**（P14 手性守恒）；P12 Triton 三重对齐 2.84e-14 |
-| `spin_chirality_lattice4d` | 3+1D 格点指标 | FLSG 单瞬子 Wilson–Dirac 指标 | index = **−1.0**（反瞬子 +1） |
+| `spin_chirality`（15 模块族） | **P1–P45 物理自检** | Clifford / SU(2) / Larmor / Ward / 幺正 / 反常 / 1+1D 格点 / Fock / Schwinger / KS 连续极限与光子色散 / `su2_exp` 零轴光滑 / Strang 二阶分裂与时变序列 / `RealSpinChiralityOperator` 与 Procrustes 闭式反演 | 45 项全绿，最大残差 **9.58e-07**；P12 Triton 三重对齐 2.84e-14；P43–P45 残差 1.01e-07 / 1.42e-14 / 5.47e-10 |
+| `spin_chirality/lattice4d` | 3+1D 格点指标（P17） | FLSG 单瞬子 Wilson–Dirac 指标 | index = **−1.0**（反瞬子 +1） |
 | `nbsc_omega_operator` | 8 项 | 脉冲 + 延迟边 + 肌骨闭环 | 无驱动静默 100 步零脉冲；有驱动 300 步 1368 脉冲；反向可达 3/5 参数张量 |
 | `viral_*` + `payload_core` 9 件 | 34 条判据 | 载荷算子族：宿主=模型实例 / 病原=载荷 | 宿主 9、生态 5、谱系 6、重组 3、空间 3、通道 4、存活 4（上游 7 套判据，全部 PASS）|
 | `deepspeed_megatron_physics_plugin` | 6 项 | ZeRO-3 + 序列并行 P2P | 分片 60→32 元素；`reduce_scatter` 24 分片 `worst=0.000e+00`；`all_gather` 逐位还原 |
@@ -28,15 +28,15 @@
 
 | 检查 | 命令 | 结果 |
 |---|---|---|
-| 净室 smoke test | `python3 smoke_test.py` | **14/14 PASS**（33/33 模块可独立 import，272 exports） |
-| 五维独立性审计 | `python3 hybrid_moa_vl_operator_suite/operator_independence_verification.py` | **ALL 5 DIMENSIONS VERIFIED**（25 条 ISOLATED PASS） |
+| 净室 smoke test | `python3 smoke_test.py` | **14/14 PASS**（46/46 模块可独立 import，302 exports） |
+| 五维独立性审计 | `python3 hybrid_moa_vl_operator_suite/audit/operator_independence_verification.py` | **ALL 5 DIMENSIONS VERIFIED**（46 条 ISOLATED PASS） |
 | 行数一致性 | 扫 README + docs 全部 `.md` 对照 `wc -l` | 不一致 **0** 处 |
 
 ### 五维审计的两套口径
 
 | 维度 | 覆盖 | 结果 |
 |---|---|---|
-| **Dimension I** 文件隔离 | **33 个算子模块**（审计脚本自身不在其列表内） | 每个 `AST Sibling Deps = 0`，单文件拷 `/tmp` 独立运行 25/25 PASS |
+| **Dimension I** 文件隔离 | **46 个算子/内核模块**（审计脚本自身不在其列表内） | 每个跨族 `AST Sibling Deps = 0`，单文件/整族拷临时目录独立运行 46/46 PASS |
 | **Dimension II–V** 五维正交性 | **14 个领域算子** | 秩 14/14；Max VIF 1.91 < 5.0；参数交叉灵敏非对角精确 **0.00e+00**；LOOO R² 0.9997，ΔR² ∈ [+0.0284, +0.0479] |
 
 扩展模型与基础设施不参与 Dimension II–V，因为它们没有统一的参数化接口。
@@ -90,11 +90,11 @@ CPU 无法覆盖的部分，必须在 GPU 上验证：
 ```bash
 # 仓库级（无 GPU 需求）
 python3 smoke_test.py
-python3 hybrid_moa_vl_operator_suite/operator_independence_verification.py
+python3 hybrid_moa_vl_operator_suite/audit/operator_independence_verification.py
 
 # 单算子
-python3 hybrid_moa_vl_operator_suite/spin_chirality_operators.py
-python3 hybrid_moa_vl_operator_suite/llm_hierarchy_operators.py
+python3 -m hybrid_moa_vl_operator_suite.spin_chirality
+python3 hybrid_moa_vl_operator_suite/llm_hierarchy_operators/llm_hierarchy_operators.py
 
 # GPU 专属
 kaggle kernels output redmingwei/llm-hierarchy-v020-audit -p /tmp/llm

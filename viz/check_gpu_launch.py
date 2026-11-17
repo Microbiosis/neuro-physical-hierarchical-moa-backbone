@@ -24,7 +24,6 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO)
-sys.path.insert(0, os.path.join(REPO, "hybrid_moa_vl_operator_suite"))
 
 OPS = [
     ("VacuumZPE", "vacuum_zpe_fluctuation_operators", "VacuumZPEFluctuationConfig",
@@ -70,7 +69,7 @@ def build(idx, dev):
     import importlib
 
     _n, mod_name, cfg_name, op_name = OPS[idx]
-    mod = importlib.import_module(mod_name)
+    mod = importlib.import_module(f"hybrid_moa_vl_operator_suite.{mod_name}.{mod_name}")
     if cfg_name is None:
         op = getattr(mod, op_name)(d_model=CFGK["d_model"], num_anchors=16)
     else:

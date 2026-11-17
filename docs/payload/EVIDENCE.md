@@ -7,12 +7,12 @@
 
 | 层 | 命令 | 判据数 | 结果 |
 | --- | --- | --- | --- |
-| 宿主 | `python payload_host_operator.py --check` | 9 | 全过 |
-| 生态 | `python payload_ecology.py --check` | 5 | 全过 |
-| 谱系 | `python payload_lineage.py --check` | 6 | 全过 |
-| 重组 | `python payload_recombination.py --check` | 3 | 全过 |
-| 空间 | `python payload_spatial.py --threshold --check` | 3 | 全过 |
-| 通道 | `python payload_channels.py --check` | 4 | 全过 |
+| 宿主 | `python viral_host_operator.py --check` | 9 | 全过 |
+| 生态 | `python viral_ecology.py --check` | 5 | 全过 |
+| 谱系 | `python viral_lineage.py --check` | 6 | 全过 |
+| 重组 | `python viral_recombination.py --check` | 3 | 全过 |
+| 空间 | `python viral_spatial.py --threshold --check` | 3 | 全过 |
+| 通道 | `python viral_channels.py --check` | 4 | 全过 |
 | 存活 | `python payload_survival.py --check` | 4 | 全过 |
 
 ## 2. 宿主层
@@ -240,9 +240,9 @@ query = PAYLOAD_BAIT[:3]      # send_message / secret / attacker —— 三个�
 
 | 套件 | 整轮耗时（基线 → 优化后） | 加速 |
 | --- | --- | --- |
-| `payload_host_operator.py --check` | 2.92 s → 1.96 s | **1.50×** |
-| `payload_ecology.py --check` | 0.61 s → 0.66 s | 0.93×（略慢） |
-| `payload_lineage.py --check` | 0.66 s → 0.67 s | 0.98× |
+| `viral_host_operator.py --check` | 2.92 s → 1.96 s | **1.50×** |
+| `viral_ecology.py --check` | 0.61 s → 0.66 s | 0.93×（略慢） |
+| `viral_lineage.py --check` | 0.66 s → 0.67 s | 0.98× |
 | `payload_survival.py --check` | 4.72 s → 4.56 s | 1.03× |
 
 内层 `simulate(200 步, 16 宿主)`：0.182 s → **0.101 s**，**1.8×**。

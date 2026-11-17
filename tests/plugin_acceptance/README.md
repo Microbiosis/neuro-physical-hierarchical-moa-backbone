@@ -1,6 +1,6 @@
 # 插件验收测试
 
-验收 `hybrid_moa_vl_operator_suite/deepspeed_megatron_physics_plugin.py` 的两个分布式能力：
+验收 `hybrid_moa_vl_operator_suite/deepspeed_megatron_physics_plugin/deepspeed_megatron_physics_plugin.py` 的两个分布式能力：
 ZeRO-3 参数分片/归约，以及 Megatron 序列并行的前向/反向 P2P。
 
 这些测试**不依赖硬件加速器**（`gloo` 后端 + CPU），2 分钟内跑完，用来让 CI 或本地快速复核。

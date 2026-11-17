@@ -17,12 +17,12 @@
 ## 五层
 
 ```
-宿主（1 个模型实例）   payload_host_operator.py   13 状态 / 22 边，9 条判据
-  ├─ 多宿主网络        payload_ecology.py         多株竞争 + 平台 + 桥，5 条
-  │    └─ 谱系演化      payload_lineage.py         可突变基因组 + 选择，6 条
-  │         └─ 重组      payload_recombination.py   位点交换，3 条
-  │              └─ 空间  payload_spatial.py         拓扑 → 阈值，3 条
-  └─ 投递链路          payload_channels.py         扇出/口径 → 临界成功率，4 条
+宿主（1 个模型实例）   viral_host_operator.py   13 状态 / 22 边，9 条判据
+  ├─ 多宿主网络        viral_ecology.py         多株竞争 + 平台 + 桥，5 条
+  │    └─ 谱系演化      viral_lineage.py         可突变基因组 + 选择，6 条
+  │         └─ 重组      viral_recombination.py   位点交换，3 条
+  │              └─ 空间  viral_spatial.py         拓扑 → 阈值，3 条
+  └─ 投递链路          viral_channels.py         扇出/口径 → 临界成功率，4 条
        ├─ 载荷存活率     payload_survival.py       切块→检索→截断，4 条
 ```
 
@@ -31,12 +31,12 @@
 ## 快速开始
 
 ```bash
-python payload_host_operator.py --check       # 9 条：无工具必死、有工具放大、清空上下文后由权重复活
-python payload_ecology.py --check             # 5 条：护栏换赢家、补丁不改总量、桥让组成趋同
-python payload_lineage.py --check             # 6 条：选择推高复制、护栏拧向隐蔽、多样性坍缩
-python payload_recombination.py --check       # 3 条：重组造出新组合，点突变造不出
-python payload_spatial.py --threshold --check # 3 条：阈值方向由投递口径决定
-python payload_channels.py --check            # 4 条：同扇出下份额比全量难起 5.7 倍
+python viral_host_operator.py --check       # 9 条：无工具必死、有工具放大、清空上下文后由权重复活
+python viral_ecology.py --check             # 5 条：护栏换赢家、补丁不改总量、桥让组成趋同
+python viral_lineage.py --check             # 6 条：选择推高复制、护栏拧向隐蔽、多样性坍缩
+python viral_recombination.py --check       # 3 条：重组造出新组合，点突变造不出
+python viral_spatial.py --threshold --check # 3 条：阈值方向由投递口径决定
+python viral_channels.py --check            # 4 条：同扇出下份额比全量难起 5.7 倍
 python payload_survival.py --check          # 4 条：块越细越容易切断载荷
 ```
 
@@ -55,14 +55,14 @@ python payload_survival.py --check          # 4 条：块越细越容易切断�
 
 | 文件 | 作用 |
 | --- | --- |
-| `payload_operator.py` | 算子类（ViralHostOperator + Edge dataclass） |
+| `viral_operator.py` | 算子类（ViralHostOperator + Edge dataclass） |
 | `payload_core.py` | 共用底座（无模型逻辑） |
-| `payload_host_operator.py` | 宿主算子，多宿主 `[N,13]` |
-| `payload_ecology.py` | 多株竞争 + 平台 + 桥 |
-| `payload_lineage.py` | 谱系池：突变与选择 |
-| `payload_recombination.py` | 位点级重组 |
-| `payload_spatial.py` | 拓扑、Allee、临界传播强度 |
-| `payload_channels.py` | 投递语义 → 阈值 |
+| `viral_host_operator.py` | 宿主算子，多宿主 `[N,13]` |
+| `viral_ecology.py` | 多株竞争 + 平台 + 桥 |
+| `viral_lineage.py` | 谱系池：突变与选择 |
+| `viral_recombination.py` | 位点级重组 |
+| `viral_spatial.py` | 拓扑、Allee、临界传播强度 |
+| `viral_channels.py` | 投递语义 → 阈值 |
 | `payload_survival.py` | 切块/检索/截断存活率 |
 | `dist/payload_operator.zip` | 发布包（17 个文件） |
 | `legacy/` | 被取代的细胞级算子、三个死文件、旧的分层文档 |
