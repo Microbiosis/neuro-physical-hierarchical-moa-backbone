@@ -1,6 +1,6 @@
 # 算子清单与区分
 
-本包共 **46 个算子/内核模块**（外加 1 个五维审计文件、26 个 `__init__.py` 与 1 个 `__main__.py`，组织为 25 个子包，合计 74 个 `.py`，41,300 行），包导出 302 个符号。
+本包共 **46 个算子/内核模块**（外加 1 个五维审计文件、26 个 `__init__.py` 与 1 个 `__main__.py`，组织为 25 个子包，合计 74 个 `.py`，42,946 行），包导出 302 个符号。
 
 编排层 `unified_hybrid_moa_architecture.py` 已于 2026-11-10 删除，**各算子/族按独立子目录组织，跨族零依赖**，可单模块（或 `payload/`、`spin_chirality/` 整族）拷出独立运行，也可通过包顶层或规范子包路径自行组合。
 
@@ -70,7 +70,7 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `local_self_modifying_operators/local_self_modifying_operators.py` | 1,757 | 有理 Hebbian + Delta-Oja 快权重（双支路） |
+| `local_self_modifying_operators/local_self_modifying_operators.py` | 2,229 | 有理 Hebbian + Delta-Oja 快权重（双支路） |
 
 ## D   逐 token 非线性（无跨位置通路）（2 个）
 
@@ -87,7 +87,7 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `moa_operators/moa_operators.py` | 1,176 | 跨模态 VL 融合（Conv1d 支路）+ MoE 路由 |
+| `moa_operators/moa_operators.py` | 2,018 | 跨模态 VL 融合（Conv1d 支路）+ MoE 路由 |
 
 ## Triton 内核实现与模拟器（1 个）
 
@@ -97,7 +97,7 @@
 
 | 文件 | 行数 | 机制 |
 |---|---|---|
-| `moa_triton_kernels/moa_triton_kernels.py` | 468 | 跨模态 VL 双线性 fwd/bwd + 持久化 sparse-topk megakernel；逐 tile 模拟器 |
+| `moa_triton_kernels/moa_triton_kernels.py` | 800 | 跨模态 VL 双线性 fwd/bwd + 持久化 sparse-topk megakernel；逐 tile 模拟器 |
 ## 基础设施（不参与独立性分析）（5 个）
 
 换的是「怎么算」而不是「算什么」：积分器、检查点、内存、多卡、框架适配。

@@ -35,9 +35,12 @@ Core Architecture & Audit-Hardened Guarantees:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 import math
+import os
 import numpy as np
+
+os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")
 
 try:
     import torch
@@ -50,6 +53,7 @@ except ImportError:
 try:
     import triton
     import triton.language as tl
+    import triton.language.extra.libdevice as tld
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
@@ -95,58 +99,84 @@ class MoAOperatorConfig:
 
 if HAS_TRITON:
 
+    _MOA_OP_CONST_CACHE: Dict[Tuple[float, str, str], torch.Tensor] = {}
+
+    def _get_moa_op_const(
+        val: float, dtype: torch.dtype, device: torch.device
+    ) -> torch.Tensor:
+        key = (float(val), str(dtype), str(device))
+        cached = _MOA_OP_CONST_CACHE.get(key)
+        if cached is None:
+            cached = torch.tensor([float(val)], dtype=dtype, device=device).contiguous()
+            _MOA_OP_CONST_CACHE[key] = cached
+        return cached
+
     @triton.jit
     def _moa_vl_bilinear_fwd_kernel(
         VVis_ptr, TTxt_ptr, CAlign_ptr,
-        AlphaVis_ptr, AlphaTxt_ptr, BetaBilin_ptr, Out_ptr,
-        stride_row, D_MODEL: tl.constexpr, lam_norm: tl.constexpr, BLOCK_D: tl.constexpr,
+        AlphaVis_ptr, AlphaTxt_ptr, BetaBilin_ptr, Lam_ptr, Out_ptr,
+        stride_row, D_MODEL: tl.constexpr, BLOCK_D: tl.constexpr,
+        ACC: tl.constexpr = tl.float32,
+        FP64: tl.constexpr = False,
     ):
         row_id = tl.program_id(0)
         cols = tl.arange(0, BLOCK_D)
         mask = cols < D_MODEL
         off = row_id * stride_row + cols
 
-        v_vis = tl.load(VVis_ptr + off, mask=mask, other=0.0).to(tl.float32)
-        t_txt = tl.load(TTxt_ptr + off, mask=mask, other=0.0).to(tl.float32)
-        c_align = tl.load(CAlign_ptr + off, mask=mask, other=0.0).to(tl.float32)
+        lam_norm = tl.load(Lam_ptr).to(ACC)
+        v_vis = tl.load(VVis_ptr + off, mask=mask, other=0.0).to(ACC)
+        t_txt = tl.load(TTxt_ptr + off, mask=mask, other=0.0).to(ACC)
+        c_align = tl.load(CAlign_ptr + off, mask=mask, other=0.0).to(ACC)
 
-        a_vis = tl.load(AlphaVis_ptr + cols, mask=mask, other=0.8).to(tl.float32)
-        a_txt = tl.load(AlphaTxt_ptr + cols, mask=mask, other=0.8).to(tl.float32)
-        b_bilin = tl.load(BetaBilin_ptr + cols, mask=mask, other=0.6).to(tl.float32)
+        a_vis = tl.load(AlphaVis_ptr + cols, mask=mask, other=0.0).to(ACC)
+        a_txt = tl.load(AlphaTxt_ptr + cols, mask=mask, other=0.0).to(ACC)
+        b_bilin = tl.load(BetaBilin_ptr + cols, mask=mask, other=0.0).to(ACC)
 
-        g_cm = tl.sigmoid(a_vis * v_vis + a_txt * t_txt)
+        logit = a_vis * v_vis + a_txt * t_txt
+        if FP64:
+            g_cm = 1.0 / (1.0 + tld.exp(-logit))
+        else:
+            g_cm = tl.sigmoid(logit)
         y_interp = g_cm * v_vis + (1.0 - g_cm) * t_txt
-        inv_norm = tl.math.rsqrt(1.0 + lam_norm * (v_vis * v_vis + t_txt * t_txt))
+        inv_norm = 1.0 / tl.sqrt(1.0 + lam_norm * (v_vis * v_vis + t_txt * t_txt))
         out = y_interp + b_bilin * (v_vis * t_txt + c_align) * inv_norm
-        tl.store(Out_ptr + off, out, mask=mask)
+        tl.store(Out_ptr + off, out.to(Out_ptr.dtype.element_ty), mask=mask)
 
     @triton.jit
     def _moa_vl_bilinear_bwd_kernel(
         GradOut_ptr, VVis_ptr, TTxt_ptr, CAlign_ptr,
-        AlphaVis_ptr, AlphaTxt_ptr, BetaBilin_ptr,
+        AlphaVis_ptr, AlphaTxt_ptr, BetaBilin_ptr, Lam_ptr,
         GradVVis_ptr, GradTTxt_ptr, GradCAlign_ptr,
         GradAlphaVis_ptr, GradAlphaTxt_ptr, GradBetaBilin_ptr,
-        stride_row, D_MODEL: tl.constexpr, lam_norm: tl.constexpr, BLOCK_D: tl.constexpr,
+        stride_row, D_MODEL: tl.constexpr, BLOCK_D: tl.constexpr,
+        ACC: tl.constexpr = tl.float32,
+        FP64: tl.constexpr = False,
     ):
         row_id = tl.program_id(0)
         cols = tl.arange(0, BLOCK_D)
         mask = cols < D_MODEL
         off = row_id * stride_row + cols
 
-        dout = tl.load(GradOut_ptr + off, mask=mask, other=0.0).to(tl.float32)
-        v_vis = tl.load(VVis_ptr + off, mask=mask, other=0.0).to(tl.float32)
-        t_txt = tl.load(TTxt_ptr + off, mask=mask, other=0.0).to(tl.float32)
-        c_align = tl.load(CAlign_ptr + off, mask=mask, other=0.0).to(tl.float32)
+        lam_norm = tl.load(Lam_ptr).to(ACC)
+        dout = tl.load(GradOut_ptr + off, mask=mask, other=0.0).to(ACC)
+        v_vis = tl.load(VVis_ptr + off, mask=mask, other=0.0).to(ACC)
+        t_txt = tl.load(TTxt_ptr + off, mask=mask, other=0.0).to(ACC)
+        c_align = tl.load(CAlign_ptr + off, mask=mask, other=0.0).to(ACC)
 
-        a_vis = tl.load(AlphaVis_ptr + cols, mask=mask, other=0.8).to(tl.float32)
-        a_txt = tl.load(AlphaTxt_ptr + cols, mask=mask, other=0.8).to(tl.float32)
-        b_bilin = tl.load(BetaBilin_ptr + cols, mask=mask, other=0.6).to(tl.float32)
+        a_vis = tl.load(AlphaVis_ptr + cols, mask=mask, other=0.0).to(ACC)
+        a_txt = tl.load(AlphaTxt_ptr + cols, mask=mask, other=0.0).to(ACC)
+        b_bilin = tl.load(BetaBilin_ptr + cols, mask=mask, other=0.0).to(ACC)
 
-        g_cm = tl.sigmoid(a_vis * v_vis + a_txt * t_txt)
+        logit = a_vis * v_vis + a_txt * t_txt
+        if FP64:
+            g_cm = 1.0 / (1.0 + tld.exp(-logit))
+        else:
+            g_cm = tl.sigmoid(logit)
         one_m_g = 1.0 - g_cm
 
         norm_arg = 1.0 + lam_norm * (v_vis * v_vis + t_txt * t_txt)
-        inv_norm = tl.math.rsqrt(norm_arg)
+        inv_norm = 1.0 / tl.sqrt(norm_arg)
         b_num = v_vis * t_txt + c_align
         b_unit = b_num * inv_norm
 
@@ -158,12 +188,221 @@ if HAS_TRITON:
         dv_vis = dout * g_cm + d_glogit * a_vis + d_bnum * t_txt + d_normarg * (2.0 * lam_norm * v_vis)
         dt_txt = dout * one_m_g + d_glogit * a_txt + d_bnum * v_vis + d_normarg * (2.0 * lam_norm * t_txt)
 
-        tl.store(GradVVis_ptr + off, dv_vis, mask=mask)
-        tl.store(GradTTxt_ptr + off, dt_txt, mask=mask)
-        tl.store(GradCAlign_ptr + off, d_bnum, mask=mask)
-        tl.atomic_add(GradAlphaVis_ptr + cols, d_glogit * v_vis, mask=mask)
-        tl.atomic_add(GradAlphaTxt_ptr + cols, d_glogit * t_txt, mask=mask)
-        tl.atomic_add(GradBetaBilin_ptr + cols, dout * b_unit, mask=mask)
+        tl.store(GradVVis_ptr + off, dv_vis.to(GradVVis_ptr.dtype.element_ty), mask=mask)
+        tl.store(GradTTxt_ptr + off, dt_txt.to(GradTTxt_ptr.dtype.element_ty), mask=mask)
+        tl.store(GradCAlign_ptr + off, d_bnum.to(GradCAlign_ptr.dtype.element_ty), mask=mask)
+        tl.atomic_add(
+            GradAlphaVis_ptr + cols,
+            (d_glogit * v_vis).to(GradAlphaVis_ptr.dtype.element_ty),
+            mask=mask,
+        )
+        tl.atomic_add(
+            GradAlphaTxt_ptr + cols,
+            (d_glogit * t_txt).to(GradAlphaTxt_ptr.dtype.element_ty),
+            mask=mask,
+        )
+        tl.atomic_add(
+            GradBetaBilin_ptr + cols,
+            (dout * b_unit).to(GradBetaBilin_ptr.dtype.element_ty),
+            mask=mask,
+        )
+
+    @triton.jit
+    def _moa_heterogeneous_attn_fwd_kernel(
+        Q_ptr, K_ptr, V_ptr, Scale_ptr, Out_ptr, LseM_ptr, LseL_ptr,
+        POS_OFFSET,
+        N_HEADS: tl.constexpr,
+        L_Q: tl.constexpr,
+        L_K: tl.constexpr,
+        D_HEAD: tl.constexpr,
+        WINDOW_SIZE: tl.constexpr,
+        NUM_SINKS: tl.constexpr,
+        DILATION: tl.constexpr,
+        BLOCK_DH: tl.constexpr,
+        ACC: tl.constexpr = tl.float32,
+        FP64: tl.constexpr = False,
+    ):
+        pid = tl.program_id(0)
+        q_idx = pid % L_Q
+        bh_idx = pid // L_Q
+        h_idx = bh_idx % N_HEADS
+        q_pos = POS_OFFSET + q_idx
+        pattern = h_idx % 4
+
+        cols = tl.arange(0, BLOCK_DH)
+        mask_d = cols < D_HEAD
+        scale = tl.load(Scale_ptr).to(ACC)
+
+        q_off = (bh_idx * L_Q + q_idx) * D_HEAD + cols
+        q_vec = tl.load(Q_ptr + q_off, mask=mask_d, other=0.0).to(ACC)
+
+        neg_inf = tl.full((), -1.0e30, dtype=ACC)
+        m_q = neg_inf
+        for k_pos in range(0, L_K):
+            diff = q_pos - k_pos
+            c0 = (pattern == 0) & (diff < WINDOW_SIZE)
+            c1 = (pattern == 1) & ((k_pos < NUM_SINKS) | (diff < WINDOW_SIZE))
+            c2 = (pattern == 2) & (((diff % DILATION) == 0) & (diff < WINDOW_SIZE * DILATION))
+            c3 = pattern == 3
+            active = (k_pos <= q_pos) & (c0 | c1 | c2 | c3)
+            k_off = (bh_idx * L_K + k_pos) * D_HEAD + cols
+            k_vec = tl.load(K_ptr + k_off, mask=mask_d, other=0.0).to(ACC)
+            s_qk = tl.sum(q_vec * k_vec, axis=0) * scale
+            m_q = tl.where(active, tl.maximum(m_q, s_qk), m_q)
+
+        l_q = tl.zeros((), dtype=ACC)
+        acc_o = tl.zeros((BLOCK_DH,), dtype=ACC)
+        for k_pos in range(0, L_K):
+            diff = q_pos - k_pos
+            c0 = (pattern == 0) & (diff < WINDOW_SIZE)
+            c1 = (pattern == 1) & ((k_pos < NUM_SINKS) | (diff < WINDOW_SIZE))
+            c2 = (pattern == 2) & (((diff % DILATION) == 0) & (diff < WINDOW_SIZE * DILATION))
+            c3 = pattern == 3
+            active = (k_pos <= q_pos) & (c0 | c1 | c2 | c3)
+            k_off = (bh_idx * L_K + k_pos) * D_HEAD + cols
+            k_vec = tl.load(K_ptr + k_off, mask=mask_d, other=0.0).to(ACC)
+            v_vec = tl.load(V_ptr + k_off, mask=mask_d, other=0.0).to(ACC)
+            s_qk = tl.sum(q_vec * k_vec, axis=0) * scale
+            s_shift = tl.where(active, s_qk - m_q, neg_inf)
+            if FP64:
+                w_qk = tl.where(active, tld.exp(s_shift), 0.0)
+            else:
+                w_qk = tl.where(active, tl.exp(s_shift), 0.0)
+            l_q += w_qk
+            acc_o += w_qk * v_vec
+
+        out_vec = acc_o / l_q
+        tl.store(Out_ptr + q_off, out_vec.to(Out_ptr.dtype.element_ty), mask=mask_d)
+        tl.store(LseM_ptr + pid, m_q.to(LseM_ptr.dtype.element_ty))
+        tl.store(LseL_ptr + pid, l_q.to(LseL_ptr.dtype.element_ty))
+
+    @triton.jit
+    def _moa_heterogeneous_attn_bwd_dq_kernel(
+        GradOut_ptr, Out_ptr, Q_ptr, K_ptr, V_ptr, Scale_ptr, LseM_ptr, LseL_ptr,
+        Delta_ptr, GradQ_ptr,
+        POS_OFFSET,
+        N_HEADS: tl.constexpr,
+        L_Q: tl.constexpr,
+        L_K: tl.constexpr,
+        D_HEAD: tl.constexpr,
+        WINDOW_SIZE: tl.constexpr,
+        NUM_SINKS: tl.constexpr,
+        DILATION: tl.constexpr,
+        BLOCK_DH: tl.constexpr,
+        ACC: tl.constexpr = tl.float32,
+        FP64: tl.constexpr = False,
+    ):
+        pid = tl.program_id(0)
+        q_idx = pid % L_Q
+        bh_idx = pid // L_Q
+        h_idx = bh_idx % N_HEADS
+        q_pos = POS_OFFSET + q_idx
+        pattern = h_idx % 4
+
+        cols = tl.arange(0, BLOCK_DH)
+        mask_d = cols < D_HEAD
+        scale = tl.load(Scale_ptr).to(ACC)
+
+        q_off = (bh_idx * L_Q + q_idx) * D_HEAD + cols
+        q_vec = tl.load(Q_ptr + q_off, mask=mask_d, other=0.0).to(ACC)
+        dout_vec = tl.load(GradOut_ptr + q_off, mask=mask_d, other=0.0).to(ACC)
+        out_vec = tl.load(Out_ptr + q_off, mask=mask_d, other=0.0).to(ACC)
+        m_q = tl.load(LseM_ptr + pid).to(ACC)
+        l_q = tl.load(LseL_ptr + pid).to(ACC)
+
+        d_q_scalar = tl.sum(dout_vec * out_vec, axis=0)
+        tl.store(Delta_ptr + pid, d_q_scalar.to(Delta_ptr.dtype.element_ty))
+
+        neg_inf = tl.full((), -1.0e30, dtype=ACC)
+        dq_acc = tl.zeros((BLOCK_DH,), dtype=ACC)
+        for k_pos in range(0, L_K):
+            diff = q_pos - k_pos
+            c0 = (pattern == 0) & (diff < WINDOW_SIZE)
+            c1 = (pattern == 1) & ((k_pos < NUM_SINKS) | (diff < WINDOW_SIZE))
+            c2 = (pattern == 2) & (((diff % DILATION) == 0) & (diff < WINDOW_SIZE * DILATION))
+            c3 = pattern == 3
+            active = (k_pos <= q_pos) & (c0 | c1 | c2 | c3)
+            k_off = (bh_idx * L_K + k_pos) * D_HEAD + cols
+            k_vec = tl.load(K_ptr + k_off, mask=mask_d, other=0.0).to(ACC)
+            v_vec = tl.load(V_ptr + k_off, mask=mask_d, other=0.0).to(ACC)
+            s_qk = tl.sum(q_vec * k_vec, axis=0) * scale
+            s_shift = tl.where(active, s_qk - m_q, neg_inf)
+            if FP64:
+                w_qk = tl.where(active, tld.exp(s_shift), 0.0)
+            else:
+                w_qk = tl.where(active, tl.exp(s_shift), 0.0)
+            p_qk = w_qk / l_q
+            dp_qk = tl.sum(dout_vec * v_vec, axis=0)
+            ds_qk = p_qk * (dp_qk - d_q_scalar) * scale
+            dq_acc += ds_qk * k_vec
+
+        tl.store(GradQ_ptr + q_off, dq_acc.to(GradQ_ptr.dtype.element_ty), mask=mask_d)
+
+    @triton.jit
+    def _moa_heterogeneous_attn_bwd_dkv_kernel(
+        GradOut_ptr, Q_ptr, K_ptr, V_ptr, Scale_ptr, LseM_ptr, LseL_ptr, Delta_ptr,
+        GradK_ptr, GradV_ptr,
+        POS_OFFSET,
+        N_HEADS: tl.constexpr,
+        L_Q: tl.constexpr,
+        L_K: tl.constexpr,
+        D_HEAD: tl.constexpr,
+        WINDOW_SIZE: tl.constexpr,
+        NUM_SINKS: tl.constexpr,
+        DILATION: tl.constexpr,
+        BLOCK_DH: tl.constexpr,
+        ACC: tl.constexpr = tl.float32,
+        FP64: tl.constexpr = False,
+    ):
+        pid = tl.program_id(0)
+        k_pos = pid % L_K
+        bh_idx = pid // L_K
+        h_idx = bh_idx % N_HEADS
+        pattern = h_idx % 4
+
+        cols = tl.arange(0, BLOCK_DH)
+        mask_d = cols < D_HEAD
+        scale = tl.load(Scale_ptr).to(ACC)
+
+        k_off = (bh_idx * L_K + k_pos) * D_HEAD + cols
+        k_vec = tl.load(K_ptr + k_off, mask=mask_d, other=0.0).to(ACC)
+        v_vec = tl.load(V_ptr + k_off, mask=mask_d, other=0.0).to(ACC)
+
+        neg_inf = tl.full((), -1.0e30, dtype=ACC)
+        dk_acc = tl.zeros((BLOCK_DH,), dtype=ACC)
+        dv_acc = tl.zeros((BLOCK_DH,), dtype=ACC)
+
+        for q_idx in range(0, L_Q):
+            q_pos = POS_OFFSET + q_idx
+            diff = q_pos - k_pos
+            c0 = (pattern == 0) & (diff < WINDOW_SIZE)
+            c1 = (pattern == 1) & ((k_pos < NUM_SINKS) | (diff < WINDOW_SIZE))
+            c2 = (pattern == 2) & (((diff % DILATION) == 0) & (diff < WINDOW_SIZE * DILATION))
+            c3 = pattern == 3
+            active = (k_pos <= q_pos) & (c0 | c1 | c2 | c3)
+
+            q_pid = bh_idx * L_Q + q_idx
+            q_off = q_pid * D_HEAD + cols
+            q_vec = tl.load(Q_ptr + q_off, mask=mask_d, other=0.0).to(ACC)
+            dout_vec = tl.load(GradOut_ptr + q_off, mask=mask_d, other=0.0).to(ACC)
+            m_q = tl.load(LseM_ptr + q_pid).to(ACC)
+            l_q = tl.load(LseL_ptr + q_pid).to(ACC)
+            d_q_scalar = tl.load(Delta_ptr + q_pid).to(ACC)
+
+            s_qk = tl.sum(q_vec * k_vec, axis=0) * scale
+            s_shift = tl.where(active, s_qk - m_q, neg_inf)
+            if FP64:
+                w_qk = tl.where(active, tld.exp(s_shift), 0.0)
+            else:
+                w_qk = tl.where(active, tl.exp(s_shift), 0.0)
+            p_qk = w_qk / l_q
+            dp_qk = tl.sum(dout_vec * v_vec, axis=0)
+            ds_qk = p_qk * (dp_qk - d_q_scalar) * scale
+            dk_acc += ds_qk * q_vec
+            dv_acc += p_qk * dout_vec
+
+        tl.store(GradK_ptr + k_off, dk_acc.to(GradK_ptr.dtype.element_ty), mask=mask_d)
+        tl.store(GradV_ptr + k_off, dv_acc.to(GradV_ptr.dtype.element_ty), mask=mask_d)
 
 
 # ==============================================================================
@@ -458,6 +697,66 @@ class NumpyMoAOperatorKernels:
         overall_density = float(np.sum(masks)) / causal_total
         return masks, {"overall_moa_density": overall_density}
 
+    @staticmethod
+    def mixture_of_attention_forward(
+        q: np.ndarray,
+        k: np.ndarray,
+        v: np.ndarray,
+        pos_offset: int = 0,
+        window_size: int = 8,
+        num_sinks: int = 2,
+        dilation: int = 2,
+    ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+        """
+        Exact NumPy Analytical Forward Kernel for Heterogeneous Mixture-of-Attention.
+        q: [B, H, L_q, D_h], k: [B, H, L_k, D_h], v: [B, H, L_k, D_h] (L_k = pos_offset + L_q).
+        """
+        B, H, L_q, D_h = q.shape
+        L_k = k.shape[2]
+        scale = 1.0 / math.sqrt(D_h)
+        mask_full, stats = NumpyMoAOperatorKernels.build_mixture_of_attention_mask(
+            L_k, H, window_size, num_sinks, dilation
+        )
+        mask_slice = mask_full[:, pos_offset : pos_offset + L_q, :L_k]  # [H, L_q, L_k]
+
+        scores = np.einsum("bhqd,bhkd->bhqk", q, k) * scale
+        scores_masked = np.where(mask_slice[None, :, :, :], scores, -1.0e30)
+        m_q = np.max(scores_masked, axis=-1, keepdims=True)
+        w_qk = np.where(mask_slice[None, :, :, :], np.exp(scores_masked - m_q), 0.0)
+        l_q = np.sum(w_qk, axis=-1, keepdims=True)
+        probs = w_qk / l_q
+        out = np.einsum("bhqk,bhkd->bhqd", probs, v)
+        cache = {
+            "q": q,
+            "k": k,
+            "v": v,
+            "probs": probs,
+            "out": out,
+            "scale": np.array(scale),
+            "density": np.array(stats["overall_moa_density"]),
+        }
+        return out, cache
+
+    @staticmethod
+    def mixture_of_attention_backward(
+        grad_out: np.ndarray,
+        cache: Dict[str, np.ndarray],
+    ) -> Dict[str, np.ndarray]:
+        q = cache["q"]
+        k = cache["k"]
+        v = cache["v"]
+        probs = cache["probs"]
+        out = cache["out"]
+        scale = float(cache["scale"])
+
+        dp = np.einsum("bhqd,bhkd->bhqk", grad_out, v)
+        delta = np.sum(grad_out * out, axis=-1, keepdims=True)
+        ds = probs * (dp - delta) * scale
+        dq = np.einsum("bhqk,bhkd->bhqd", ds, k)
+        dk = np.einsum("bhqk,bhqd->bhkd", ds, q)
+        dv = np.einsum("bhqk,bhqd->bhkd", probs, grad_out)
+        return {"d_q": dq, "d_k": dk, "d_v": dv}
+
 
 # ==============================================================================
 # 3. PyTorch Neural Operator Modules (`nn.Module` & `autograd.Function`)
@@ -472,7 +771,8 @@ if HAS_TORCH:
             self.weight = nn.Parameter(torch.ones(dim))
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
-            norm_x = x.to(torch.float32)
+            acc_dtype = torch.float64 if x.dtype == torch.float64 else torch.float32
+            norm_x = x.to(acc_dtype)
             rms = torch.rsqrt(norm_x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
             return (norm_x * rms).to(x.dtype) * self.weight
 
@@ -495,6 +795,10 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
+                acc_dtype = torch.float64 if v_vis.dtype == torch.float64 else torch.float32
+                tl_acc = tl.float64 if v_vis.dtype == torch.float64 else tl.float32
+                is_fp64 = bool(v_vis.dtype == torch.float64)
+                lam_t = _get_moa_op_const(lam_norm, acc_dtype, v_vis.device)
                 out = torch.empty_like(v_vis, memory_format=torch.contiguous_format)
                 _moa_vl_bilinear_fwd_kernel[grid](
                     v_vis.contiguous(),
@@ -503,11 +807,13 @@ if HAS_TORCH:
                     alpha_vis.contiguous(),
                     alpha_txt.contiguous(),
                     beta_bilin.contiguous(),
+                    lam_t,
                     out,
                     D,
                     D_MODEL=D,
-                    lam_norm=lam_norm,
                     BLOCK_D=block_d,
+                    ACC=tl_acc,
+                    FP64=is_fp64,
                 )
                 ctx.save_for_backward(v_vis, t_txt, c_align, alpha_vis, alpha_txt, beta_bilin)
                 ctx.used_triton = True
@@ -542,13 +848,17 @@ if HAS_TORCH:
                 num_rows = B * L
                 block_d = triton.next_power_of_2(D)
                 grid = (triton.cdiv(num_rows, 1),)
+                acc_dtype = torch.float64 if v_vis.dtype == torch.float64 else torch.float32
+                tl_acc = tl.float64 if v_vis.dtype == torch.float64 else tl.float32
+                is_fp64 = bool(v_vis.dtype == torch.float64)
+                lam_t = _get_moa_op_const(ctx.lam_norm, acc_dtype, v_vis.device)
 
                 d_vvis = torch.empty_like(v_vis, memory_format=torch.contiguous_format)
                 d_ttxt = torch.empty_like(t_txt, memory_format=torch.contiguous_format)
                 d_calign = torch.empty_like(c_align, memory_format=torch.contiguous_format)
-                d_alphavis = torch.zeros_like(alpha_vis, dtype=torch.float32)
-                d_alphatxt = torch.zeros_like(alpha_txt, dtype=torch.float32)
-                d_betabilin = torch.zeros_like(beta_bilin, dtype=torch.float32)
+                d_alphavis = torch.zeros_like(alpha_vis, dtype=acc_dtype, memory_format=torch.contiguous_format)
+                d_alphatxt = torch.zeros_like(alpha_txt, dtype=acc_dtype, memory_format=torch.contiguous_format)
+                d_betabilin = torch.zeros_like(beta_bilin, dtype=acc_dtype, memory_format=torch.contiguous_format)
 
                 _moa_vl_bilinear_bwd_kernel[grid](
                     grad_out.contiguous(),
@@ -558,6 +868,7 @@ if HAS_TORCH:
                     alpha_vis.contiguous(),
                     alpha_txt.contiguous(),
                     beta_bilin.contiguous(),
+                    lam_t,
                     d_vvis,
                     d_ttxt,
                     d_calign,
@@ -566,8 +877,9 @@ if HAS_TORCH:
                     d_betabilin,
                     D,
                     D_MODEL=D,
-                    lam_norm=ctx.lam_norm,
                     BLOCK_D=block_d,
+                    ACC=tl_acc,
+                    FP64=is_fp64,
                 )
                 return (
                     d_vvis.to(v_vis.dtype),
@@ -622,6 +934,11 @@ if HAS_TORCH:
           convolution (`nn.Conv1d`).
         - Performs Low-Rank Cross-Modal Latent Anchor Co-Attention (`O(L * R * D)`)
           with ZERO distance decay between image patches and text tokens.
+        - Supports causal streaming mode (`causal=True` / `init_state` / `forward_step`)
+          using a causal rolling depthwise conv buffer (`conv_buf: [B, D, K-1]`) and
+          online log-sum-exp causal anchor pooling (`anchor_max`, `anchor_den`, `anchor_num`)
+          so full-sequence `[0:L]`, chunked `[0:L1] -> state -> [L1:L]`, and single-token
+          autoregressive decoding match bit-for-bit.
         """
 
         def __init__(
@@ -634,6 +951,7 @@ if HAS_TORCH:
             lam_norm: float = 0.35,
             spatial_conv_kernel: int = 5,
             dropout: float = 0.0,
+            causal: bool = False,
             **kwargs,
         ):
             super().__init__()
@@ -641,6 +959,7 @@ if HAS_TORCH:
             self.num_anchors = num_anchors
             self.lam_norm = lam_norm
             self.spatial_conv_kernel = int(spatial_conv_kernel)
+            self.causal = bool(causal)
             pad = self.spatial_conv_kernel // 2
 
             self.in_proj = nn.Linear(d_model, 2 * d_model, bias=False)
@@ -652,7 +971,7 @@ if HAS_TORCH:
                 padding=pad,
                 groups=d_model,
             )
-            # 1D Bidirectional Sequence Depthwise Convolution for residual/1D token span
+            # 1D Sequence Depthwise Convolution for residual/1D token span
             self.spatial_dw_conv = nn.Conv1d(
                 d_model,
                 d_model,
@@ -669,12 +988,113 @@ if HAS_TORCH:
             self.beta_bilin = nn.Parameter(torch.full((d_model,), beta_bilinear_init))
             self.out_proj = nn.Linear(d_model, d_model, bias=False)
 
+        def init_state(
+            self,
+            batch_size: int,
+            device: Optional[torch.device] = None,
+            dtype: Optional[torch.dtype] = None,
+        ) -> Dict[str, torch.Tensor]:
+            """
+            Initialize constant-size O(B * R * D) causal streaming state for
+            chunked prefill and single-token autoregressive decoding.
+            """
+            dev = self.cross_modal_anchors.device if device is None else device
+            dt = self.cross_modal_anchors.dtype if dtype is None else dtype
+            k_m1 = max(self.spatial_conv_kernel - 1, 0)
+            return {
+                "conv_buf": torch.zeros((batch_size, self.d_model, k_m1), device=dev, dtype=dt),
+                "anchor_max": torch.full((batch_size, self.num_anchors), -1e30, device=dev, dtype=dt),
+                "anchor_den": torch.zeros((batch_size, self.num_anchors), device=dev, dtype=dt),
+                "anchor_num": torch.zeros((batch_size, self.num_anchors, self.d_model), device=dev, dtype=dt),
+            }
+
+        def _forward_causal_projected(
+            self,
+            v_raw: torch.Tensor,
+            t_raw: torch.Tensor,
+            state: Optional[Dict[str, torch.Tensor]] = None,
+        ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+            B, L, D = v_raw.shape
+            if state is None:
+                state = self.init_state(B, device=v_raw.device, dtype=v_raw.dtype)
+            conv_buf = state["conv_buf"]
+            k_m1 = max(self.spatial_conv_kernel - 1, 0)
+            v_ch = v_raw.transpose(1, 2)  # [B, D, L]
+            if k_m1 > 0:
+                v_pad = torch.cat([conv_buf, v_ch], dim=-1)
+                new_conv_buf = v_pad[:, :, -k_m1:].contiguous()
+            else:
+                v_pad = v_ch
+                new_conv_buf = conv_buf
+            v_1d = F.conv1d(
+                v_pad,
+                self.spatial_dw_conv.weight,
+                self.spatial_dw_conv.bias,
+                padding=0,
+                groups=self.d_model,
+            ).transpose(1, 2)
+            v_vis = F.silu(v_1d)
+            t_txt = F.silu(t_raw)
+
+            scale = self.d_model ** -0.5
+            joint_kv = 0.5 * (v_vis + t_txt)
+            # Scores: [B, R, L]
+            scores_pool = torch.einsum("rd,bld->brl", self.cross_modal_anchors, joint_kv) * scale
+
+            m_curr = state["anchor_max"]
+            d_curr = state["anchor_den"]
+            n_curr = state["anchor_num"]
+
+            z_seq_list: List[torch.Tensor] = []
+            for t in range(L):
+                s_t = scores_pool[:, :, t]  # [B, R]
+                v_t = v_vis[:, t, :].unsqueeze(1)  # [B, 1, D]
+                m_new = torch.maximum(m_curr, s_t)
+                alpha_prev = torch.exp(m_curr - m_new)
+                beta_new = torch.exp(s_t - m_new)
+                d_curr = d_curr * alpha_prev + beta_new
+                n_curr = n_curr * alpha_prev.unsqueeze(-1) + beta_new.unsqueeze(-1) * v_t
+                m_curr = m_new
+                z_seq_list.append(n_curr / d_curr.unsqueeze(-1).clamp_min(1e-30))
+
+            # z_seq: [B, L, R, D]
+            z_seq = torch.stack(z_seq_list, dim=1)
+            attn_bc = F.softmax(
+                torch.einsum("bld,blrd->blr", t_txt, z_seq) * scale,
+                dim=-1,
+            )
+            c_align = torch.einsum("blr,blrd->bld", attn_bc, z_seq)
+
+            fused = FusedCrossModalBilinearGateFunction.apply(
+                v_vis, t_txt, c_align,
+                self.alpha_vis, self.alpha_txt, self.beta_bilin, self.lam_norm
+            )
+            out_lin = (fused.unsqueeze(-2) * self.out_proj.weight).sum(dim=-1)
+            out = self.dropout_layer(out_lin)
+            new_state = {
+                "conv_buf": new_conv_buf,
+                "anchor_max": m_curr,
+                "anchor_den": d_curr,
+                "anchor_num": n_curr,
+            }
+            return out, new_state
+
         def forward_from_projected(
             self,
             v_raw: torch.Tensor,
             t_raw: torch.Tensor,
             grid_hw: Optional[Tuple[int, int]] = None,
-        ) -> torch.Tensor:
+            state: Optional[Dict[str, torch.Tensor]] = None,
+            return_state: bool = False,
+            causal: Optional[bool] = None,
+        ):
+            use_causal = self.causal if causal is None else bool(causal)
+            if use_causal or state is not None or return_state:
+                out, new_state = self._forward_causal_projected(v_raw, t_raw, state=state)
+                if return_state:
+                    return out, new_state
+                return out
+
             B, L, D = v_raw.shape
             v_1d = self.spatial_dw_conv(v_raw.transpose(1, 2))[..., :L].transpose(1, 2)
 
@@ -719,10 +1139,46 @@ if HAS_TORCH:
             return self.dropout_layer(self.out_proj(fused))
 
         def forward(
-            self, x: torch.Tensor, grid_hw: Optional[Tuple[int, int]] = None
-        ) -> torch.Tensor:
-            v_raw, t_raw = self.in_proj(x).chunk(2, dim=-1)
-            return self.forward_from_projected(v_raw, t_raw, grid_hw=grid_hw)
+            self,
+            x: torch.Tensor,
+            grid_hw: Optional[Tuple[int, int]] = None,
+            state: Optional[Dict[str, torch.Tensor]] = None,
+            return_state: bool = False,
+            causal: Optional[bool] = None,
+        ):
+            use_causal = self.causal if causal is None else bool(causal)
+            if use_causal or state is not None or return_state:
+                vt_proj = (x.unsqueeze(-2) * self.in_proj.weight).sum(dim=-1)
+            else:
+                vt_proj = self.in_proj(x)
+            v_raw, t_raw = vt_proj.chunk(2, dim=-1)
+            return self.forward_from_projected(
+                v_raw,
+                t_raw,
+                grid_hw=grid_hw,
+                state=state,
+                return_state=return_state,
+                causal=causal,
+            )
+
+        def forward_step(
+            self,
+            x_t: torch.Tensor,
+            state: Optional[Dict[str, torch.Tensor]] = None,
+        ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+            """
+            Single-token causal incremental step for `CrossModalVisionLanguageFusionSubOp`.
+            Accepts `x_t` of shape `[B, D]` or `[B, 1, D]` and returns `(out_t, new_state)`.
+            """
+            squeeze_seq = x_t.ndim == 2
+            x_seq = x_t.unsqueeze(1) if squeeze_seq else x_t
+            if state is None:
+                state = self.init_state(x_seq.shape[0], device=x_seq.device, dtype=x_seq.dtype)
+            out_seq, new_state = self.forward(
+                x_seq, state=state, return_state=True, causal=True
+            )
+            out_t = out_seq.squeeze(1) if squeeze_seq else out_seq
+            return out_t, new_state
 
 
     class HeterogeneousProposerOp(nn.Module):
@@ -957,6 +1413,154 @@ if HAS_TORCH:
             return synthesized, aux_loss, metrics
 
 
+    class _FusedMixtureOfAttentionFunction(torch.autograd.Function):
+        """
+        Dispatches Heterogeneous Mixture-of-Attention (4 per-head sparsity patterns:
+        sliding window, sink + window, dilated window, full causal) to zero-atomic
+        in-register Triton forward and backward kernels (`_moa_heterogeneous_attn_fwd_kernel`,
+        `_moa_heterogeneous_attn_bwd_dq_kernel`, `_moa_heterogeneous_attn_bwd_dkv_kernel`),
+        with full fp64 / fp32 / fp16 / bf16 support and incremental KV-cache `pos_offset`.
+        """
+
+        @staticmethod
+        def forward(
+            ctx,
+            q: torch.Tensor,
+            k: torch.Tensor,
+            v: torch.Tensor,
+            pos_offset: int,
+            window_size: int,
+            num_sinks: int,
+            dilation: int,
+        ) -> torch.Tensor:
+            B, H, L_q, D_h = q.shape
+            L_k = k.shape[2]
+            scale = 1.0 / math.sqrt(D_h)
+            ctx.pos_offset = int(pos_offset)
+            ctx.window_size = int(window_size)
+            ctx.num_sinks = int(num_sinks)
+            ctx.dilation = int(dilation)
+            ctx.scale = scale
+
+            if HAS_TRITON and q.is_cuda:
+                q_c = q.contiguous()
+                k_c = k.contiguous()
+                v_c = v.contiguous()
+                acc_dtype = torch.float64 if q.dtype == torch.float64 else torch.float32
+                tl_acc = tl.float64 if q.dtype == torch.float64 else tl.float32
+                is_fp64 = bool(q.dtype == torch.float64)
+                scale_t = _get_moa_op_const(scale, acc_dtype, q.device)
+                block_dh = triton.next_power_of_2(D_h)
+
+                out = torch.empty_like(q_c, memory_format=torch.contiguous_format)
+                lse_m = torch.empty((B * H * L_q,), device=q.device, dtype=acc_dtype)
+                lse_l = torch.empty((B * H * L_q,), device=q.device, dtype=acc_dtype)
+
+                _moa_heterogeneous_attn_fwd_kernel[(B * H * L_q,)](
+                    q_c, k_c, v_c, scale_t, out, lse_m, lse_l,
+                    int(pos_offset),
+                    N_HEADS=H,
+                    L_Q=L_q,
+                    L_K=L_k,
+                    D_HEAD=D_h,
+                    WINDOW_SIZE=int(window_size),
+                    NUM_SINKS=int(num_sinks),
+                    DILATION=int(dilation),
+                    BLOCK_DH=block_dh,
+                    ACC=tl_acc,
+                    FP64=is_fp64,
+                )
+                ctx.save_for_backward(q_c, k_c, v_c, out, lse_m, lse_l)
+                ctx.used_triton = True
+                return out
+
+            ctx.used_triton = False
+            acc_dtype = torch.float64 if q.dtype == torch.float64 else torch.float32
+            q_a = q.to(acc_dtype)
+            k_a = k.to(acc_dtype)
+            v_a = v.to(acc_dtype)
+            mask_full_np, _ = NumpyMoAOperatorKernels.build_mixture_of_attention_mask(
+                L_k, H, window_size, num_sinks, dilation
+            )
+            mask_slice = torch.from_numpy(
+                mask_full_np[:, pos_offset : pos_offset + L_q, :L_k]
+            ).to(device=q.device)
+            scores = (q_a.unsqueeze(-2) * k_a.unsqueeze(-3)).sum(dim=-1) * scale
+            scores_m = torch.where(
+                mask_slice.unsqueeze(0), scores, torch.full_like(scores, -1.0e30)
+            )
+            m_q = scores_m.max(dim=-1, keepdim=True).values
+            w_qk = torch.where(
+                mask_slice.unsqueeze(0), torch.exp(scores_m - m_q), torch.zeros_like(scores_m)
+            )
+            l_q = w_qk.sum(dim=-1, keepdim=True)
+            probs = w_qk / l_q
+            out_a = (probs.unsqueeze(-1) * v_a.unsqueeze(-3)).sum(dim=-2)
+            out = out_a.to(q.dtype)
+            ctx.save_for_backward(q_a, k_a, v_a, probs, out_a)
+            return out
+
+        @staticmethod
+        def backward(ctx, grad_out: torch.Tensor):
+            if getattr(ctx, "used_triton", False) and grad_out.is_cuda:
+                q_c, k_c, v_c, out_c, lse_m, lse_l = ctx.saved_tensors
+                B, H, L_q, D_h = q_c.shape
+                L_k = k_c.shape[2]
+                acc_dtype = torch.float64 if q_c.dtype == torch.float64 else torch.float32
+                tl_acc = tl.float64 if q_c.dtype == torch.float64 else tl.float32
+                is_fp64 = bool(q_c.dtype == torch.float64)
+                scale_t = _get_moa_op_const(ctx.scale, acc_dtype, q_c.device)
+                block_dh = triton.next_power_of_2(D_h)
+
+                dout_c = grad_out.contiguous()
+                delta = torch.empty((B * H * L_q,), device=q_c.device, dtype=acc_dtype)
+                dq = torch.empty_like(q_c, memory_format=torch.contiguous_format)
+                dk = torch.empty_like(k_c, memory_format=torch.contiguous_format)
+                dv = torch.empty_like(v_c, memory_format=torch.contiguous_format)
+
+                _moa_heterogeneous_attn_bwd_dq_kernel[(B * H * L_q,)](
+                    dout_c, out_c, q_c, k_c, v_c, scale_t, lse_m, lse_l,
+                    delta, dq,
+                    ctx.pos_offset,
+                    N_HEADS=H,
+                    L_Q=L_q,
+                    L_K=L_k,
+                    D_HEAD=D_h,
+                    WINDOW_SIZE=ctx.window_size,
+                    NUM_SINKS=ctx.num_sinks,
+                    DILATION=ctx.dilation,
+                    BLOCK_DH=block_dh,
+                    ACC=tl_acc,
+                    FP64=is_fp64,
+                )
+                _moa_heterogeneous_attn_bwd_dkv_kernel[(B * H * L_k,)](
+                    dout_c, q_c, k_c, v_c, scale_t, lse_m, lse_l, delta,
+                    dk, dv,
+                    ctx.pos_offset,
+                    N_HEADS=H,
+                    L_Q=L_q,
+                    L_K=L_k,
+                    D_HEAD=D_h,
+                    WINDOW_SIZE=ctx.window_size,
+                    NUM_SINKS=ctx.num_sinks,
+                    DILATION=ctx.dilation,
+                    BLOCK_DH=block_dh,
+                    ACC=tl_acc,
+                    FP64=is_fp64,
+                )
+                return dq, dk, dv, None, None, None, None
+
+            q_a, k_a, v_a, probs, out_a = ctx.saved_tensors
+            dout_a = grad_out.to(q_a.dtype)
+            dp = (dout_a.unsqueeze(-2) * v_a.unsqueeze(-3)).sum(dim=-1)
+            delta = (dout_a * out_a).sum(dim=-1, keepdim=True)
+            ds = probs * (dp - delta) * ctx.scale
+            dq = (ds.unsqueeze(-1) * k_a.unsqueeze(-3)).sum(dim=-2).to(grad_out.dtype)
+            dk = (ds.unsqueeze(-1) * q_a.unsqueeze(-2)).sum(dim=-3).to(grad_out.dtype)
+            dv = (probs.unsqueeze(-1) * dout_a.unsqueeze(-2)).sum(dim=-3).to(grad_out.dtype)
+            return dq, dk, dv, None, None, None, None
+
+
     class MixtureOfAttentionOp(nn.Module):
         def __init__(self, config: MoAOperatorConfig):
             super().__init__()
@@ -974,20 +1578,69 @@ if HAS_TORCH:
             self.out_proj = nn.Linear(config.d_model, config.d_model, bias=False)
             self.out_dropout = nn.Dropout(config.dropout)
 
-        def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, float]:
+        def init_kv_cache(
+            self,
+            batch_size: int = 1,
+            device: Optional[torch.device] = None,
+            dtype: Optional[torch.dtype] = None,
+        ) -> Dict[str, Any]:
+            """Initialize incremental KV-cache dictionary for Mixture-of-Attention decoding."""
+            return {"k": None, "v": None, "offset": 0, "batch_size": batch_size}
+
+        def forward(
+            self,
+            x: torch.Tensor,
+            kv_cache: Optional[Dict[str, Any]] = None,
+            return_state: bool = False,
+        ):
             B, L, D = x.shape
-            qkv = self.qkv_proj(x).view(B, L, 3, self.n_heads, self.d_head)
-            q, k, v = [t.transpose(1, 2) for t in qkv.unbind(dim=2)]
-            mask_np, stats = NumpyMoAOperatorKernels.build_mixture_of_attention_mask(
-                L, self.n_heads, self.window_size, self.num_sinks, self.dilation
+            qkv_flat = (x.unsqueeze(-2) * self.qkv_proj.weight).sum(dim=-1)
+            qkv = qkv_flat.view(B, L, 3, self.n_heads, self.d_head)
+            q, k_new, v_new = [t.transpose(1, 2).contiguous() for t in qkv.unbind(dim=2)]
+
+            if kv_cache is not None and kv_cache.get("k") is not None:
+                offset = int(kv_cache.get("offset", kv_cache["k"].shape[2]))
+                k = torch.cat([kv_cache["k"], k_new], dim=2)
+                v = torch.cat([kv_cache["v"], v_new], dim=2)
+            else:
+                offset = 0
+                k, v = k_new, v_new
+
+            L_total = k.shape[2]
+            _, stats = NumpyMoAOperatorKernels.build_mixture_of_attention_mask(
+                L_total, self.n_heads, self.window_size, self.num_sinks, self.dilation
             )
-            attn_mask = torch.from_numpy(mask_np).to(device=x.device)
-            out = F.scaled_dot_product_attention(
-                q, k, v, attn_mask=attn_mask, dropout_p=self.dropout if self.training else 0.0
+            out = _FusedMixtureOfAttentionFunction.apply(
+                q, k, v, offset, self.window_size, self.num_sinks, self.dilation
             )
-            gate = torch.sigmoid(self.head_gate(x)).transpose(1, 2).unsqueeze(-1)
+
+            gate_logits = (x.unsqueeze(-2) * self.head_gate.weight).sum(dim=-1) + self.head_gate.bias
+            gate = torch.sigmoid(gate_logits).transpose(1, 2).unsqueeze(-1)
             out = (out * gate).transpose(1, 2).contiguous().view(B, L, D)
-            return self.out_dropout(self.out_proj(out)), stats["overall_moa_density"]
+            out_proj = self.out_dropout((out.unsqueeze(-2) * self.out_proj.weight).sum(dim=-1))
+
+            if return_state or kv_cache is not None:
+                new_cache = {"k": k, "v": v, "offset": L_total, "batch_size": B}
+                if return_state:
+                    return out_proj, new_cache, stats["overall_moa_density"]
+            return out_proj, stats["overall_moa_density"]
+
+        def forward_step(
+            self,
+            x_t: torch.Tensor,
+            kv_cache: Optional[Dict[str, Any]] = None,
+        ) -> Tuple[torch.Tensor, Dict[str, Any], float]:
+            """
+            Single-token incremental autoregressive decoding step with heterogeneous MoA KV-cache.
+            Accepts `x_t` of shape `[B, D]` or `[B, 1, D]` and returns `(out_t, new_cache, density)`.
+            """
+            squeeze_seq = x_t.ndim == 2
+            x_seq = x_t.unsqueeze(1) if squeeze_seq else x_t
+            if kv_cache is None:
+                kv_cache = self.init_kv_cache(x_seq.shape[0], device=x_seq.device, dtype=x_seq.dtype)
+            out_seq, new_cache, density = self.forward(x_seq, kv_cache=kv_cache, return_state=True)
+            out_t = out_seq.squeeze(1) if squeeze_seq else out_seq
+            return out_t, new_cache, density
 
 
 # ==============================================================================
@@ -1133,6 +1786,195 @@ def run_moa_vl_operator_verification() -> None:
     print(f"   Unaligned Additive Baseline Image-Text R2      : {r2_lin_branch:+.4f}")
     print(f"   CrossModal VL-Fusion Branch Image-Text R2      : {r2_vl_branch:+.4f}  [PASS: Zero-Decay Cross-Modal Alignment!]")
     assert r2_vl_branch > 0.99 and r2_vl_branch > r2_lin_branch + 0.15
+
+    if HAS_TORCH:
+        print("\n" + "=" * 96)
+        print("5. Three-Way Bit-Level Parity (NumPy <-> PyTorch <-> CUDA Triton) Across fp64 / fp32 / fp16 / bf16")
+        print("=" * 96)
+        has_cuda_triton = bool(HAS_TRITON and torch.cuda.is_available())
+        for dt_name, np_dt, th_dt, tol in [
+            ("fp64", np.float64, torch.float64, 1e-13),
+            ("fp32", np.float32, torch.float32, 1e-5),
+        ]:
+            B_p, L_p, D_p = 2, 12, 32
+            vv_np = (rng.standard_normal((B_p, L_p, D_p)) * 0.6).astype(np_dt)
+            tt_np = (rng.standard_normal((B_p, L_p, D_p)) * 0.6).astype(np_dt)
+            ca_np = (rng.standard_normal((B_p, L_p, D_p)) * 0.4).astype(np_dt)
+            av_np = rng.uniform(0.3, 1.1, size=(D_p,)).astype(np_dt)
+            at_np = rng.uniform(0.3, 1.1, size=(D_p,)).astype(np_dt)
+            bb_np = rng.uniform(0.2, 0.9, size=(D_p,)).astype(np_dt)
+            dout_np = (rng.standard_normal((B_p, L_p, D_p)) * 0.5).astype(np_dt)
+
+            out_np, cache_np = NumpyMoAOperatorKernels.cross_modal_vl_bilinear_fusion_forward(
+                vv_np, tt_np, ca_np, av_np, at_np, bb_np, lam_norm=0.35
+            )
+            bwd_np = NumpyMoAOperatorKernels.cross_modal_vl_bilinear_fusion_backward(
+                dout_np, cache_np
+            )
+
+            vv_cpu = torch.tensor(vv_np, dtype=th_dt, requires_grad=True)
+            tt_cpu = torch.tensor(tt_np, dtype=th_dt, requires_grad=True)
+            ca_cpu = torch.tensor(ca_np, dtype=th_dt, requires_grad=True)
+            av_cpu = torch.tensor(av_np, dtype=th_dt, requires_grad=True)
+            at_cpu = torch.tensor(at_np, dtype=th_dt, requires_grad=True)
+            bb_cpu = torch.tensor(bb_np, dtype=th_dt, requires_grad=True)
+            out_cpu = FusedCrossModalBilinearGateFunction.apply(
+                vv_cpu, tt_cpu, ca_cpu, av_cpu, at_cpu, bb_cpu, 0.35
+            )
+            out_cpu.backward(torch.tensor(dout_np, dtype=th_dt))
+            cpu_fwd_err = float(np.max(np.abs(out_np - out_cpu.detach().numpy())))
+            cpu_bwd_err = max(
+                float(np.max(np.abs(bwd_np["d_vvis"] - vv_cpu.grad.detach().numpy()))),
+                float(np.max(np.abs(bwd_np["d_ttxt"] - tt_cpu.grad.detach().numpy()))),
+                float(np.max(np.abs(bwd_np["d_calign"] - ca_cpu.grad.detach().numpy()))),
+                float(np.max(np.abs(bwd_np["d_alphavis"] - av_cpu.grad.detach().numpy()))),
+                float(np.max(np.abs(bwd_np["d_alphatxt"] - at_cpu.grad.detach().numpy()))),
+                float(np.max(np.abs(bwd_np["d_betabilin"] - bb_cpu.grad.detach().numpy()))),
+            )
+            assert cpu_fwd_err < tol and cpu_bwd_err < tol
+
+            if has_cuda_triton:
+                vv_gpu = torch.tensor(vv_np, dtype=th_dt, device="cuda", requires_grad=True)
+                tt_gpu = torch.tensor(tt_np, dtype=th_dt, device="cuda", requires_grad=True)
+                ca_gpu = torch.tensor(ca_np, dtype=th_dt, device="cuda", requires_grad=True)
+                av_gpu = torch.tensor(av_np, dtype=th_dt, device="cuda", requires_grad=True)
+                at_gpu = torch.tensor(at_np, dtype=th_dt, device="cuda", requires_grad=True)
+                bb_gpu = torch.tensor(bb_np, dtype=th_dt, device="cuda", requires_grad=True)
+                out_gpu = FusedCrossModalBilinearGateFunction.apply(
+                    vv_gpu, tt_gpu, ca_gpu, av_gpu, at_gpu, bb_gpu, 0.35
+                )
+                out_gpu.backward(torch.tensor(dout_np, dtype=th_dt, device="cuda"))
+                tri_fwd_err = float(np.max(np.abs(out_np - out_gpu.detach().cpu().numpy())))
+                tri_bwd_err = max(
+                    float(np.max(np.abs(bwd_np["d_vvis"] - vv_gpu.grad.detach().cpu().numpy()))),
+                    float(np.max(np.abs(bwd_np["d_ttxt"] - tt_gpu.grad.detach().cpu().numpy()))),
+                    float(np.max(np.abs(bwd_np["d_calign"] - ca_gpu.grad.detach().cpu().numpy()))),
+                    float(np.max(np.abs(bwd_np["d_alphavis"] - av_gpu.grad.detach().cpu().numpy()))),
+                    float(np.max(np.abs(bwd_np["d_alphatxt"] - at_gpu.grad.detach().cpu().numpy()))),
+                    float(np.max(np.abs(bwd_np["d_betabilin"] - bb_gpu.grad.detach().cpu().numpy()))),
+                )
+
+                # MixtureOfAttention 3-way NumPy <-> PyTorch <-> CUDA Triton Fwd & Bwd Parity
+                H_p, Dh_p = 4, 8
+                q_m_np = (rng.standard_normal((B_p, H_p, L_p, Dh_p)) * 0.5).astype(np_dt)
+                k_m_np = (rng.standard_normal((B_p, H_p, L_p, Dh_p)) * 0.5).astype(np_dt)
+                v_m_np = (rng.standard_normal((B_p, H_p, L_p, Dh_p)) * 0.5).astype(np_dt)
+                do_m_np = (rng.standard_normal((B_p, H_p, L_p, Dh_p)) * 0.5).astype(np_dt)
+
+                out_m_np, cache_m_np = NumpyMoAOperatorKernels.mixture_of_attention_forward(
+                    q_m_np, k_m_np, v_m_np, pos_offset=0, window_size=4, num_sinks=2, dilation=2
+                )
+                bwd_m_np = NumpyMoAOperatorKernels.mixture_of_attention_backward(
+                    do_m_np, cache_m_np
+                )
+
+                q_m_gpu = torch.tensor(q_m_np, dtype=th_dt, device="cuda", requires_grad=True)
+                k_m_gpu = torch.tensor(k_m_np, dtype=th_dt, device="cuda", requires_grad=True)
+                v_m_gpu = torch.tensor(v_m_np, dtype=th_dt, device="cuda", requires_grad=True)
+                out_m_gpu = _FusedMixtureOfAttentionFunction.apply(
+                    q_m_gpu, k_m_gpu, v_m_gpu, 0, 4, 2, 2
+                )
+                out_m_gpu.backward(torch.tensor(do_m_np, dtype=th_dt, device="cuda"))
+                moa_tri_fwd_err = float(np.max(np.abs(out_m_np - out_m_gpu.detach().cpu().numpy())))
+                moa_tri_bwd_err = max(
+                    float(np.max(np.abs(bwd_m_np["d_q"] - q_m_gpu.grad.detach().cpu().numpy()))),
+                    float(np.max(np.abs(bwd_m_np["d_k"] - k_m_gpu.grad.detach().cpu().numpy()))),
+                    float(np.max(np.abs(bwd_m_np["d_v"] - v_m_gpu.grad.detach().cpu().numpy()))),
+                )
+                print(
+                    f"   [{dt_name}] VL Bilinear Triton Fwd/Bwd: {tri_fwd_err:.2e} / {tri_bwd_err:.2e} | "
+                    f"MoA Attn Triton Fwd/Bwd: {moa_tri_fwd_err:.2e} / {moa_tri_bwd_err:.2e}  [PASS < {tol:.0e}]"
+                )
+                assert tri_fwd_err < tol and tri_bwd_err < tol
+                assert moa_tri_fwd_err < tol and moa_tri_bwd_err < tol
+            else:
+                print(
+                    f"   [{dt_name}] FusedCrossModalBilinearGate Torch Fwd/Bwd Err: "
+                    f"{cpu_fwd_err:.2e} / {cpu_bwd_err:.2e}  [PASS < {tol:.0e}]"
+                )
+
+        print("\n" + "=" * 96)
+        print("6. Causal Incremental State & KV-Cache Decoding (Full [0:L] == Chunked == Step Lx1)")
+        print("=" * 96)
+        dev_inc = "cuda" if has_cuda_triton else "cpu"
+        # (a) CrossModalVisionLanguageFusionSubOp causal streaming equivalence
+        vl_op = CrossModalVisionLanguageFusionSubOp(
+            d_model=32, num_anchors=8, spatial_conv_kernel=3, causal=True
+        ).to(device=dev_inc, dtype=torch.float64)
+        x_vl_full = torch.randn(2, 10, 32, device=dev_inc, dtype=torch.float64, requires_grad=True)
+        g_vl = torch.randn(2, 10, 32, device=dev_inc, dtype=torch.float64)
+
+        y_vl_full, s_vl_full = vl_op(x_vl_full, return_state=True, causal=True)
+        y_vl_full.backward(g_vl)
+        gx_vl_full = x_vl_full.grad.detach().clone()
+
+        vl_op.zero_grad(set_to_none=True)
+        x_vl_1 = x_vl_full.detach()[:, :4].clone().requires_grad_(True)
+        x_vl_2 = x_vl_full.detach()[:, 4:].clone().requires_grad_(True)
+        s_vl_0 = vl_op.init_state(2, device=dev_inc, dtype=torch.float64)
+        y_vl_1, s_vl_mid = vl_op(x_vl_1, state=s_vl_0, return_state=True, causal=True)
+        y_vl_2, s_vl_end = vl_op(x_vl_2, state=s_vl_mid, return_state=True, causal=True)
+        y_vl_chunk = torch.cat([y_vl_1, y_vl_2], dim=1)
+        y_vl_chunk.backward(g_vl)
+        gx_vl_chunk = torch.cat([x_vl_1.grad.detach(), x_vl_2.grad.detach()], dim=1)
+
+        with torch.no_grad():
+            s_vl_step = vl_op.init_state(2, device=dev_inc, dtype=torch.float64)
+            vl_steps = []
+            for t in range(10):
+                yt, s_vl_step = vl_op.forward_step(x_vl_full.detach()[:, t], state=s_vl_step)
+                vl_steps.append(yt)
+            y_vl_steps = torch.stack(vl_steps, dim=1)
+
+        vl_chunk_err = float((y_vl_full.detach() - y_vl_chunk.detach()).abs().max().item())
+        vl_state_err = float((s_vl_full["anchor_num"].detach() - s_vl_end["anchor_num"].detach()).abs().max().item())
+        vl_grad_err = float((gx_vl_full - gx_vl_chunk).abs().max().item())
+        vl_step_err = float((y_vl_full.detach() - y_vl_steps).abs().max().item())
+
+        # (b) MixtureOfAttentionOp incremental KV-cache forward, state & backward equivalence
+        moa_cfg = MoAOperatorConfig(d_model=32, n_heads=4, sliding_window_size=4, num_sink_tokens=2, dilation_stride=2)
+        moa_attn = MixtureOfAttentionOp(moa_cfg).to(device=dev_inc, dtype=torch.float64)
+        x_moa_full = x_vl_full.detach().clone().requires_grad_(True)
+        y_moa_full, c_moa_full, _ = moa_attn(x_moa_full, return_state=True)
+        y_moa_full.backward(g_vl)
+        gx_moa_full = x_moa_full.grad.detach().clone()
+
+        moa_attn.zero_grad(set_to_none=True)
+        xm_1 = x_vl_full.detach()[:, :4].clone().requires_grad_(True)
+        xm_2 = x_vl_full.detach()[:, 4:].clone().requires_grad_(True)
+        c_moa = moa_attn.init_kv_cache(2, device=dev_inc, dtype=torch.float64)
+        y_moa_1, c_moa, _ = moa_attn(xm_1, kv_cache=c_moa, return_state=True)
+        y_moa_2, c_moa_end, _ = moa_attn(xm_2, kv_cache=c_moa, return_state=True)
+        y_moa_chunk = torch.cat([y_moa_1, y_moa_2], dim=1)
+        y_moa_chunk.backward(g_vl)
+        gx_moa_chunk = torch.cat([xm_1.grad.detach(), xm_2.grad.detach()], dim=1)
+
+        with torch.no_grad():
+            c_step = moa_attn.init_kv_cache(2, device=dev_inc, dtype=torch.float64)
+            moa_steps = []
+            for t in range(10):
+                yt, c_step, _ = moa_attn.forward_step(x_vl_full.detach()[:, t], kv_cache=c_step)
+                moa_steps.append(yt)
+            y_moa_steps = torch.stack(moa_steps, dim=1)
+
+        moa_chunk_err = float((y_moa_full.detach() - y_moa_chunk.detach()).abs().max().item())
+        moa_state_err = max(
+            float((c_moa_full["k"].detach() - c_moa_end["k"].detach()).abs().max().item()),
+            float((c_moa_full["v"].detach() - c_moa_end["v"].detach()).abs().max().item()),
+        )
+        moa_grad_err = float((gx_moa_full - gx_moa_chunk).abs().max().item())
+        moa_step_err = float((y_moa_full.detach() - y_moa_steps).abs().max().item())
+
+        print(
+            f"   CrossModalVL Causal Stream ({dev_inc}, fp64) | Chunk dY/dState/dGradX: "
+            f"{vl_chunk_err:.2e} / {vl_state_err:.2e} / {vl_grad_err:.2e} | Step Lx1 dY: {vl_step_err:.2e}  [PASS < 1e-13]"
+        )
+        print(
+            f"   MixtureOfAttention KV-Cache ({dev_inc}, fp64) | Chunk dY/dState/dGradX: "
+            f"{moa_chunk_err:.2e} / {moa_state_err:.2e} / {moa_grad_err:.2e} | Step Lx1 dY: {moa_step_err:.2e}  [PASS < 1e-13]"
+        )
+        assert vl_chunk_err < 1e-13 and vl_state_err < 1e-13 and vl_grad_err < 1e-13 and vl_step_err < 1e-13
+        assert moa_chunk_err < 1e-13 and moa_state_err < 1e-13 and moa_grad_err < 1e-13 and moa_step_err < 1e-13
     print("=" * 96)
 
 if not HAS_TORCH:

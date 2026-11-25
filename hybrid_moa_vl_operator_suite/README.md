@@ -5,7 +5,7 @@
 同时支持整包顶层导入 `import hybrid_moa_vl_operator_suite`（302 个公开导出）或规范子包导入 `hybrid_moa_vl_operator_suite.<subpkg>.<module>`。
 - **全路径 Triton GPU 内核防线与连续步幅保证**：所有 `@triton.jit` 前/反向核均强制使用 `memory_format=torch.contiguous_format`（根治 `einsum` 导致的 `(G, B, L, D_g)` 非连续步幅错位），标量原子归约统一经过 0D `tl.sum(..., axis=0)`（通过 Tesla T4 `tt.atomic_rmw` 类型校验），并配备 `try ... except` 无损降级回退。
 
-## 1. 模块映射表（46 个算子/内核模块 + 1 个审计 + 26 个 `__init__.py` + 1 个 `__main__.py` = 74 个 `.py`，41,300 行）
+## 1. 模块映射表（46 个算子/内核模块 + 1 个审计 + 26 个 `__init__.py` + 1 个 `__main__.py` = 74 个 `.py`，42,946 行）
 
 构成：15 个领域算子 + 5 个基础设施 + 26 个扩展/独立模块（LLM / `spin_chirality/` 自旋手性 P1–P45 完整 15 模块族 / `payload/` 载荷算子 9 件套 / NBSC-Ω）
 

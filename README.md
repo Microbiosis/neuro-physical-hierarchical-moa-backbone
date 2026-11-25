@@ -11,7 +11,7 @@ implementations — and every layer is importable even without torch installed
 (fallback stubs raise a clear `ImportError` only when instantiated).
 
 Totals: **46 operator/infrastructure modules** plus the 5-dimensional independence audit (819 lines),
-26 package `__init__.py` initializers (577 lines), and 1 `__main__.py` entry (20 lines) — 74 `.py` files, 41,300 lines in total (organized into 25 subpackages); a clean-room smoke test covers 14 checks.
+26 package `__init__.py` initializers (577 lines), and 1 `__main__.py` entry (20 lines) — 74 `.py` files, 42,946 lines in total (organized into 25 subpackages); a clean-room smoke test covers 14 checks.
 
 ---
 
@@ -33,11 +33,11 @@ Totals: **46 operator/infrastructure modules** plus the 5-dimensional independen
     ├── cpu_gpu_self_bootstrapping_operators/
     │   └── cpu_gpu_self_bootstrapping_operators.py Tri-ISA CPU + SIMT GPU 自举（2,324 行）
     ├── moa_operators/
-    │   └── moa_operators.py                        系统级 MoA + 跨模态图文融合（1,176 行）
+    │   └── moa_operators.py                        系统级 MoA + 跨模态图文融合（2,018 行）
     ├── sleep_subconscious_neuro_operators/
     │   └── sleep_subconscious_neuro_operators.py   睡眠/潜意识（1,039 行）
     ├── moa_triton_kernels/
-    │   └── moa_triton_kernels.py                   Triton 内核 + tile 模拟器（468 行）
+    │   └── moa_triton_kernels.py                   Triton 内核 + tile 模拟器（800 行）
     ├── vacuum_zpe_fluctuation_operators/
     │   └── vacuum_zpe_fluctuation_operators.py     真空零点能涨落（960 行）
     ├── spin_chirality/                             自旋手性拓扑算子族（P1–P45，15 个模块 + __init__.py + __main__.py）
@@ -76,7 +76,7 @@ together with four further independence dimensions).
 | `quantum_resource_phasing_operators/quantum_resource_phasing_operators.py` | 量子资源相位：Coulomb 相互作用定点逆平方根相位、DQI 可靠性 1/R(ε)、Hamiltonian 分块编码 λ_eff 归一化门 → **Stage I.C** | 1,086 |
 | `audit/operator_independence_verification.py` | 五维算子独立性审计（隔离 / 表示独立 / 梯度子空间 / 参数交叉灵敏 / 不可替代贡献）；文件隔离覆盖 46 个模块，五维独立性分析覆盖 14 个领域算子 | 819 |
 | `sleep_subconscious_neuro_operators/sleep_subconscious_neuro_operators.py` | Borbély 两过程睡眠调节、VLPO/ARAS 翻转开关、Tononi SHY、类淋巴清洗、SWR/PGO 梦境重组 | 1,039 |
-| `moa_operators/moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 1,176 |
+| `moa_operators/moa_operators.py` | 系统级 MoA：异构 proposer / 逐头注意力 / 聚合 + 跨模态图文融合 | 2,018 |
 | `corticospinal_chaotic_operators/corticospinal_chaotic_operators.py` | 皮质-脊髓混沌通路、Pyragas 时滞反馈镇定 | 962 |
 | `spinal_cord_pathway_operators/spinal_cord_pathway_operators.py` | 脊髓节段通路、Melzack-Wall 门控、Renshaw 递归 | 959 |
 | `vacuum_zpe_fluctuation_operators/vacuum_zpe_fluctuation_operators.py` | 真空零点能下限、Casimir 压力、Schwinger 对产生、虚玻色子传播子 | 960 |
@@ -84,10 +84,10 @@ together with four further independence dimensions).
 | `supermembrane_spacetime_operators/supermembrane_spacetime_operators.py` | 11 维超膜 DBI、Randall-Sundrum 翘曲 KK 模态 | 888 |
 | `quantum_tidal_operators/quantum_tidal_operators.py` | WKB 隧穿、Schwarzschild 四极潮汐张量 | 886 |
 | `neuro_nonlinear_operators/neuro_nonlinear_operators.py` | 树突 NMDA 镁门控、FitzHugh-Nagumo、Kuramoto 相位耦合 | 817 |
-| `local_self_modifying_operators/local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 + 自举编译接口 + **persistent SRAM 单次 launch 前反向** | 1,757 |
+| `local_self_modifying_operators/local_self_modifying_operators.py` | Delta-Oja 在线可塑性、奇异值能量软裁剪 + 自举编译接口 + **persistent SRAM 单次 launch 前反向** | 2,229 |
 | `tulpa_neuro_operators/tulpa_neuro_operators.py` | 多子人格吸引子、精度加权自由能路由、Agency 比较器 | 879 |
 | `dissociative_trauma_neuro_operators/dissociative_trauma_neuro_operators.py` | Stage-I 前门控：杏仁核超唤醒、PAG 过载关断、ANP/EP 隔离 + 独立验证套件 | 736 |
-| `moa_triton_kernels/moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 468 |
+| `moa_triton_kernels/moa_triton_kernels.py` | Triton 融合内核 + 逐 tile SRAM 模拟器 | 800 |
 | `physical_wave_dynamics_operators/physical_wave_dynamics_operators.py` | Schwinger ZPE 波包 / 阻尼辛谐振 / 2D 反应扩散 / DBI 规范膜阻尼（6 类 10 个 Triton 内核） | 2,062 |
 | `high_order_pde_ode_megakernels/high_order_pde_ode_megakernels.py` | Störmer-Verlet 辛蛙跳 / Crank-Nicolson IMEX / RK2 中点 / DBI 规范膜 + Roofline 分析器 | 1,878 |
 | `adaptive_checkpointed_adjoint_megakernels/adaptive_checkpointed_adjoint_megakernels.py` | O(√L·D) 分段检查点伴随 + 局部相空间误差自适应步长 | 1,583 |
